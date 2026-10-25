@@ -92,6 +92,7 @@
       "design": "Ekawsiykua Escort",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 2, "sensors": [2, 1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 3, 2, 2, 2, 1, 2], "leadership": 3}
     },
@@ -103,6 +104,7 @@
       "design": "Ekawsiykua Escort",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 2, "sensors": [2, 1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 2, 2, 2, 2, 1, 2], "leadership": 2}
     },
@@ -114,6 +116,7 @@
       "design": "Light Fighter",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -125,6 +128,7 @@
       "design": "Light Fighter",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -136,6 +140,7 @@
       "design": "Light Fighter",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -147,6 +152,7 @@
       "design": "Light Fighter",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -158,6 +164,7 @@
       "design": "Light Fighter",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -169,6 +176,7 @@
       "design": "Light Fighter",
       "team": "Red",
       "goal": "hold",
+      "post": "Europa",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     }

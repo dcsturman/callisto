@@ -100,7 +100,14 @@ fn holding_pays_every_round_it_holds() {
   let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
   let scenario = runtime.block_on(async {
     callisto::ship::replace_ship_templates(callisto::ship::load_ship_templates_from_dir(DESIGNS).await.unwrap());
-    Arc::new(Scenario::load("../callisto/scenarios/jupiter.json").await.unwrap())
+    // Jupiter with the Aslan holding the point they start at rather than
+    // Europa, which orbits away from ships that sit still.
+    let jupiter = std::fs::read_to_string("../callisto/scenarios/jupiter.json")
+      .unwrap()
+      .replace(r#""post": "Europa""#, r#""post": [0, 0, 650000000.0]"#);
+    let path = std::env::temp_dir().join(format!("hold-pays-{}.json", std::process::id()));
+    std::fs::write(&path, jupiter).unwrap();
+    Arc::new(Scenario::load(path.to_str().unwrap()).await.unwrap())
   });
   // Both sides sit still, so Jupiter's Aslan, whose goal is Hold, hold all game.
   let play = |hold: f32| {
@@ -150,4 +157,34 @@ fn a_side_that_sits_still_ends_at_its_post() {
   let tally = game.tally(0);
   assert!(tally.holding);
   assert!((tally.held - 1.0).abs() < 1e-6, "the picket held every round: {}", tally.held);
+}
+
+#[test]
+fn a_side_holds_its_scenario_post_not_where_it_started() {
+  let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+  let load = |json: String| {
+    runtime.block_on(async {
+      callisto::ship::replace_ship_templates(callisto::ship::load_ship_templates_from_dir(DESIGNS).await.unwrap());
+      let path = std::env::temp_dir().join(format!("post-{}.json", std::process::id()));
+      std::fs::write(&path, json).unwrap();
+      Arc::new(Scenario::load(path.to_str().unwrap()).await.unwrap())
+    })
+  };
+  let jupiter = std::fs::read_to_string("../callisto/scenarios/jupiter.json").unwrap();
+  let still = Control::Baseline("hold".to_string());
+  let play = |scenario: Arc<Scenario>| {
+    let mut game = Game::new(scenario, &[still.clone(), still.clone()], 3, 3);
+    while game.step_sides([None, None]).end.is_none() {}
+    game.at_post()
+  };
+  // Jupiter's Aslan (Red) hold Europa, which they start beside. (Europa
+  // orbits, so over a long game ships that sit still are left behind; three
+  // rounds is not long.)
+  let red = |at: [bool; 2]| at[1];
+  assert!(red(play(load(jupiter.clone()))), "sitting beside Europa holds it");
+  // Moved 650,000 km away, to Jupiter itself, the same ships sitting still do not.
+  assert!(
+    !red(play(load(jupiter.replace(r#""post": "Europa""#, r#""post": "Jupiter""#)))),
+    "a post far from where the side sits is not held by sitting still"
+  );
 }

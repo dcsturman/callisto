@@ -25,7 +25,7 @@ use callisto::authentication::MockAuthenticator;
 use callisto::entity::{Entities, Entity, Vec3};
 use callisto::player::PlayerManager;
 use callisto::server::Server;
-use callisto::ship::{Goal, Ship};
+use callisto::ship::{Goal, Post, Ship};
 use callisto::tactics::{self, EngineerVerb, Intent};
 use cgmath::InnerSpace;
 use rand::{Rng, SeedableRng};
@@ -112,9 +112,10 @@ pub struct Tally {
   pub dealt: f32,
   /// The share of the side's ships that jumped out.
   pub jumped: f32,
-  /// At least one of the side's ships is within [`HOLD_RADIUS`] of where the
-  /// side started, as of the last round it had a ship in play: a side
-  /// destroyed at its post still held it.
+  /// At least one of the side's ships is within its post's radius of the
+  /// post (the scenario's, or by default [`HOLD_RADIUS`] of where the side
+  /// started), as of the last round it had a ship in play: a side destroyed
+  /// at its post still held it.
   pub holding: bool,
   /// The share of the game's rounds a side whose goal is Hold spent holding.
   pub held: f32,
@@ -127,8 +128,8 @@ pub struct Tally {
   pub enemy_jumped: f32,
 }
 
-/// How far from where it started a side may be and still hold its position:
-/// the edge of Long range.
+/// How far from its post a side may be and still hold it, unless its
+/// scenario says otherwise: the edge of Long range.
 pub const HOLD_RADIUS: f64 = 25_000_000.0;
 /// The share of the enemy's hull a raid must destroy to have done its job.
 pub const RAID_DAMAGE: f32 = 0.25;
@@ -238,7 +239,7 @@ pub struct Shaping {
   /// the share of ours. See [`firepower`].
   pub firepower: f32,
   /// Per round, this to a side whose goal is Hold while one of its ships is
-  /// within [`HOLD_RADIUS`] of where it started: holding pays as it goes,
+  /// within its post's radius of the post: holding pays as it goes,
   /// not only in a draw at the end.
   pub hold: f32,
 }
@@ -293,7 +294,12 @@ struct Side {
   goal: Goal,
   /// The middle of the side's ships at the start, for Hold.
   start: Vec3,
-  /// Whether a ship was within [`HOLD_RADIUS`] of `start`, as of the last
+  /// Where the side holds, if its scenario says: a body or a point, as its
+  /// ships' `post`. Without one it holds `start`.
+  post: Option<Post>,
+  /// How close to its post, in metres, counts as holding it.
+  post_radius: f64,
+  /// Whether a ship was within `post_radius` of the post, as of the last
   /// round the side had one in play.
   at_post: bool,
   /// Rounds the side has held, if its goal is Hold.
@@ -477,6 +483,8 @@ impl Game {
         .map(Entity::get_position)
         .fold(Vec3::new(0.0, 0.0, 0.0), |sum, at| sum + at)
         / own.len().max(1) as f64;
+      // The first of the side's ships to name a post names the side's.
+      let posted = own.iter().find(|ship| ship.post.is_some());
       Side {
         name: name.clone(),
         ships: ships.clone(),
@@ -487,6 +495,8 @@ impl Game {
         hull_last: hull,
         goal: side_goal(own),
         start,
+        post: posted.and_then(|ship| ship.post.clone()),
+        post_radius: posted.and_then(|ship| ship.post_radius).map_or(HOLD_RADIUS, |km| km * 1000.0),
         at_post: true,
         held_rounds: 0,
         history: History::default(),
@@ -672,7 +682,25 @@ impl Game {
     &self.views[side]
   }
 
-  /// Whether each side had a ship within [`HOLD_RADIUS`] of where it started,
+  /// Where side `side` holds now: its post, wherever that body has got to,
+  /// or the middle of where its ships started.
+  #[must_use]
+  pub fn post_of(&self, side: usize) -> Vec3 {
+    let state = &self.sides[side];
+    state
+      .post
+      .as_ref()
+      .and_then(|post| self.world.post_position(post))
+      .unwrap_or(state.start)
+  }
+
+  /// How close to its post side `side` must be to hold it, in metres.
+  #[must_use]
+  pub fn post_radius(&self, side: usize) -> f64 {
+    self.sides[side].post_radius
+  }
+
+  /// Whether each side had a ship within its post's radius of the post,
   /// as of the last round it had one in play.
   #[must_use]
   pub fn at_post(&self) -> [bool; 2] {
@@ -877,13 +905,14 @@ impl Game {
     for (side, hull) in self.sides.iter_mut().zip(hulls) {
       side.hull_last = hull;
     }
-    for (reward, state) in rewards.iter_mut().zip(self.sides.iter_mut()) {
+    let posts = [0, 1].map(|side| self.post_of(side));
+    for ((reward, state), post) in rewards.iter_mut().zip(self.sides.iter_mut()).zip(posts) {
       let mut in_play = state.ships.iter().filter_map(|ship| self.world.ships.get(ship)).peekable();
       if in_play.peek().is_none() {
         continue;
       }
-      state.at_post =
-        in_play.any(|ship| (ship.read().unwrap().get_position() - state.start).magnitude() <= HOLD_RADIUS);
+      let radius = state.post_radius;
+      state.at_post = in_play.any(|ship| (ship.read().unwrap().get_position() - post).magnitude() <= radius);
       if state.goal == Goal::Hold && state.at_post {
         state.held_rounds += 1;
         *reward += self.shaping.hold;

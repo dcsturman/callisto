@@ -48,6 +48,7 @@
       "design": "Fleet Picket - Watchdog",
       "team": "Blue",
       "goal": "hold",
+      "post": [0.0, 0.0, 100000000.0],
       "orders": "Hold the refuelling point: no raider refuels here.",
       "crew": {
         "pilot": 2,
@@ -91,6 +92,7 @@
       "design": "System Defence Boat - Dragon",
       "team": "Blue",
       "goal": "hold",
+      "post": [0.0, 0.0, 100000000.0],
       "orders": "Hold the refuelling point: no raider refuels here.",
       "crew": {
         "pilot": 2,
@@ -133,6 +135,7 @@
       "design": "System Defence Boat - Dragon",
       "team": "Blue",
       "goal": "hold",
+      "post": [0.0, 0.0, 100000000.0],
       "orders": "Hold the refuelling point: no raider refuels here.",
       "crew": {
         "pilot": 2,
