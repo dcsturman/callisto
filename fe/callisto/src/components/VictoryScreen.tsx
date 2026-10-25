@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { exit_scenario } from "lib/serverManager";
-import { SideSeen, outcome, rememberSides } from "lib/victory";
+import { SideSeen, outcome, rememberSides, timeUp } from "lib/victory";
 import { useAppDispatch, useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { setJoinedScenario } from "state/userSlice";
@@ -24,7 +24,7 @@ export function VictoryScreen() {
   }
 
   seen.current.sides = rememberSides(seen.current.sides, entities.ships);
-  const ended = outcome(seen.current.sides, entities.ships);
+  const ended = outcome(seen.current.sides, entities.ships) ?? timeUp(entities, seen.current.sides);
 
   // Back to a live game (a reset, or a ship added): forget the dismissal, so
   // the next ending is announced too.
@@ -56,11 +56,12 @@ export function VictoryScreen() {
           {ended.headline}
         </h2>
         <p id="victory-message" className="confirm-dialog-message">
-          {ended.escaped
+          {ended.detail ??
+            (ended.escaped
             ? "Every ship that set out to get away is gone."
             : ended.winner != null
               ? `${ended.gone.map((side) => side.label).join(" and ")} ${ended.gone.length === 1 ? "has" : "have"} no ships left.`
-              : "No side has a ship left."}
+              : "No side has a ship left.")}
         </p>
         <div className="confirm-dialog-button-row">
           <button type="button" onClick={() => setDismissed(ended.headline)}>

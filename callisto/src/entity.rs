@@ -107,6 +107,12 @@ pub struct MetaData {
   pub description: String,
   #[serde(default)]
   pub owner: String,
+  /// How many rounds the scenario lasts, if it has a limit: a Hold side still
+  /// at its post when they are up has won. Absent, a game runs until one
+  /// side is gone. Only for Hold scenarios: in any other, a losing side
+  /// could run out the clock.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub rounds: Option<u32>,
   /// The scenario's sides and their ships, for the new-game screen to offer
   /// each side to people or the AI. Filled in when the scenario list is
   /// loaded; never written to a scenario file.

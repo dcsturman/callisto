@@ -203,8 +203,12 @@ function Simulator() {
             or a gunner with no way to see the other ships or turn the range
             rings on. */}
         <div className="top-right-stack">
-          <ShipSummary />
-          <ViewControls />
+          {/* View and Ships side by side across the top, so neither pushes
+              the other down; each folds to its header. */}
+          <div className="top-right-row">
+            <ViewControls />
+            <ShipSummary />
+          </div>
           {/* Results belong with the other reference panels rather than
               floating beside the console, where their width moved them
               every time the console gained or lost a column. */}

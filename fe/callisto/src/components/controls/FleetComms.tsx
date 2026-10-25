@@ -1,6 +1,7 @@
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { AiStatus, Ship } from "lib/entities";
+import { CornerPanel } from "lib/CornerPanel";
 import { teamLabelColor } from "lib/teams";
 import { useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
@@ -49,7 +50,6 @@ export function FleetComms() {
   const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
-  const [open, setOpen] = useState(true);
 
   const referee = isReferee(roles, shipName);
   // A fleet commander hears their own team, as a crew does.
@@ -74,19 +74,8 @@ export function FleetComms() {
   }
 
   return (
-    <div id="fleet-comms" className="computer-window">
-      <h1>
-        <button
-          className="fleet-comms-toggle"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-          title={open ? "Hide Fleet Comms" : "Show Fleet Comms"}>
-          {open ? "\u25BE" : "\u25B8"}
-        </button>{" "}
-        Fleet Comms
-      </h1>
-      {open &&
-        sides.map((side) => {
+    <CornerPanel id="fleet-comms" title="Fleet Comms" className="computer-window">
+      {sides.map((side) => {
           const status = sideStatus(side.ships);
           const plan = side.ships.find((ship) => ship.ai_report?.plan)?.ai_report?.plan;
           const round = Math.max(...side.ships.map((ship) => ship.ai_report?.round ?? 0));
@@ -121,6 +110,6 @@ export function FleetComms() {
             </section>
           );
         })}
-    </div>
+    </CornerPanel>
   );
 }
