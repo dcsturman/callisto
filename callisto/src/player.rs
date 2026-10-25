@@ -339,6 +339,7 @@ impl PlayerManager {
     self.authenticator.set_email(None);
     let mut keys = session_keys.lock().unwrap();
     if let Some(session_key) = self.authenticator.get_session_key() {
+      crate::sessions::forget(&session_key);
       keys.remove(&session_key);
     }
   }

@@ -24,6 +24,7 @@ pub mod processor;
 mod rules_tables;
 pub mod server;
 pub mod service_auth;
+pub mod sessions;
 pub mod ship;
 pub mod software;
 pub mod tactics;
