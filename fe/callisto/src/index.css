@@ -459,6 +459,10 @@ select.control-input,
     align-items: flex-end;
     gap: 4px;
     z-index: 12;
+    /* The last resort: if the panels together still outgrow the screen, the
+       column scrolls, rather than hiding its lower panels behind the session
+       panel where nothing can reach them. */
+    overflow-y: auto;
     /* Three panels can outgrow a laptop screen, and the results are the one
        that scrolls rather than the stack. The stack also stops above the
        session panel in the bottom corner, whose height App measures. */
@@ -1588,6 +1592,10 @@ h3.control-form {
 }
 
 .save-scenario-button-row,
+.ship-summary-post {
+    font-size: var(--font-xs);
+}
+
 .captain-boost-waiting {
     opacity: 0.45;
 }
@@ -3607,13 +3615,12 @@ h3.control-form {
     overflow-x: hidden;
 }
 
-#fleet-comms h1 {
+/* The header stays put while the reports scroll under it. */
+#fleet-comms > .corner-panel-header {
     position: sticky;
     top: 0;
     background: #1b1f24;
     z-index: 1;
-    font-size: var(--font-lg);
-    margin: 0 0 0.35em 0;
 }
 
 .fleet-comms-toggle {
@@ -3719,4 +3726,48 @@ h3.control-form {
     font-size: var(--font-sm);
     font-style: italic;
     color: #b8c0c8;
+}
+
+/* View and Ships share the top of the right-hand column. */
+.top-right-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+/* A panel in the right-hand column: its header always shows, with the toggle
+   that folds the rest away. */
+.corner-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+}
+
+.corner-panel-toggle {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    padding: 0;
+}
+
+.corner-panel-toggle:focus-visible {
+    outline: 1px solid currentColor;
+}
+
+/* A long fleet scrolls inside the Ships panel instead of pushing everything
+   below it off the screen. */
+#ships-panel .corner-panel-body {
+    max-height: 45vh;
+    overflow-y: auto;
 }

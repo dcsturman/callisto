@@ -99,7 +99,7 @@ own table:
 |---|---|---|---|---|
 | Enemy destroyed | +1 | +1 | +1 | +1 |
 | Enemy fled | +0.6 | +1 | +0.6 if 25% dealt, else -0.6 | share jumped |
-| Draw | -1 | +0.6 if still holding, else -1.1 | +0.6 if 25% dealt, else -1 | share jumped |
+| Draw | -1 | +1 if still holding, else -1.1 | +0.6 if 25% dealt, else -1 | share jumped |
 | We fled | -0.9 | -1.1 | +0.6 if 25% dealt, else -0.6 | share jumped |
 | ...with more than half our hull | -1.1 | -1.1 | +0.6 if 25% dealt, else -1.1 | share jumped |
 | We were destroyed | -1 | -1 + stand credit at the post, else -1.1 | -1 | share jumped |

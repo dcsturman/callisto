@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Ship } from "lib/entities";
-import { outcome, rememberSides } from "lib/victory";
+import { outcome, rememberSides, timeUp } from "lib/victory";
+import { EntityList } from "lib/entities";
 
 const ship = (name: string, team?: string, goal?: string): Ship => ({ name, team, goal }) as unknown as Ship;
 
@@ -35,5 +36,34 @@ describe("outcome", () => {
   it("counts each unaligned ship as a side of its own", () => {
     const free = rememberSides(new Map(), [ship("Hulk"), ship("Trader")]);
     expect(outcome(free, [ship("Trader")])?.headline).toBe("Trader Victorious!");
+  });
+});
+
+describe("timeUp", () => {
+  const aslan = (z: number) => ({ name: "Ailreaui", team: "Red", goal: "hold", post: "Europa", position: [0, 0, z] });
+  const gazelle = { name: "Unicorn", team: "Blue", goal: "destroy", position: [0, 0, 5e8] };
+  const world = (round: number, z: number): EntityList =>
+    ({
+      ships: [aslan(z), gazelle],
+      planets: [{ name: "Europa", position: [0, 0, 6.71e8] }],
+      missiles: [],
+      metadata: { name: "Jupiter", description: "", rounds: 30 },
+      round,
+    }) as unknown as EntityList;
+  const sides = (w: EntityList) => rememberSides(new Map(), w.ships);
+
+  it("is nothing while rounds remain", () => {
+    const w = world(30, 6.71e8);
+    expect(timeUp(w, sides(w))).toBeNull();
+  });
+
+  it("gives the game to a holder still at its post when the rounds are up", () => {
+    const w = world(31, 6.71e8 - 5e6);
+    expect(timeUp(w, sides(w))?.headline).toBe("Red Team held Europa!");
+  });
+
+  it("gives it to the attacker if the post has fallen", () => {
+    const w = world(31, 6.71e8 - 9e7);
+    expect(timeUp(w, sides(w))?.headline).toBe("Blue Team Victorious!");
   });
 });

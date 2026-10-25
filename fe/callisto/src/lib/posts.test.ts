@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { EntityList } from "lib/entities";
-import { postsToDraw } from "lib/posts";
+import { fromPost, postsToDraw } from "lib/posts";
 
 const world = (ships: object[]): EntityList =>
   ({
@@ -20,7 +20,7 @@ describe("postsToDraw", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0].position).toEqual([0, 0, 6.71e8]);
     expect(posts[0].radius).toBe(25_000_000);
-    expect(posts[0].label).toBe("Red holds Europa");
+    expect(posts[0].label).toBe("Red's post: Europa");
   });
 
   it("draws a point post with its own radius", () => {
@@ -35,5 +35,21 @@ describe("postsToDraw", () => {
     expect(
       postsToDraw(world([{ name: "Unicorn", team: "Blue", goal: "destroy" }, { name: "SDB", goal: "hold" }])),
     ).toHaveLength(0);
+  });
+});
+
+describe("fromPost", () => {
+  const ship = (position: [number, number, number]) =>
+    ({ name: "AF1", team: "Red", goal: "hold", post: "Europa", position }) as never;
+
+  it("says how far a Hold ship is from her post, and whether that is inside", () => {
+    const near = fromPost(world([]), ship([0, 0, 6.71e8 - 10_000_000]));
+    expect(near?.inside).toBe(true);
+    expect(Math.round(near!.distance)).toBe(10_000_000);
+    expect(fromPost(world([]), ship([0, 0, 6.71e8 - 40_000_000]))?.inside).toBe(false);
+  });
+
+  it("is nothing for a ship that holds no post", () => {
+    expect(fromPost(world([]), { name: "Unicorn", goal: "destroy", position: [0, 0, 0] } as never)).toBeNull();
   });
 });
