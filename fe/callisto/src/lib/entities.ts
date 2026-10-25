@@ -440,6 +440,9 @@ export interface MetaData {
   /** A template's sides and ships, sent with the scenario list for the
    *  new-game screen; absent elsewhere. */
   sides?: ScenarioSide[];
+  /** How many rounds the scenario lasts, if it has a limit: a Hold side
+   *  still at its post when they are up has won. */
+  rounds?: number;
 }
 
 /** One side of a scenario template: its team (`Unaligned` for ships on

@@ -210,7 +210,7 @@ fn each_goal_scores_as_agreed() {
   // Hold: a draw is good only while still holding; leaving the post, however
   // the game ends, is desertion; a stand fought out at the post earns back
   // some of the loss for the rounds held and the hull destroyed.
-  assert!((terminal(Goal::Hold, Ending::Draw, &tally(0.0, 0.0, true)) - 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::Draw, &tally(0.0, 0.0, true)) - 1.0).abs() < 1e-6);
   assert!((terminal(Goal::Hold, Ending::Draw, &none) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Hold, Ending::WeFled, &none) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Hold, Ending::WeDestroyed, &tally(0.2, 0.0, false)) + 1.1).abs() < 1e-6);

@@ -1,8 +1,9 @@
 {
   "metadata": {
+    "rounds": 30,
     "name": "Stealth Strike",
     "owner": "dcsturman@gmail.com",
-    "description": "Ten Harriers, an all-stealth strike group, against twelve 200-ton system defence boats, three rows of four: the groups' centres 60,000 km apart at rest, at Distant, so each side starts with only the other's blips."
+    "description": "Ten Harriers, an all-stealth strike group, against seven 200-ton system defence boats holding their ground for 30 rounds: the groups' centres 60,000 km apart at rest, at Distant, so each side starts with only the other's blips."
   },
   "planets": [],
   "ships": [
@@ -431,6 +432,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -470,6 +472,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -509,6 +512,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -548,6 +552,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -587,6 +592,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -626,6 +632,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -665,201 +672,7 @@
       "design": "System Defense Boat",
       "team": "Red",
       "goal": "hold",
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
-        "mechanic": 2,
-        "sensors": 2,
-        "gunnery": [
-          2
-        ],
-        "leadership": 2
-      },
-      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
-    },
-    {
-      "name": "Ouroboros",
-      "position": [
-        60000000.0,
-        375000.0,
-        0.0
-      ],
-      "velocity": [
-        0,
-        0,
-        0
-      ],
-      "plan": [
-        [
-          [
-            0,
-            0,
-            0
-          ],
-          50000
-        ]
-      ],
-      "design": "System Defense Boat",
-      "team": "Red",
-      "goal": "hold",
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
-        "mechanic": 2,
-        "sensors": 2,
-        "gunnery": [
-          2
-        ],
-        "leadership": 2
-      },
-      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
-    },
-    {
-      "name": "Zilant",
-      "position": [
-        60250000.0,
-        -375000.0,
-        0.0
-      ],
-      "velocity": [
-        0,
-        0,
-        0
-      ],
-      "plan": [
-        [
-          [
-            0,
-            0,
-            0
-          ],
-          50000
-        ]
-      ],
-      "design": "System Defense Boat",
-      "team": "Red",
-      "goal": "hold",
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
-        "mechanic": 2,
-        "sensors": 2,
-        "gunnery": [
-          2
-        ],
-        "leadership": 2
-      },
-      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
-    },
-    {
-      "name": "Lung",
-      "position": [
-        60250000.0,
-        -125000.0,
-        0.0
-      ],
-      "velocity": [
-        0,
-        0,
-        0
-      ],
-      "plan": [
-        [
-          [
-            0,
-            0,
-            0
-          ],
-          50000
-        ]
-      ],
-      "design": "System Defense Boat",
-      "team": "Red",
-      "goal": "hold",
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
-        "mechanic": 2,
-        "sensors": 2,
-        "gunnery": [
-          2
-        ],
-        "leadership": 2
-      },
-      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
-    },
-    {
-      "name": "Ryu",
-      "position": [
-        60250000.0,
-        125000.0,
-        0.0
-      ],
-      "velocity": [
-        0,
-        0,
-        0
-      ],
-      "plan": [
-        [
-          [
-            0,
-            0,
-            0
-          ],
-          50000
-        ]
-      ],
-      "design": "System Defense Boat",
-      "team": "Red",
-      "goal": "hold",
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
-        "mechanic": 2,
-        "sensors": 2,
-        "gunnery": [
-          2
-        ],
-        "leadership": 2
-      },
-      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
-    },
-    {
-      "name": "Vouivre",
-      "position": [
-        60250000.0,
-        375000.0,
-        0.0
-      ],
-      "velocity": [
-        0,
-        0,
-        0
-      ],
-      "plan": [
-        [
-          [
-            0,
-            0,
-            0
-          ],
-          50000
-        ]
-      ],
-      "design": "System Defense Boat",
-      "team": "Red",
-      "goal": "hold",
+      "post": [59857143.0, -53571.0, 0.0],
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
