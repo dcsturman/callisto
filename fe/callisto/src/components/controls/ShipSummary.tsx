@@ -4,6 +4,7 @@ import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { isUndetectedBy } from "lib/contacts";
 import { useViewer } from "lib/viewer";
+import { CornerPanel } from "lib/CornerPanel";
 import { POST_COLOUR, fromPost } from "lib/posts";
 import { teamLabelColor } from "lib/teams";
 import { bandName, formatBands, formatRange, rangeBetween } from "lib/range";
@@ -99,8 +100,7 @@ export function ShipSummary() {
     });
 
   return (
-    <div className="ship-summary-window">
-      <h2 className="ship-summary-title">Ships</h2>
+    <CornerPanel id="ships-panel" title="Ships" className="ship-summary-window">
       <ul
         className={
           showRangeColumn
@@ -189,7 +189,7 @@ export function ShipSummary() {
           </li>
         ))}
       </ul>
-    </div>
+    </CornerPanel>
   );
 }
 

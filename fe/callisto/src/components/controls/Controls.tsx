@@ -5,6 +5,7 @@ import {
 } from "components/scenarios/SaveScenarioDialog";
 import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import * as THREE from "three";
+import { CornerPanel } from "lib/CornerPanel";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
@@ -582,8 +583,7 @@ export function ViewControls() {
   const dispatch = useAppDispatch();
 
   return (
-    <div className="view-controls-window">
-      <h2>View Controls</h2>
+    <CornerPanel id="view-panel" title="View" className="view-controls-window">
       <label style={{ display: "flex" }}>
         {" "}
         <input
@@ -640,7 +640,7 @@ export function ViewControls() {
           <dd>look</dd>
         </dl>
       </Accordion>
-    </div>
+    </CornerPanel>
   );
 }
 export function EntityInfoWindow(args: { entity: Entity }) {
