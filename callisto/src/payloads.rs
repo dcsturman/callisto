@@ -706,6 +706,12 @@ pub struct ScenariosMsg {
   pub current_scenarios: Vec<(String, String)>,
   /// List of templates by actual name (filename) and metadata (display name and description).
   pub templates: Vec<(String, MetaData)>,
+  /// Whether this server has an AI service to crew ships. Without one, the
+  /// new-game screen offers no AI sides: a ship handed to the AI would only
+  /// sit there. Says the service is configured, not that it is up; Cloud
+  /// Run starts it on the first call.
+  #[serde(default)]
+  pub ai_crews: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

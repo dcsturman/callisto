@@ -19,6 +19,7 @@ import {
   setEntities,
   setUsers,
   setScenarios,
+  setAiService,
   setAuthBanner,
   setScenarioLoadErrors,
   AuthBanner,
@@ -978,8 +979,10 @@ function handleUsers(json: [UserContext]) {
 function handleScenarioList(json: {
   current_scenarios: [string, string][];
   templates: [string, MetaData][];
+  ai_crews?: boolean;
 }) {
   store.dispatch(setScenarios([json.current_scenarios, json.templates]));
+  store.dispatch(setAiService(json.ai_crews === true));
 }
 
 function handleJoinedScenario(json: { JoinedScenario: string }) {

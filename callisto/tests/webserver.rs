@@ -2531,3 +2531,65 @@ async fn integration_new_game_hands_the_chosen_ships_to_the_ai() {
   );
   assert_eq!(next_call(&mut calls_rx).await, None, "only Red was handed to the AI");
 }
+
+/// A server with no AI service offers no AI crews: the scenario list says
+/// so, and a ship chosen for the AI on the new-game screen is crewed by
+/// people instead, so cannot be handed to the AI afterwards either.
+#[test_log::test(tokio::test)]
+async fn integration_no_ai_service_means_no_ai_crews() {
+  callisto::ship::config_test_ship_templates().await;
+  let port = get_next_port();
+  let _server = spawn_server_full(port, true, None, None, None, true, None).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  let reply = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "thebus_no_ai".to_string(),
+      scenario: "Thebus.json".to_string(),
+      ai_ships: Some(vec!["HMS Executor".to_string()]),
+    }),
+  )
+  .await;
+  // Creating replies with the join, then the scenario list.
+  let mut replies = vec![reply];
+  while !replies.iter().any(|reply| matches!(reply, ResponseMsg::Scenarios(_))) && replies.len() < 6 {
+    let Ok(Ok(Some(Ok(next)))) = tokio::time::timeout(Duration::from_secs(5), stream.next())
+      .await
+      .map(Ok::<_, ()>)
+    else {
+      break;
+    };
+    replies.push(serde_json::from_str::<ResponseMsg>(next.to_text().unwrap()).unwrap());
+  }
+  assert!(
+    replies
+      .iter()
+      .any(|reply| matches!(reply, ResponseMsg::Scenarios(list) if !list.ai_crews)),
+    "the scenario list says there is no AI: {replies:?}"
+  );
+  let handover = rpc(
+    &mut stream,
+    RequestMsg::SetShipController(callisto::payloads::SetShipController {
+      ship_name: "HMS Executor".to_string(),
+      controller: callisto::ship::Controller::Ai,
+    }),
+  )
+  .await;
+  let mut replies = vec![handover];
+  while !replies.iter().any(|reply| matches!(reply, ResponseMsg::Error(_))) && replies.len() < 6 {
+    let Ok(Ok(Some(Ok(next)))) = tokio::time::timeout(Duration::from_secs(5), stream.next())
+      .await
+      .map(Ok::<_, ()>)
+    else {
+      break;
+    };
+    replies.push(serde_json::from_str::<ResponseMsg>(next.to_text().unwrap()).unwrap());
+  }
+  assert!(
+    replies
+      .iter()
+      .any(|reply| matches!(reply, ResponseMsg::Error(text) if text.contains("AI crews are not available"))),
+    "the handover is refused: {replies:?}"
+  );
+}

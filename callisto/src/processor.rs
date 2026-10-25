@@ -210,8 +210,8 @@ impl Processor {
   /// plays with the trained network, which costs next to nothing. Where a
   /// game does not, the client shows no AI controls and the server refuses
   /// any order to hand a ship to the AI.
-  fn ai_crews_shown(player: &PlayerManager) -> bool {
-    player.server.as_ref().is_some_and(|server| server.ai_enabled())
+  fn ai_crews_shown(&self, player: &PlayerManager) -> bool {
+    self.ai_service.is_some() && player.server.as_ref().is_some_and(|server| server.ai_enabled())
   }
 
   /// Whether this user may use AI that calls a language model, by the users
@@ -891,7 +891,7 @@ impl Processor {
 
       RequestMsg::Reset => response_with_update(player, player.reset()),
       RequestMsg::AddShip(ship) => {
-        if ship.controller == Some(Controller::Ai) && !Self::ai_crews_shown(player) {
+        if ship.controller == Some(Controller::Ai) && !self.ai_crews_shown(player) {
           return vec![ResponseMsg::Error(
             "AI crews are not available in this game.".to_string(),
           )];
@@ -903,7 +903,7 @@ impl Processor {
       RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
       RequestMsg::SetShipController(request) => {
-        if request.controller == Controller::Ai && !Self::ai_crews_shown(player) {
+        if request.controller == Controller::Ai && !self.ai_crews_shown(player) {
           return vec![ResponseMsg::Error(
             "AI crews are not available in this game.".to_string(),
           )];
@@ -1129,10 +1129,16 @@ impl Processor {
           "(Processor.handle_request) Creating scenario {} from {scenario_full_name}",
           create_scenario.name
         );
-        // Every game offers AI crews. The ships chosen for them on the
-        // new-game screen get them; without a choice the file's stands.
-        let mut server = Server::new(&create_scenario.name, &scenario_full_name).await.with_ai(true);
-        if let Some(ai_ships) = &create_scenario.ai_ships {
+        // Every game offers AI crews, if this server has an AI service to
+        // crew them. The ships chosen for them on the new-game screen get
+        // them; without a choice the file's stands. Without a service every
+        // ship is crewed by people, whatever was asked -- except in the
+        // scenario builder, where nothing plays and an AI marking is part of
+        // the file being edited, which saving must not strip.
+        let builder = is_scenario_builder(&create_scenario.name);
+        let ai = self.ai_service.is_some() || builder;
+        let mut server = Server::new(&create_scenario.name, &scenario_full_name).await.with_ai(ai);
+        if let (true, Some(ai_ships)) = (ai, &create_scenario.ai_ships) {
           server = server.with_ai_ships(ai_ships);
         }
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
@@ -1247,6 +1253,7 @@ impl Processor {
     ScenariosMsg {
       current_scenarios: self.members.current_scenario_list(),
       templates: get_scenarios_snapshot().as_ref().clone(),
+      ai_crews: self.ai_service.is_some(),
     }
   }
 
@@ -1258,7 +1265,7 @@ impl Processor {
   pub fn build_post_join_msgs(&self, player: &PlayerManager) -> Vec<ResponseMsg> {
     if let Some(server) = &player.server {
       vec![
-        ResponseMsg::AiCrews(Self::ai_crews_shown(player)),
+        ResponseMsg::AiCrews(self.ai_crews_shown(player)),
         ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
         ResponseMsg::Users(self.members.get_user_context(server.get_id())),
       ]
