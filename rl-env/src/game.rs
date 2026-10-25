@@ -743,6 +743,7 @@ impl Game {
   pub fn step_sides(&mut self, choices: [Option<&[Choice]>; 2]) -> Step {
     let mut orders: Vec<(String, Intent)> = Vec::new();
     for side in 0..2 {
+      let post = (self.sides[side].goal == Goal::Hold).then(|| (self.post_of(side), self.sides[side].post_radius));
       let view = &self.views[side];
       let intents = if let Some(commander) = self.sides[side].commander.as_mut() {
         futures::executor::block_on(commander.decide(view))
@@ -760,7 +761,9 @@ impl Game {
               .map(|ship| (ship, choice, &picture))
           })
           .collect();
-        side_intents(&own, view)
+        let mut intents = side_intents(&own, view);
+        crate::side::hold_at_post(&mut intents, post);
+        intents
       } else {
         vec![]
       };
@@ -829,6 +832,7 @@ impl Game {
     assert_eq!(choices.len(), self.slots.len());
     let mut orders: Vec<(String, Intent)> = Vec::new();
     for side in 0..2 {
+      let post = (self.sides[side].goal == Goal::Hold).then(|| (self.post_of(side), self.sides[side].post_radius));
       let view = &self.views[side];
       let intents = if let Some(commander) = self.sides[side].commander.as_mut() {
         futures::executor::block_on(commander.decide(view))
@@ -846,7 +850,9 @@ impl Game {
               .map(|ship| (ship, choice, &slot.picture))
           })
           .collect();
-        side_intents(&own, view)
+        let mut intents = side_intents(&own, view);
+        crate::side::hold_at_post(&mut intents, post);
+        intents
       };
       let ours = &view.own;
       let intents: Vec<(String, Intent)> = intents

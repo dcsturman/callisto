@@ -332,7 +332,9 @@ impl Commander for SideCommander {
           .map(|ship| (ship, choice, &picture))
       })
       .collect();
-    let intents: Vec<(String, Intent)> = side_intents(&own_ships, view)
+    let mut intents = side_intents(&own_ships, view);
+    crate::network::side::hold_at_post(&mut intents, ctx.post);
+    let intents: Vec<(String, Intent)> = intents
       .into_iter()
       .map(|(ship, mut intent)| {
         intent.rationale = rationale(&intent);

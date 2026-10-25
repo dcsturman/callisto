@@ -138,6 +138,29 @@ pub fn scenario_post(own: &[Ship], planets: &[callisto::planet::Planet]) -> Opti
   Some((at, radius))
 }
 
+/// For a side with a post, "hold" means hold the post: every ship told to
+/// keep her course instead keeps station on the post, re-aimed each round at
+/// where it is now, so a side holding a moon follows it. A squadron's guide
+/// holding does the same, and her followers with her. Without this the
+/// network had no way to fly to its post at all -- every other helm order
+/// is relative to an enemy ship.
+pub fn hold_at_post(intents: &mut [(String, callisto::tactics::Intent)], post: Option<(Vec3, f64)>) {
+  use callisto::tactics::Helm;
+  fn station(helm: &mut Helm, at: [f64; 3]) {
+    match helm {
+      Helm::Hold => *helm = Helm::Station { position: at },
+      Helm::Follow { guide_helm, .. } => station(guide_helm, at),
+      _ => {}
+    }
+  }
+  let Some((post, _)) = post else {
+    return;
+  };
+  for (_, intent) in intents.iter_mut() {
+    station(&mut intent.helm, [post.x, post.y, post.z]);
+  }
+}
+
 struct Foe<'a> {
   name: &'a str,
   position: Vec3,

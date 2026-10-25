@@ -59,3 +59,31 @@ async fn the_built_in_network_plays_and_beats_a_side_that_sits_still() {
     .unwrap();
   assert_eq!(outcome.winner.as_deref(), Some("Blue"), "{outcome:?}");
 }
+
+#[test]
+fn a_side_with_a_post_holds_it_rather_than_its_course() {
+  use ai_ships::network::side::hold_at_post;
+  use callisto::entity::Vec3;
+  use callisto::tactics::{Helm, Intent};
+  let post = Vec3::new(0.0, 0.0, 6.71e8);
+  let holding = |helm: Helm| ("ship".to_string(), Intent { helm, ..Intent::default() });
+  let mut intents = vec![
+    holding(Helm::Hold),
+    holding(Helm::Follow {
+      guide: "lead".to_string(),
+      guide_helm: Box::new(Helm::Hold),
+      guide_cap: None,
+    }),
+    holding(Helm::OpenRange { target: "raider".to_string() }),
+  ];
+  hold_at_post(&mut intents, Some((post, 25_000_000.0)));
+  let at = [0.0, 0.0, 6.71e8];
+  assert_eq!(intents[0].1.helm, Helm::Station { position: at });
+  assert!(matches!(&intents[1].1.helm, Helm::Follow { guide_helm, .. } if **guide_helm == Helm::Station { position: at }));
+  assert_eq!(intents[2].1.helm, Helm::OpenRange { target: "raider".to_string() }, "other orders stand");
+
+  // A side with no post keeps its course when it holds.
+  let mut free = vec![holding(Helm::Hold)];
+  hold_at_post(&mut free, None);
+  assert_eq!(free[0].1.helm, Helm::Hold);
+}
