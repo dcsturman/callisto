@@ -63,6 +63,12 @@ export const missiles: Lesson = {
             (8+ with the gunner&apos;s skill), and a success destroys at least one missile: more, the better the
             roll.
           </p>
+          <p>
+            Point defence only works on missiles that hit <em>this</em> round: it cannot reach a salvo still in
+            flight. So it matters when the Salvoes board says <b>this round</b>, and a laser on point defence is
+            not firing at ships. The order stays in until you call it off, so take the laser off point defence
+            when nothing is about to arrive.
+          </p>
           <p>The target menu has a special entry for it, <b>&lt;Point Defense&gt;</b>.</p>
         </>
       ),
