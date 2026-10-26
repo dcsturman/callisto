@@ -369,8 +369,8 @@ fn cached<T>(
   Some(made)
 }
 
-/// The per-side network the service plays with, built in: side-20-8
-/// (`rl-env/checkpoints/side-20-8`, exported by `scripts/export_side.py`).
+/// The per-side network the service plays with, built in: side-20-9
+/// (`rl-env/checkpoints/side-20-9`, exported by `scripts/export_side.py`).
 /// Replace the file to change it; its layout must match this build's.
 pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 
@@ -418,4 +418,16 @@ pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
     net = net.with_goal(goal);
   }
   Some(Box::new(if sampling { net.sampling(seed) } else { net }))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// The network compiled into the service loads with this build's layout,
+  /// so a swapped-in file that does not fit fails here, not in production.
+  #[test]
+  fn the_built_in_network_loads() {
+    SideNet::from_bytes(BUILT_IN, "the built-in network").unwrap();
+  }
 }
