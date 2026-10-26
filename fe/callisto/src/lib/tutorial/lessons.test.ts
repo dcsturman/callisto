@@ -4,6 +4,7 @@ import * as path from "path";
 import { EntityList } from "lib/entities";
 import { TutorialContext } from "lib/tutorial/lesson";
 import { LESSONS } from "lib/tutorial/lessons";
+import { sideView } from "lib/bearing";
 import { isTutorialScenario } from "components/scenarios/ScenarioManager";
 import uiReducer from "state/uiSlice";
 import userReducer from "state/userSlice";
@@ -127,6 +128,18 @@ describe("the lessons' checks", () => {
     };
     expect(step("fly").done!(near(1500), start)).toBe(true);
     expect(step("fly").done!(near(2500), start)).toBe(false);
+  });
+
+  it("see the camera put side-on by Side view, either way round", () => {
+    const lesson = LESSONS[0];
+    const side = lesson.steps.find((s) => s.id === "side-view")!;
+    const opening = startOf(lesson.scenario);
+    const ship = (name: string) => opening.entities.ships.find((s) => s.name === name)!.position;
+    for (const [a, b] of [["Killer", "Beowulf"], ["Beowulf", "Killer"]]) {
+      const view = sideView(ship(a), ship(b), 75);
+      const now = { ...opening, ui: { ...opening.ui, cameraPos: view.position } };
+      expect(side.done!(now, opening)).toBe(true);
+    }
   });
 
   it("count rounds from when the step began", () => {

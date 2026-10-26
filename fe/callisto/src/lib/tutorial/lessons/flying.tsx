@@ -114,7 +114,7 @@ export const flying: Lesson = {
     {
       id: "standoff",
       title: "Stopping short",
-      target: ["nav-target"],
+      target: ["nav-target", "direction-to"],
       body: (
         <>
           <p>
@@ -122,8 +122,10 @@ export const flying: Lesson = {
             <b>Standoff</b> box sets how far short of the target the course ends, in km.
           </p>
           <p>
-            And to run away, plot a course to the enemy, then turn the burn around: put the same numbers into
-            Set Accel with their signs flipped.
+            And to run away: <b>Direction to</b>, under Set Accel, shows which way any ship or planet lies from
+            you, and how far. Its <b>Away</b> button fills Set Accel with a burn straight away from it at full
+            thrust (<b>Toward</b>, straight at it); press <b>Set</b> to make it so. Unlike the navigation
+            computer, it looks only at where things are now, not at how they are moving.
           </p>
         </>
       ),

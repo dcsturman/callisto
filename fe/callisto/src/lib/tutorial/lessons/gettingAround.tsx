@@ -1,6 +1,16 @@
 import * as React from "react";
 import { RoundButton } from "components/tutorial/RoundButton";
-import { Lesson } from "lib/tutorial/lesson";
+import { findShipIn, Lesson, TutorialContext } from "lib/tutorial/lesson";
+import { sideView } from "lib/bearing";
+
+/** Whether the camera is where Side view puts it for these two ships, either way round. */
+const lookingSideOn = (now: TutorialContext, a: string, b: string) => {
+  const [one, two] = [findShipIn(now.entities, a), findShipIn(now.entities, b)];
+  if (one == null || two == null) return false;
+  return [sideView(one.position, two.position, 75), sideView(two.position, one.position, 75)].some(
+    (view) => Math.hypot(...view.position.map((p, i) => p - now.ui.cameraPos[i])) < 0.01,
+  );
+};
 
 /** How far the camera has to fly before "look around" counts, in scene units. */
 const CAMERA_MOVE = 0.5;
@@ -133,6 +143,25 @@ export const gettingAround: Lesson = {
       ),
       task: "Turn on Gravity Well.",
       done: (now) => now.ui.gravityWells,
+    },
+    {
+      id: "side-view",
+      title: "Side view",
+      target: ["side-view"],
+      body: (
+        <p>
+          Space is three-dimensional, and the screen is not: two ships that look close can be far apart along the
+          line you are looking down. <b>Side view</b>, in the View panel, puts the camera side-on to the line
+          between any two ships or planets, far enough back to see both. It is the way to judge a distance by eye:
+          whether a ship is clear of a planet&apos;s 100-diameter limit, or how far apart two ships really are.
+        </p>
+      ),
+      task: (
+        <>
+          In <b>Side view</b>, choose <em>Killer</em> and <em>Beowulf</em>, and press <b>Look</b>.
+        </>
+      ),
+      done: (now) => lookingSideOn(now, "Killer", "Beowulf"),
     },
     {
       id: "rounds",
