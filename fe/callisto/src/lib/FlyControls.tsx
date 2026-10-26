@@ -139,7 +139,27 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       requestAnimationFrame(update);
     };
 
+    /**
+     * Shift as it really is. The Shift key-up can be lost: Cmd+Shift+4 for a
+     * screenshot, or Cmd+Tab, takes the focus away with Shift still down, and
+     * the window never hears it let go -- which left the camera boosted until
+     * Shift was pressed again. Every key and pointer event says whether Shift
+     * is down, so each one puts it right.
+     */
+    const syncShift = (event: KeyboardEvent | PointerEvent): void => {
+      movementSpeedMultiplier = event.shiftKey ? 100 : 1;
+      rotationSpeedMultiplier = event.shiftKey ? SHIFT_ROTATION_BOOST : 1;
+    };
+
+    /** Let go of everything: the window has lost the keyboard, and with it every key-up. */
+    const releaseAll = (): void => {
+      moveState = {...NO_MOVE};
+      movementSpeedMultiplier = 1;
+      rotationSpeedMultiplier = 1;
+    };
+
     const keydown = (event: KeyboardEvent): void => {
+      syncShift(event);
       if (event.altKey || isTypingTarget(event.target)) {
         return;
       }
@@ -206,9 +226,8 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     };
 
     const keyup = (event: KeyboardEvent): void => {
+      syncShift(event);
       if (["ShiftLeft", "ShiftRight"].includes(event.code)) {
-        movementSpeedMultiplier = 1;
-        rotationSpeedMultiplier = 1;
         return;
       }
       // Clearing the whole state on any release meant that flying forward while
@@ -246,6 +265,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     };
 
     const pointermove = (event: PointerEvent): void => {
+      syncShift(event);
       if (!dragToLook || mouseStatus > 0) {
         if (event.pressure === 0) {
           mouseStatus = 0;
@@ -333,6 +353,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       // is what keeps them out of text fields.
       window.addEventListener("keydown", keydown);
       window.addEventListener("keyup", keyup);
+      window.addEventListener("blur", releaseAll);
 
       if (enableFlywheelZoom) {
         domElement.addEventListener("wheel", wheel, {passive: false});
@@ -345,6 +366,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       domElement.removeEventListener("pointerup", pointerup);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
+      window.removeEventListener("blur", releaseAll);
 
       if (enableFlywheelZoom) {
         domElement.removeEventListener("wheel", wheel);
