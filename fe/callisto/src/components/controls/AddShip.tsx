@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ORDERS_ENABLED } from "lib/orders";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { CrewBuilder, Crew, createCrew } from "components/controls/CrewBuilder";
 import { POSITION_SCALE } from "lib/universal";
@@ -632,7 +633,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
             </label>
             {/* Orders follow the AI box: they are what an AI crew plans
                 against, so they appear once there is one to give them to. */}
-            {addShipData.ai && (
+            {ORDERS_ENABLED && addShipData.ai && (
               <label className="add-ship-orders" title="Standing orders, in plain English. The AI crew plans against them every round.">
                 Orders
                 <textarea

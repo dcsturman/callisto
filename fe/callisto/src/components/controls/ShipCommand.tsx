@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ORDERS_ENABLED } from "lib/orders";
 import { useEffect, useState } from "react";
 import { Ship } from "lib/entities";
 import { setOrders, setShipController } from "lib/serverManager";
@@ -62,17 +63,19 @@ export function ShipCommand(args: { ship: Ship }) {
               : (args.ship.ai_report.rationale ?? "Orders given.")}
         </p>
       )}
-      <label className="ship-command-orders" data-tutorial="ship-orders">
-        <h2>Orders</h2>
-        <textarea
-          className="ship-command-orders-text"
-          rows={2}
-          placeholder="None. For example: close to Medium and cripple her drive; do not destroy her."
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commit}
-        />
-      </label>
+      {ORDERS_ENABLED && (
+        <label className="ship-command-orders" data-tutorial="ship-orders">
+          <h2>Orders</h2>
+          <textarea
+            className="ship-command-orders-text"
+            rows={2}
+            placeholder="None. For example: close to Medium and cripple her drive; do not destroy her."
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+          />
+        </label>
+      )}
     </div>
   );
 }
