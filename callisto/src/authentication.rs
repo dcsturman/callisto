@@ -28,6 +28,9 @@ type GoogleProfile = String;
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 const SESSION_COOKIE_NAME: &str = "callisto-session-key";
 const COOKIE_ID: &str = "cookie";
+/// The cookie lasts as long as a remembered sign-in, so closing the browser
+/// does not sign a player out.
+use crate::sessions::SESSION_LIFETIME_SECS;
 
 /// Maximum number of attempts for a generation-guarded write before giving up.
 const REGISTER_WRITE_MAX_ATTEMPTS: u32 = 5;
@@ -565,6 +568,7 @@ impl GoogleAuthenticator {
           // Record the session key for the newly registered user. Mirrors the
           // login flow.
           if let Some(key) = self.session_key.clone() {
+            crate::sessions::remember(&key, &email);
             session_keys.lock().unwrap().insert(key, Some(email.clone()));
           } else {
             warn!("(register) No session key on this connection.");
@@ -693,16 +697,21 @@ fn generic_on_request(
     .collect::<Vec<String>>();
 
   // If we found a cookie, find if there's a valid email address to go with it.
-  // This happens in the case where we get disconnected and the client reconnects.
+  // This happens in the case where we get disconnected and the client reconnects,
+  // and, from the remembered sign-ins, after the server itself has restarted.
   let valid_pair = {
-    let unlocked_session_keys = session_keys.lock().expect("Unable to get lock session keys.");
+    let mut unlocked_session_keys = session_keys.lock().expect("Unable to get lock session keys.");
 
     let mut emails = cookies
       .iter()
       .filter_map(|cookie| {
-        unlocked_session_keys
-          .get(cookie)
-          .and_then(|email| email.as_ref().map(|email| (cookie.clone(), email.clone())))
+        let email = unlocked_session_keys.get(cookie).cloned().flatten().or_else(|| {
+          let email = crate::sessions::recall(cookie)?;
+          debug!("(on_request) Recalled a remembered sign-in for {email}.");
+          unlocked_session_keys.insert(cookie.clone(), Some(email.clone()));
+          Some(email)
+        })?;
+        Some((cookie.clone(), email))
       })
       .collect::<Vec<(String, String)>>();
 
@@ -745,10 +754,10 @@ fn generic_on_request(
 
     let cookie_value = if cfg!(feature = "no_tls_upgrade") {
       // For local development without TLS, don't set Secure flag
-      format!("{SESSION_COOKIE_NAME}={session_key}; HttpOnly; SameSite=Lax")
+      format!("{SESSION_COOKIE_NAME}={session_key}; Max-Age={SESSION_LIFETIME_SECS}; HttpOnly; SameSite=Lax")
     } else {
       // For production with TLS, set Secure flag
-      format!("{SESSION_COOKIE_NAME}={session_key}; HttpOnly; SameSite=None; Secure")
+      format!("{SESSION_COOKIE_NAME}={session_key}; Max-Age={SESSION_LIFETIME_SECS}; HttpOnly; SameSite=None; Secure")
     };
 
     response.headers_mut().insert("Set-Cookie", cookie_value.parse().unwrap());
@@ -804,10 +813,9 @@ impl Authenticator for GoogleAuthenticator {
     if self.session_key.is_none() {
       warn!("(authenticate_google_user) No session key found.");
     } else {
-      session_keys
-        .lock()
-        .unwrap()
-        .insert(self.session_key.clone().unwrap(), Some(email.clone()));
+      let key = self.session_key.clone().unwrap();
+      crate::sessions::remember(&key, &email);
+      session_keys.lock().unwrap().insert(key, Some(email.clone()));
     }
 
     event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Success");
