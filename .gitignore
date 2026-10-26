@@ -25,6 +25,7 @@ node_modules/
 .vscode
 callisto/secrets/**
 callisto/config/authorized_users.json
+callisto/config/sessions.json
 /.firebase
 *.*~
 callisto/coverage/**

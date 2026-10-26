@@ -391,6 +391,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   // Keep track of session keys (cookies) on connections.
   let session_keys = Arc::new(Mutex::new(HashMap::new()));
 
+  // Sign-ins outlast this process, kept beside the users file. Not in test
+  // mode, where the integration tests expect a restart to sign everyone out.
+  if !test_mode {
+    callisto::sessions::init(&callisto::sessions::file_beside(&args.users_file)).await;
+  }
+
   let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
 
   // Shared user directory + register lock. Both must be created BEFORE the
