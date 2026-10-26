@@ -31,9 +31,10 @@ import {
   setProposedPlan,
   setShowResults,
   setScenarioDirty,
+  scenarioSaved,
 } from "state/uiSlice";
 import { setEmail, setRoleShip, setFleetCommand, setJoinedScenario } from "state/userSlice";
-import { AppMode, setAppMode } from "state/tutorialSlice";
+import { AppMode, setAppMode, setLesson } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
@@ -262,7 +263,7 @@ const handleMessage = (event: MessageEvent) => {
   if ("ScenarioSaved" in json) {
     const cb = pendingSaveCallback;
     pendingSaveCallback = null;
-    store.dispatch(setScenarioDirty(false));
+    store.dispatch(scenarioSaved());
     if (cb) cb({ ok: true, filename: json.ScenarioSaved });
     return;
   }
@@ -782,8 +783,12 @@ export function resetServer(appMode: AppMode, skipConfirm = false) {
     skipConfirm ||
     window.confirm("Are you sure you want to reset the server?")
   ) {
+    // A reset in the middle of a lesson starts the lesson again, rather than
+    // losing it: the state reset below takes the tutorial's state with it.
+    const lessonId = store.getState().tutorial.lessonId;
     store.dispatch(resetServerState());
     store.dispatch(setAppMode(appMode));
+    if (lessonId != null) store.dispatch(setLesson(lessonId));
     socket.send(RESET_REQUEST);
   }
 }

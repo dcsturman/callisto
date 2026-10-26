@@ -202,7 +202,7 @@ function ScenarioBuilderControls(args: {
   }, [args.entities.metadata?.description, templateLookup]);
 
   return (
-    <div className="controls-pane">
+    <div className="controls-pane" data-tutorial="builder-controls">
       <h1>Controls</h1>
       <hr />
       {Object.keys(args.shipTemplates).length > 0 && (
@@ -217,6 +217,7 @@ function ScenarioBuilderControls(args: {
       <button
         type="button"
         className="control-button blue-button save-scenario-anchor"
+        data-tutorial="builder-save"
         onClick={() => setSaveOpen(true)}
       >
         Save Scenario

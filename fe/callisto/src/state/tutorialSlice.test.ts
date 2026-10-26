@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import reducer, { AppMode, resetServer, setAppMode, setLesson, setShowLessonList } from "state/tutorialSlice";
+import reducer, {
+  AppMode,
+  increment,
+  resetServer,
+  setAppMode,
+  setLesson,
+  setShowLessonList,
+} from "state/tutorialSlice";
 
 describe("tutorialSlice", () => {
   // "Next lesson" leaves one lesson and starts the next at once; leaving
@@ -12,6 +19,16 @@ describe("tutorialSlice", () => {
     state = reducer(state, setAppMode(AppMode.Tutorial));
     expect(state.lessonId).toBe("flying");
     expect(state.stepIndex).toBe(0);
+  });
+
+  // A reconnect sets the mode again; a lesson in the builder must not start over.
+  it("keeps the step when the mode is set to what it already is", () => {
+    let state = reducer(undefined, setAppMode(AppMode.ScenarioBuilder));
+    state = reducer(state, setLesson("builder"));
+    state = reducer(state, increment());
+    state = reducer(state, increment());
+    state = reducer(state, setAppMode(AppMode.ScenarioBuilder));
+    expect(state.stepIndex).toBe(2);
   });
 
   it("remembers to come back to the lesson list until reset", () => {

@@ -22,6 +22,13 @@ import {
 export const TUTORIAL_PREFIX = "$TUTORIAL-";
 export const SCENARIO_BUILDER_PREFIX = "SCENARIO-";
 
+/**
+ * The tutorial's builder sessions: builder sessions, marked as the
+ * tutorial's. The server writes nothing when one saves. Mirrors
+ * `TUTORIAL_BUILDER_PREFIX` in the backend's processor.rs.
+ */
+export const TUTORIAL_BUILDER_PREFIX = SCENARIO_BUILDER_PREFIX + TUTORIAL_PREFIX;
+
 /** The tutorial's own scenario files, which are lessons, not games. */
 export const isTutorialScenario = (file: string) => file.startsWith("tutorial");
 

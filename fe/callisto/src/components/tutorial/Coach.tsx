@@ -35,7 +35,7 @@ export function Coach() {
   // for the lesson. Steps with a `when` are judged against it, once, so the
   // lesson does not change shape under the player as the game moves on.
   const lessonStart = useRef<{ lessonId: string | null; context: TutorialContext } | null>(null);
-  if (lessonStart.current?.lessonId !== lessonId && entities.ships.length > 0) {
+  if (lessonStart.current?.lessonId !== lessonId && entities.ships.length + entities.planets.length > 0) {
     lessonStart.current = { lessonId, context: now };
   }
   const opening = lessonStart.current?.lessonId === lessonId ? lessonStart.current.context : null;

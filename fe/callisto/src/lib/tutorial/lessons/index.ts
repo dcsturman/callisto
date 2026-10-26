@@ -9,6 +9,7 @@ import { captain } from "lib/tutorial/lessons/captain";
 import { jumping } from "lib/tutorial/lessons/jumping";
 import { scenario } from "lib/tutorial/lessons/scenario";
 import { fleet } from "lib/tutorial/lessons/fleet";
+import { builder } from "lib/tutorial/lessons/builder";
 
 /** Every lesson, in the order they are taught. Each lives in lessons/. */
 export const LESSONS: Lesson[] = [
@@ -22,6 +23,7 @@ export const LESSONS: Lesson[] = [
   jumping,
   scenario,
   fleet,
+  builder,
 ];
 
 export const lessonById = (id: string | null): Lesson | undefined => LESSONS.find((lesson) => lesson.id === id);

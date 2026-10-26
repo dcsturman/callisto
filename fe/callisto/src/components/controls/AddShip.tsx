@@ -446,7 +446,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
   );
 
   return (
-    <Accordion id="add-ship-header" title="Add Ship" initialOpen={false}>
+    <Accordion id="add-ship-header" title="Add Ship" initialOpen={false} tutorial="builder-add-ship">
       <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
         <div id="add-ship-top-part">
           <label className="control-label">
@@ -589,7 +589,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
               orders. A section of its own -- in the sensors row it ran off
               the panel's edge. */}
           <div className="add-ship-crewing">
-            <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
+            <label
+              className="emissions-toggle"
+              data-tutorial="builder-ship-team"
+              title="Which side this ship is on. Teams are colour-coded in the view.">
               Team
               <select
                 className="team-select"
@@ -1412,7 +1415,7 @@ function ShipDesignList(args: {
       {/* Source and Design share one grid so their dropdowns line up on the
           same left edge; a per-row flex would size each label to its own text
           and stagger them. */}
-      <div className="design-picker">
+      <div className="design-picker" data-tutorial="builder-ship-design">
         <div className="control-label">Source</div>
         <select
           className="select-dropdown control-name-input control-input"

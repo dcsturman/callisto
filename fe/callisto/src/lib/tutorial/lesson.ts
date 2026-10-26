@@ -52,6 +52,8 @@ export interface Lesson {
   summary: string;
   /** The scenario file the lesson plays in. */
   scenario: string;
+  /** Played in the Scenario Builder rather than as a game. */
+  builder?: boolean;
   steps: TutorialStep[];
 }
 

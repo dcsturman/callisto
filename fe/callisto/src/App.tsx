@@ -48,7 +48,7 @@ import { Stations } from "components/controls/Stations";
 import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
-import { ScenarioManager } from "components/scenarios/ScenarioManager";
+import { ScenarioManager, TUTORIAL_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import { Coach } from "components/tutorial/Coach";
 import { VictoryScreen } from "components/VictoryScreen";
 import { ConfirmDialog } from "components/ConfirmDialog";
@@ -203,7 +203,7 @@ function Simulator() {
             rings on. */}
         <div className="top-right-stack">
           {/* The tutorial's coach, first in the column, where it is read. */}
-          {tutorialMode && <Coach />}
+          {(tutorialMode || joinedScenario?.startsWith(TUTORIAL_BUILDER_PREFIX)) && <Coach />}
           {/* View and Ships side by side across the top, so neither pushes
               the other down; each folds to its header. */}
           <div className="top-right-row">

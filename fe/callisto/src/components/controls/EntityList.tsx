@@ -104,7 +104,7 @@ export function EntityList() {
   }
 
   return (
-    <div className="entity-list">
+    <div className="entity-list" data-tutorial="builder-entity-list">
       <h2 className="entity-list-title">Scenario contents</h2>
       <ul className="entity-list-items">
         {items.map((item) => {

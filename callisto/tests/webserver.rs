@@ -41,7 +41,7 @@ use callisto::action::ShipAction;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, CreateScenarioMsg, EffectMsg, JoinScenarioMsg, LoginMsg, RequestMsg,
-  ResponseMsg, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+  ResponseMsg, SaveScenarioMsg, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -617,6 +617,55 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   assert!(
     saw_failure_refresh,
     "Did not receive the scenario-failure refresh that clears a stale load-error banner."
+  );
+
+  send_quit(&mut stream).await;
+}
+
+/// The tutorial's builder lesson ends with a save, and the player types the
+/// name: whatever they type, a save from a tutorial builder session must
+/// answer as a save does and write nothing.
+#[test_log::test(tokio::test)]
+async fn integration_tutorial_builder_save_writes_nothing() {
+  let port = get_next_port();
+  let (_root, scenario_dir, design_dir, _added) = setup_reloadable_test_files(port);
+  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir), true)
+    .await
+    .unwrap();
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "SCENARIO-$TUTORIAL-amber-river-lamp".to_string(),
+      scenario: String::new(),
+      ai_ships: None,
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::JoinedScenario(_)), "Expected to join, got {body:?}");
+  // Creating a scenario also sends the scenario list, then the usual state.
+  let _ = stream.next().await.unwrap();
+  drain_post_scenario_messages(&mut stream).await;
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::SaveScenario(SaveScenarioMsg {
+      name: "my-first-scenaro".to_string(),
+      display_name: "My first scenario".to_string(),
+      description: "Practice.".to_string(),
+      force_overwrite: false,
+    }),
+  )
+  .await;
+  assert!(
+    matches!(&body, ResponseMsg::ScenarioSaved(file) if file == "my-first-scenaro.json"),
+    "Expected the save to answer as saved, got {body:?}"
+  );
+  assert!(
+    !PathBuf::from(&scenario_dir).join("my-first-scenaro.json").exists(),
+    "A tutorial save wrote a scenario file."
   );
 
   send_quit(&mut stream).await;

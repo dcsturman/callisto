@@ -52,6 +52,8 @@ export interface UISlice {
      * nothing there can be unsaved.
      */
     scenarioDirty: boolean;
+    /** How many saves have succeeded this session: for the tutorial to see one happen. */
+    scenarioSaves: number;
 }
 
 const initialState: UISlice  = {
@@ -70,6 +72,7 @@ const initialState: UISlice  = {
     resultShips: [],
     resultCategories: [],
     scenarioDirty: false,
+    scenarioSaves: 0,
 }
 
 export const uiSlice = createSlice({
@@ -79,6 +82,10 @@ export const uiSlice = createSlice({
   reducers: {
     setEntityToShow: (state, action: PayloadAction<Entity | null>) => {
         state.entityToShow = action.payload;
+    },
+    scenarioSaved: (state) => {
+        state.scenarioDirty = false;
+        state.scenarioSaves += 1;
     },
     setScenarioDirty: (state, action: PayloadAction<boolean>) => {
         state.scenarioDirty = action.payload;
@@ -170,6 +177,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, scenarioSaved, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

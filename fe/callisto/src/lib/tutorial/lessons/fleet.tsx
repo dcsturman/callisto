@@ -144,11 +144,11 @@ export const fleet: Lesson = {
     },
     {
       id: "done",
-      title: "That's the tutorial",
+      title: "Your fleet",
       body: (
         <p>
           You have flown, fought, been hurt, jumped, and played a scenario. The rest is practice: start a game from
-          the scenario screen, perhaps against an AI side, and see how it goes. Good hunting.
+          the scenario screen, perhaps against an AI side. Last of all: making scenarios of your own.
         </p>
       ),
     },

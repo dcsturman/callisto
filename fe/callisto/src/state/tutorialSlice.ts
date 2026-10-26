@@ -31,10 +31,12 @@ export const tutorialSlice = createSlice({
   initialState,
   reducers: {
     setAppMode: (state, action: PayloadAction<AppMode>) => {
-      state.appMode = action.payload;
-      if (action.payload !== AppMode.Tutorial) {
+      // Only a change of mode starts the step count again: the mode is set
+      // again on every reconnect, which must not restart a lesson.
+      if (action.payload !== state.appMode && action.payload !== AppMode.Tutorial) {
         state.stepIndex = 0;
       }
+      state.appMode = action.payload;
     },
     /** Start a lesson from its first step. */
     setLesson: (state, action: PayloadAction<string>) => {
