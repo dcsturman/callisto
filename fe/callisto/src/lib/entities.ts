@@ -335,6 +335,8 @@ export interface Missile extends Entity {
   target_destroyed: boolean;
   target_out_of_range: boolean;
   fuse: number;
+  /** Rounds of thrust it has left; absent from an older server. */
+  burns?: number;
 }
 
 export const defaultMissile = () => {
