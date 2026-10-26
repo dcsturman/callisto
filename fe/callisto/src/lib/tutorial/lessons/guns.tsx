@@ -59,8 +59,25 @@ export const guns: Lesson = {
           </dl>
           <p>
             Each weapon has a longest band it can reach. A particle barbette reaches Very Long; a beam laser only
-            Medium. The Targets board lists the enemy you have found, with the band each is in.
+            Medium.
           </p>
+          <p>The Targets board, in the Gunner card, has a line for each enemy you have found:</p>
+          <ul>
+            <li>Her name and distance.</li>
+            <li>
+              The band she is in and the DM it gives, ▲ or ▼ for whether she is opening or closing (with the band
+              she will be in when the round ends, if it changes), and her armour.
+            </li>
+            <li>
+              At the right end of that line, <b>your</b> weapons: one mark per mount, its shape the mount and its
+              colour the weapon. A coloured mark can reach her at this band; a greyed-out one cannot.
+            </li>
+            <li>
+              Underneath, <b>her</b> weapons that can reach you from there, each with the DM it would roll against
+              you: her weapon and the range, a lock if she has one, less your evasion. Hover over any mark for the
+              details.
+            </li>
+          </ul>
         </>
       ),
     },
