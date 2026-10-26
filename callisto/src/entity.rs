@@ -93,6 +93,23 @@ pub struct Entities {
   /// where the fight has got to. Never in a scenario file: a saved scenario
   /// opens at the start, and Reset goes back to it.
   pub round: u32,
+
+  /// The ships that have jumped out of the scenario, and whether they got
+  /// away or misjumped. A ship that leaves is otherwise simply gone, exactly
+  /// as if destroyed, and an Escape side's whole goal is the difference. On
+  /// the wire for the victory screen; never in a scenario file.
+  pub departed: Vec<Departure>,
+}
+
+/// A ship that jumped out of the scenario.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Departure {
+  pub name: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub team: Option<crate::ship::Team>,
+  /// Got away: a successful jump. A misjump also leaves, but the ship is
+  /// lost in jump space, which is no escape.
+  pub safe: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -113,6 +130,11 @@ pub struct MetaData {
   /// could run out the clock.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub rounds: Option<u32>,
+  /// How many of an Escape side's ships must jump out safely for it to have
+  /// escaped. Absent, more than two-thirds of them. The victory screen
+  /// judges it; training scores the share that got away.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub escape_needed: Option<u32>,
   /// The scenario's sides and their ships, for the new-game screen to offer
   /// each side to people or the AI. Filled in when the scenario list is
   /// loaded; never written to a scenario file.
@@ -384,6 +406,7 @@ impl Entities {
       metadata: MetaData::default(),
       filename: String::new(),
       round: 1,
+      departed: Vec::new(),
     }
   }
 
@@ -457,6 +480,7 @@ impl Entities {
     // round counter and a held post's win both read.
     dest.metadata.clone_from(&self.metadata);
     dest.filename.clone_from(&self.filename);
+    dest.departed.clone_from(&self.departed);
 
     // Drop anything whose target has left play before resolving pointers. The
     // live state should never contain an orphan, but if it does, failing here
@@ -2858,6 +2882,12 @@ impl Entities {
             let (result, jumped) = self.process_jump(ship_name, engineer, boost, rng);
             if jumped {
               jumped_ships.push(ship_name.clone());
+              let team = self.ships.get(ship_name).and_then(|ship| ship.read().unwrap().team);
+              self.departed.push(Departure {
+                name: ship_name.clone(),
+                team,
+                safe: result.success,
+              });
             }
             result
           }
@@ -3473,12 +3503,15 @@ impl Serialize for Entities {
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
       actions: ShipActionList,
+      #[serde(skip_serializing_if = "<[Departure]>::is_empty")]
+      departed: &'a [Departure],
     }
 
     let mut entities = Entities {
       metadata: &self.metadata,
       filename: &self.filename,
       round: self.round,
+      departed: &self.departed,
       ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
@@ -3530,6 +3563,8 @@ impl<'de> Deserialize<'de> for Entities {
       metadata: MetaData,
       #[serde(default = "first_round")]
       round: u32,
+      #[serde(default)]
+      departed: Vec<Departure>,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -3555,6 +3590,7 @@ impl<'de> Deserialize<'de> for Entities {
       // Scenario files don't carry their own basename; load_from_file populates it.
       filename: String::new(),
       round: guts.round,
+      departed: guts.departed,
     })
   }
 }
@@ -6860,6 +6896,56 @@ mod tests {
       format!("{effects:?}").contains("roll 2 DM +2 (mechanic +3, damage -1)"),
       "{effects:?}"
     );
+  }
+
+  /// A ship that jumps out is recorded as departed, with whether it got away
+  /// (a successful jump) or misjumped, so an escape can be told from a ship
+  /// destroyed. Whatever the dice, the record matches the roll's message.
+  #[test_log::test(tokio::test)]
+  async fn a_jump_is_recorded_as_a_departure() {
+    use crate::software::SoftwareKind;
+    config_test_ship_templates().await;
+    for seed in 0..12 {
+      let name = "./scenarios/tutorial-8-jump.json";
+      let bytes = fs::read(name).expect("the jump lesson's scenario");
+      let mut entities =
+        Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+      {
+        let mut killer = entities.ships["Killer"].write().unwrap();
+        killer.enable_jump();
+        // Room for Jump Control, as the lesson has the player make.
+        killer.set_software_running(
+          Software {
+            kind: SoftwareKind::FireControl,
+            level: 2,
+          },
+          false,
+        );
+        killer.set_software_running(
+          Software {
+            kind: SoftwareKind::JumpControl,
+            level: 2,
+          },
+          true,
+        );
+      }
+      let mut rng = SmallRng::seed_from_u64(seed);
+      let effects = entities.engineer_actions(
+        &[("Killer".to_string(), vec![ShipAction::Jump { engineer: 0 }])],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      let said = format!("{effects:?}");
+      assert!(!entities.ships.contains_key("Killer"), "Killer should have left: {said}");
+      assert_eq!(entities.departed.len(), 1, "{said}");
+      let departure = &entities.departed[0];
+      assert_eq!(departure.name, "Killer");
+      assert_eq!(departure.team, Some(crate::ship::Team::Blue));
+      assert_eq!(departure.safe, said.contains("jumps successfully"), "{said}");
+      // It goes to the browser, and a copy of the game keeps it.
+      assert!(serde_json::to_string(&entities).unwrap().contains("\"departed\""));
+      assert_eq!(entities.deep_copy().unwrap().departed, entities.departed);
+    }
   }
 
   /// No astrogation, no jump -- and the engineer is told why.

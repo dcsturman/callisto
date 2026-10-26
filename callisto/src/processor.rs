@@ -803,7 +803,7 @@ impl Processor {
         if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
           log.round(resolved.round, &resolved.effects, &entities);
         }
-        let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
+        let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(Box::new(entities))];
         if let Some(server_id) = server_id {
           msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
         }
@@ -990,7 +990,7 @@ impl Processor {
         match player.clone_entities() {
           Ok(entities) => vec![
             ResponseMsg::CaptainActionResult(result),
-            ResponseMsg::EntityResponse(entities),
+            ResponseMsg::EntityResponse(Box::new(entities)),
           ],
           Err(e) => entity_clone_failure_response(&e),
         }
@@ -1223,7 +1223,7 @@ impl Processor {
         vec![
           ResponseMsg::JoinedScenario(create_scenario.name),
           ResponseMsg::Scenarios(self.build_scenarios_msg()),
-          ResponseMsg::EntityResponse(entities),
+          ResponseMsg::EntityResponse(Box::new(entities)),
           ResponseMsg::Users(self.members.get_user_context(server.get_id())),
         ]
       }
@@ -1238,7 +1238,7 @@ impl Processor {
       RequestMsg::EntitiesRequest => {
         info!("Received and processing get request.");
         match player.get_entities() {
-          Ok(entities) => vec![ResponseMsg::EntityResponse(entities)],
+          Ok(entities) => vec![ResponseMsg::EntityResponse(Box::new(entities))],
           Err(e) => entity_clone_failure_response(&e),
         }
       }
@@ -1302,7 +1302,7 @@ impl Processor {
     if let Some(server) = &player.server {
       vec![
         ResponseMsg::AiCrews(self.ai_crews_shown(player)),
-        ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
+        ResponseMsg::EntityResponse(Box::new(server.get_unlocked_entities().unwrap().clone())),
         ResponseMsg::Users(self.members.get_user_context(server.get_id())),
       ]
     } else {
@@ -1375,6 +1375,7 @@ impl Processor {
         // The save dialog does not edit the round limit, so it goes back out
         // as it came in. Leaving it to the default dropped it on every save.
         rounds: entities.metadata.rounds,
+        escape_needed: entities.metadata.escape_needed,
         ..MetaData::default()
       };
       entities.filename.clone_from(&file_name);
@@ -1458,7 +1459,7 @@ fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
 
 fn response_with_update(server: &PlayerManager, result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| match server.clone_entities() {
-    Ok(entities) => vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(entities)],
+    Ok(entities) => vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(Box::new(entities))],
     Err(e) => entity_clone_failure_response(&e),
   })
 }

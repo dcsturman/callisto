@@ -193,7 +193,7 @@ export const jumping: Lesson = {
       body: (
         <p>
           The engineer makes the jump: 2D plus their skill, needing 6. Even a misjump takes the ship out of the
-          fight, though not to where she meant to go.
+          fight, but she is lost in jump space: that is no escape.
         </p>
       ),
       task: (
@@ -209,8 +209,9 @@ export const jumping: Lesson = {
       title: "Gone",
       body: (
         <p>
-          Killer has left the system. In a scenario where one side&apos;s goal is to <b>escape</b>, that is a win
-          for them; otherwise a ship that jumps out has left the fight. Next: playing a real scenario.
+          Killer has left the system. In a scenario where her side&apos;s goal is to <b>escape</b>, every ship that
+          jumps out safely counts towards it; otherwise a ship that jumps out has simply left the fight. Next:
+          playing a real scenario.
         </p>
       ),
     },

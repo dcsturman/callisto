@@ -103,8 +103,10 @@ export const scenario: Lesson = {
             on the screen, around the Outpost moonlet. The Ships panel says how far she is from it.
           </p>
           <p>
-            The other goal is <b>escape</b>: a side wins by jumping its ships out of the system (lesson 8) before
-            they are destroyed. A scenario&apos;s description says what each side is for.
+            The other goal is <b>escape</b>: get the side&apos;s ships out of the system by jumping (lesson 8)
+            before they are destroyed. It is an escape if more than two-thirds of them get away, unless the
+            scenario sets its own number; if time runs out with enough of them still alive but not yet out, it is
+            a draw. A scenario&apos;s description says what each side is for.
           </p>
         </>
       ),

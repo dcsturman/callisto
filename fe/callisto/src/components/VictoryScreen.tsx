@@ -27,7 +27,7 @@ export function VictoryScreen() {
   }
 
   seen.current.sides = rememberSides(seen.current.sides, entities.ships);
-  const ended = outcome(seen.current.sides, entities.ships) ?? timeUp(entities, seen.current.sides);
+  const ended = outcome(seen.current.sides, entities.ships, entities) ?? timeUp(entities, seen.current.sides);
 
   // Back to a live game (a reset, or a ship added): forget the dismissal, so
   // the next ending is announced too.
