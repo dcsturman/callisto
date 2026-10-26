@@ -227,7 +227,7 @@ export const sensors: Lesson = {
             <b>Transmit</b> is the transponder and comms. It is very loud, and makes a ship much easier to find.{" "}
             <b>Hand-off</b> shares your sensor contacts with the other ships on your side. It needs Transmit on,
             and free computer <em>Bandwidth</em> on both your ship and theirs (more on the computer in lesson 8,
-            Jumping out).
+            Computer control &amp; jumping out).
           </p>
         </>
       ),

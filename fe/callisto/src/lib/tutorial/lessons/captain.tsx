@@ -118,7 +118,7 @@ export const captain: Lesson = {
       body: (
         <p>
           Roll every round, and put the boosts where they count most: the gunner&apos;s big shot, the
-          engineer&apos;s repair, the pilot when the missiles come in. Next: leaving the fight altogether.
+          engineer&apos;s repair, the pilot when the missiles come in. Next: the ship&apos;s computer, and leaving the fight altogether.
         </p>
       ),
     },

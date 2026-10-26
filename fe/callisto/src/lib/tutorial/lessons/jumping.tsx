@@ -4,19 +4,25 @@ import { findShipIn, Lesson } from "lib/tutorial/lesson";
 
 export const jumping: Lesson = {
   id: "jumping",
-  title: "Jumping out",
-  summary: "The 100-diameter limit, getting a ship ready to jump, and leaving the fight.",
+  title: "Computer control & jumping out",
+  summary: "The ship's computer and its programs; the 100-diameter limit, and jumping out of the fight.",
   scenario: "tutorial-8-jump.json",
   steps: [
     {
       id: "intro",
       title: "The way out",
       body: (
-        <p>
-          A ship with a jump drive can leave the fight altogether: it jumps out of the system, and out of the
-          scenario. In some scenarios that is the whole point, getting away. But a ship cannot jump close to a
-          planet.
-        </p>
+        <>
+          <p>
+            Two things in this lesson. First the ship&apos;s computer: the programs it runs shape how a ship
+            fights, and one of them is needed to jump.
+          </p>
+          <p>
+            Then the jump itself. A ship with a jump drive can leave the fight altogether: it jumps out of the
+            system, and out of the scenario. In some scenarios that is the whole point, getting away. But a ship
+            cannot jump close to a planet.
+          </p>
+        </>
       ),
     },
     {
@@ -76,13 +82,55 @@ export const jumping: Lesson = {
       done: (now) => findShipIn(now.entities, "Killer")?.can_jump === true,
     },
     {
+      id: "computer",
+      title: "The computer",
+      target: ["computer-board"],
+      body: (
+        <>
+          <p>
+            The Engineer card&apos;s <b>Computer</b> section is the ship&apos;s computer. Its rating,{" "}
+            <b>Computer/20</b> on a Harrier, is its <em>Bandwidth</em>: how much software it can run at once.
+            Every program costs Bandwidth, more at higher levels, and the bar shows how much is in use.
+          </p>
+          <p>
+            Tick a program to run it and untick it to stop; it takes effect straight away. The ones that matter in
+            a fight:
+          </p>
+          <ul>
+            <li>
+              <b>Evade</b>: the computer jinks the ship, a penalty to every attack on her.
+            </li>
+            <li>
+              <b>Fire Control</b>: a bonus to the gunners, or guns that fire themselves.
+            </li>
+            <li>
+              <b>Jump Control</b>: needed to jump at all.
+            </li>
+            <li>
+              <b>Electronic Warfare</b>: a bonus to the sensor operator&apos;s jamming and lock-breaking.
+            </li>
+            <li>
+              <b>Battle Network</b>: lets a ship hand off its contacts without spare Bandwidth.
+            </li>
+            <li>
+              <b>Auto-Repair</b>: repairs by drone, on ships that carry repair drones.
+            </li>
+          </ul>
+          <p>
+            Bandwidth left spare is not wasted: sensor hand-offs need some free on both ships. Bridge damage, or
+            an ion hit, takes Bandwidth away, and then something has to be shut down.
+          </p>
+        </>
+      ),
+    },
+    {
       id: "software",
       title: "Jump Control",
       target: ["software-list"],
       body: (
         <p>
-          A jump needs the <b>Jump Control</b> program running on the ship&apos;s computer, and Killer&apos;s computer
-          is full: Evade and Fire Control are using all of it. Something has to give.
+          Killer&apos;s computer is full: Evade and Fire Control are using all 20 of its Bandwidth, and Jump Control
+          needs 10. Something has to give, and with no enemy here, it is the guns.
         </p>
       ),
       task: (
