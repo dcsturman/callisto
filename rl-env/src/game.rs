@@ -110,8 +110,8 @@ pub enum Ending {
 pub struct Tally {
   /// The share of the enemy's hull destroyed.
   pub dealt: f32,
-  /// The share of the side's ships that jumped out.
-  pub jumped: f32,
+  /// How the side's escape stands, if escaping is its goal.
+  pub escape: Escape,
   /// At least one of the side's ships is within its post's radius of the
   /// post (the scenario's, or by default [`HOLD_RADIUS`] of where the side
   /// started), as of the last round it had a ship in play: a side destroyed
@@ -124,8 +124,35 @@ pub struct Tally {
   pub kept: f32,
   /// The enemy's goal is Escape.
   pub enemy_escaping: bool,
-  /// The share of the enemy's ships that jumped out.
-  pub enemy_jumped: f32,
+  /// How the enemy's escape stands.
+  pub enemy_escape: Escape,
+}
+
+/// How a side's escape stands, as the game's victory screen judges it.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Escape {
+  /// The share of the side's ships that jumped out safely: a misjump is no
+  /// escape.
+  pub share: f32,
+  /// Escaped: enough of its ships got away (the scenario's `escape_needed`,
+  /// or more than two-thirds).
+  pub made: bool,
+  /// Enough are still alive, counting those that got away, to make the
+  /// number: time running out is then a draw.
+  pub alive: bool,
+}
+
+/// Inside a failed escape, what each ship that got away is still worth, as a
+/// share of the side: three of four away is a loss, but a better one than
+/// none, and the network should learn so.
+pub const ESCAPE_SHARE_CREDIT: f32 = 0.5;
+
+/// How many of a side's `ships` must get away for it to have escaped, as the
+/// game's victory screen judges it: the scenario's number, or more than
+/// two-thirds of them.
+#[must_use]
+pub fn escape_needed(ships: usize, scenario_needed: Option<u32>) -> usize {
+  scenario_needed.map_or(2 * ships / 3 + 1, |needed| needed as usize).min(ships)
 }
 
 /// How far from its post a side may be and still hold it, unless its
@@ -154,19 +181,23 @@ pub const DEALT_CREDIT: f32 = 0.8;
 /// | Outcome          | Destroy | Hold                    | Raid                          | Escape      |
 /// |------------------|---------|-------------------------|-------------------------------|-------------|
 /// | Enemy destroyed  | +1      | +1                      | +1                            | +1          |
-/// | Enemy fled       | +0.6    | +1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
-/// | Draw             | -1      | +1 if holding, else -1.1 | +0.6 if 25% dealt, else -1   | share jumped |
-/// | We fled          | -0.9    | -1.1                    | +0.6 if 25% dealt, else -0.6  | share jumped |
-/// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | share jumped |
-/// | We were destroyed| -1      | -1 + stand credit if holding, else -1.1 | -1             | share jumped |
+/// | Enemy fled       | +0.6    | +1                      | +0.6 if 25% dealt, else -0.6  | escape rule |
+/// | Draw             | -1      | +1 if holding, else -1.1 | +0.6 if 25% dealt, else -1   | escape rule |
+/// | We fled          | -0.9    | -1.1                    | +0.6 if 25% dealt, else -0.6  | escape rule |
+/// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | escape rule |
+/// | We were destroyed| -1      | -1 + stand credit if holding, else -1.1 | -1             | escape rule |
 ///
 /// Under Destroy, every loss but cowardice earns back [`DEALT_CREDIT`] times
 /// the share of the enemy's hull destroyed (not shown above).
 ///
-/// "Share jumped" runs from -1 (none) to +1 (every ship jumped out). Under
-/// Destroy, running is nearly as bad as dying: leaving is for goals that
-/// allow it. Running with more than half its hull left, unless leaving is
-/// the goal or the raid is done, is cowardice, and worse than dying.
+/// The escape rule is the victory screen's: +1 if the side escaped (enough
+/// ships got away safely); 0 if the game was drawn with enough of them still
+/// alive, counting those away; otherwise a loss, -1 plus
+/// [`ESCAPE_SHARE_CREDIT`] times the share that got away. Against an
+/// escaping side, any goal scores the mirror. Under Destroy, running is
+/// nearly as bad as dying: leaving is for goals that allow it. Running with
+/// more than half its hull left, unless leaving is the goal or the raid is
+/// done, is cowardice, and worse than dying.
 /// Under Hold, any loss away from the post is desertion and scores
 /// [`COWARDICE`]; a side destroyed at its post earns [`STAND_CREDIT`] times
 /// the share of rounds it held plus the same times the hull it destroyed.
@@ -178,7 +209,13 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
   // ship that gets away costs this side what it earns the other. (Destroy
   // would pay 0.6 for letting them all jump.)
   if tally.enemy_escaping && goal != Goal::Escape {
-    return 1.0 - 2.0 * tally.enemy_jumped;
+    return if tally.enemy_escape.made {
+      -1.0
+    } else if ending == Ending::Draw && tally.enemy_escape.alive {
+      0.0
+    } else {
+      1.0 - ESCAPE_SHARE_CREDIT * tally.enemy_escape.share
+    };
   }
   let coward = ending == Ending::WeFled && tally.kept > COWARD_HULL;
   match goal {
@@ -211,7 +248,9 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
     }
     Goal::Escape => match ending {
       Ending::EnemyDestroyed => 1.0,
-      _ => 2.0 * tally.jumped - 1.0,
+      _ if tally.escape.made => 1.0,
+      Ending::Draw if tally.escape.alive => 0.0,
+      _ => -1.0 + ESCAPE_SHARE_CREDIT * tally.escape.share,
     },
   }
 }
@@ -993,16 +1032,33 @@ impl Game {
   pub fn tally(&self, side: usize) -> Tally {
     let enemy = &self.sides[1 - side];
     let ours = &self.sides[side];
-    let jumped = ours.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count();
+    // Got away: jumped out safely, by the server's own record. A misjump
+    // leaves too, but is no escape.
+    let safe = |ships: &[String]| {
+      ships
+        .iter()
+        .filter(|ship| self.world.departed.iter().any(|d| d.safe && &d.name == *ship))
+        .count()
+    };
+    let needed = self.scenario.entities.metadata.escape_needed;
+    let escape = |ships: &[String]| {
+      let got = safe(ships);
+      let alive = got + present(&self.world, ships).len();
+      let need = escape_needed(ships.len(), needed);
+      Escape {
+        share: got as f32 / ships.len().max(1) as f32,
+        made: got >= need,
+        alive: alive >= need,
+      }
+    };
     Tally {
       dealt: 1.0 - enemy.hull_last as f32 / enemy.hull_at_start.max(1) as f32,
-      jumped: jumped as f32 / ours.ships.len().max(1) as f32,
+      escape: escape(&ours.ships),
       holding: ours.at_post,
       held: ours.held_rounds as f32 / self.max_rounds.max(1) as f32,
       kept: ours.hull_last as f32 / ours.hull_at_start.max(1) as f32,
       enemy_escaping: enemy.goal == Goal::Escape,
-      enemy_jumped: enemy.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count() as f32
-        / enemy.ships.len().max(1) as f32,
+      enemy_escape: escape(&enemy.ships),
     }
   }
 
