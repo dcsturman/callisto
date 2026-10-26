@@ -34,11 +34,23 @@ export function Coach() {
   // The game as the lesson began: the first picture with its ships in, kept
   // for the lesson. Steps with a `when` are judged against it, once, so the
   // lesson does not change shape under the player as the game moves on.
-  const lessonStart = useRef<{ lessonId: string | null; context: TutorialContext } | null>(null);
-  if (lessonStart.current?.lessonId !== lessonId && entities.ships.length + entities.planets.length > 0) {
-    lessonStart.current = { lessonId, context: now };
+  //
+  // Only from the lesson's own game. "Next lesson" leaves one game and joins
+  // the next, and for a moment the browser still holds the last one's ships:
+  // judging from those, lesson 10 decided a server with AI crews had none.
+  // The file name says which scenario the ships came from; an older server
+  // does not send it, and then the game joined has to do.
+  const joined = useAppSelector((state) => state.user.joinedScenario);
+  const key = `${lessonId}|${joined}`;
+  const fromThisLesson =
+    lesson != null &&
+    entities.ships.length + entities.planets.length > 0 &&
+    (entities.filename === "" || entities.filename === lesson.scenario);
+  const lessonStart = useRef<{ key: string; context: TutorialContext } | null>(null);
+  if (lessonStart.current?.key !== key && fromThisLesson) {
+    lessonStart.current = { key, context: now };
   }
-  const opening = lessonStart.current?.lessonId === lessonId ? lessonStart.current.context : null;
+  const opening = lessonStart.current?.key === key ? lessonStart.current.context : null;
   const steps = (lesson?.steps ?? []).filter((s) => s.when == null || (opening != null && s.when(opening)));
   const index = Math.min(stepIndex, Math.max(steps.length - 1, 0));
   const step = steps[index];

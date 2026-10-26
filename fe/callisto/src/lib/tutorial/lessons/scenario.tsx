@@ -103,8 +103,8 @@ export const scenario: Lesson = {
             on the screen, around the Outpost moonlet. The Ships panel says how far she is from it.
           </p>
           <p>
-            Other goals: <b>escape</b> (jump out, or get away) and <b>raid</b>. A scenario&apos;s description says
-            what each side is for.
+            The other goal is <b>escape</b>: a side wins by jumping its ships out of the system (lesson 8) before
+            they are destroyed. A scenario&apos;s description says what each side is for.
           </p>
         </>
       ),

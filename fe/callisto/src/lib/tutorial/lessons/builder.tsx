@@ -138,7 +138,7 @@ export const builder: Lesson = {
       title: "Goals, posts and time limits",
       body: (
         <p>
-          A ship&apos;s goal (destroy, hold, raid or escape), the post a holding side defends, and a round limit
+          A ship&apos;s goal (destroy, hold or escape), the post a holding side defends, and a round limit
           are not in the builder yet. They are set in the scenario file itself: the scenarios that come with
           Callisto show how.
         </p>
