@@ -98,21 +98,6 @@ export const captain: Lesson = {
       done: roundPlayed,
     },
     {
-      id: "orders",
-      title: "Standing orders",
-      target: ["ship-orders"],
-      body: (
-        <p>
-          The <b>Orders</b> box on the ship&apos;s record is the captain&apos;s standing orders, in plain words:
-          &ldquo;hold the refuelling point&rdquo;, &ldquo;stay out of their gun range&rdquo;. People read them, and so
-          does an AI crew.
-        </p>
-      ),
-      task: "Write Killer some orders, then click away from the box.",
-      done: (now, start) =>
-        (findShipIn(now.entities, "Killer")?.orders ?? "") !== (findShipIn(start.entities, "Killer")?.orders ?? ""),
-    },
-    {
       id: "done",
       title: "In command",
       body: (

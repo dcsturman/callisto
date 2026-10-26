@@ -110,13 +110,12 @@ export const builder: Lesson = {
     },
     {
       id: "ai",
-      title: "AI crews and orders",
+      title: "AI crews",
       target: ["builder-add-ship"],
       body: (
         <p>
           On a server with AI crews, Add Ship also has <b>AI crew</b>: tick it and the ship is crewed by the AI
-          whenever the scenario is played, with the <b>Orders</b> you write for her. Players can still change who
-          crews each side when they start a game.
+          whenever the scenario is played. Players can still change who crews each side when they start a game.
         </p>
       ),
     },
