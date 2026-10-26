@@ -217,13 +217,17 @@ export const sensors: Lesson = {
       body: (
         <>
           <p>
-            The three switches at the top of the card change how loud Killer is. <b>Active</b> is the radar.
-            Turning it off is <b>running dark</b>: quieter, so harder to find, but you find nothing new, and you
-            drop every lock you hold. Contacts you already have, you keep.
+            The three switches at the top of the card change how &ldquo;loud&rdquo; Killer is.{" "}
+            <b>Active</b> means her <em>active sensors</em> are in use. You need them for two things: to make a
+            new sensor contact, and to get a sensor lock. Turning them off is <em>running dark</em>. It makes you
+            harder to find, but you cannot make new contacts, and you drop every lock you hold. Contacts you
+            already have, you keep.
           </p>
           <p>
-            <b>Transmit</b> is the transponder and comms: loud. <b>Hand-off</b> shares your contacts with the
-            rest of your side, and needs Transmit on.
+            <b>Transmit</b> is the transponder and comms. It is very loud, and makes a ship much easier to find.{" "}
+            <b>Hand-off</b> shares your sensor contacts with the other ships on your side. It needs Transmit on,
+            and free computer <em>Bandwidth</em> on both your ship and theirs (more on the computer in lesson 8,
+            Jumping out).
           </p>
         </>
       ),
