@@ -183,9 +183,10 @@ export const guns: Lesson = {
       target: ["called-shot", "captain-actions"],
       body: (
         <p>
-          At Short range a direct-fire weapon can aim for one system, at DM−2. If the hit causes a critical, the
-          first one lands where you aimed: the <b>Powerplant</b> to cut her power, the <b>Maneuver</b> drive to
-          stop her running.
+          At Short range a direct-fire weapon (not a missile or torpedo) can aim for a specific system, at DM−2.
+          If the hit causes a critical, the first one lands where you aimed. For example, you could target the{" "}
+          <b>Maneuver</b> drive to reduce a target&apos;s thrust, or the <b>Weapon</b> systems to reduce her
+          firepower.
         </p>
       ),
       task: (
