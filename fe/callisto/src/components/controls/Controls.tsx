@@ -6,6 +6,7 @@ import {
 import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import * as THREE from "three";
 import { CornerPanel } from "lib/CornerPanel";
+import { SideView } from "components/controls/SideView";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
@@ -605,6 +606,7 @@ export function ViewControls() {
         />{" "}
         100 Diameter Limit
       </label>
+      <SideView />
       {/* Collapsed by default: this is reference material, not a control, and
           the top-right corner has no room to spare. It exists at all because
           the flight keys were documented nowhere -- not in the tutorial, not

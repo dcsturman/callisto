@@ -3941,3 +3941,25 @@ h3.control-form {
 .lesson-finished {
     color: #6fcf7a;
 }
+
+/* Side view, in the View panel: two choices and a button on one row. */
+.side-view {
+    margin: 4px 0;
+}
+
+.side-view-label {
+    font-size: var(--font-sm);
+}
+
+.side-view-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+/* Direction to, in the Pilot card. */
+.direction-to-buttons {
+    display: flex;
+    gap: 4px;
+}

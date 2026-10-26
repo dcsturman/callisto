@@ -1,4 +1,5 @@
 import * as React from "react";
+import { DirectionTo } from "components/controls/DirectionTo";
 import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
@@ -292,6 +293,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
       {pilotActions()}
       <>
           {accelerationManager()}
+          <DirectionTo ship={ship} />
           <hr />
           <button
             className="control-input control-button blue-button"
