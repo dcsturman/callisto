@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { findShipIn, Lesson } from "lib/tutorial/lesson";
 
 export const jumping: Lesson = {
@@ -69,7 +70,7 @@ export const jumping: Lesson = {
       ),
       task: (
         <>
-          In the Pilot card, <b>Set Accel</b> to 6, 0, 0 and press <b>Set</b>, then press <b>Next Round</b>.
+          In the Pilot card, <b>Set Accel</b> to 6, 0, 0 and press <b>Set</b>, then press <RoundButton />.
         </>
       ),
       done: (now) => findShipIn(now.entities, "Killer")?.can_jump === true,
@@ -105,7 +106,7 @@ export const jumping: Lesson = {
       ),
       task: (
         <>
-          Choose <b>Jump</b> in the engineer&apos;s menu, then press <b>Next Round</b>.
+          Choose <b>Jump</b> in the engineer&apos;s menu, then press <RoundButton />.
         </>
       ),
       done: (now, start) =>

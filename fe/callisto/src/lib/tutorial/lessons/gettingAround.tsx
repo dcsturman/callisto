@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { Lesson } from "lib/tutorial/lesson";
 
 /** How far the camera has to fly before "look around" counts, in scene units. */
@@ -150,7 +151,11 @@ export const gettingAround: Lesson = {
           </p>
         </>
       ),
-      task: "Press Next Round twice, and watch the Moon move.",
+      task: (
+        <>
+          Press <RoundButton /> twice, and watch the Moon move.
+        </>
+      ),
       done: (now, start) => (now.entities.round ?? 1) >= (start.entities.round ?? 1) + 2,
     },
     {

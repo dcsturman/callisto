@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { withdrawn, hurt, Lesson, roundPlayed } from "lib/tutorial/lesson";
 
 export const damage: Lesson = {
@@ -48,8 +49,8 @@ export const damage: Lesson = {
       body: <p>A particle barbette at Short range: Killer is going to feel this.</p>,
       task: (
         <>
-          Choose <em>Killer</em> as the target, click the <b>Particle Barbette</b>, and press <b>Next Round</b>. If
-          Raven misses, press Next Round again.
+          Choose <em>Killer</em> as the target, click the <b>Particle Barbette</b>, and press <RoundButton />. If
+          Raven misses, press it again.
         </>
       ),
       done: (now, start) => hurt(now.entities, "Killer") > hurt(start.entities, "Killer"),
@@ -120,7 +121,7 @@ export const damage: Lesson = {
       body: <p>The results will say whether it worked.</p>,
       task: (
         <>
-          Press <b>Next Round</b>.
+          Press <RoundButton />.
         </>
       ),
       done: roundPlayed,

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { fireOrders, withdrawn, kmBetween, Lesson, roundPlayed } from "lib/tutorial/lesson";
 
 /** The Harrier's weapons, by mount: 0 the particle barbette, 1 the missile turret. */
@@ -114,7 +115,7 @@ export const guns: Lesson = {
       body: <p>Shots are fired at the start of the round, from where the ships are now, before anyone moves.</p>,
       task: (
         <>
-          Press <b>Next Round</b>.
+          Press <RoundButton />.
         </>
       ),
       done: roundPlayed,
@@ -152,7 +153,11 @@ export const guns: Lesson = {
           plot a course to Beowulf with a <b>Standoff</b> of 1,000 km, so you stop just inside Short.
         </p>
       ),
-      task: "Fly to within 1,250 km of Beowulf: plot, assign, and press Next Round until you are there.",
+      task: (
+        <>
+          Fly to within 1,250 km of Beowulf: plot, assign, and press <RoundButton /> until you are there.
+        </>
+      ),
       done: (now) => kmBetween(now.entities, "Killer", "Beowulf") < 1250,
     },
     {
@@ -181,7 +186,7 @@ export const guns: Lesson = {
       body: <p>Then check the results for where the hit went.</p>,
       task: (
         <>
-          Press <b>Next Round</b>.
+          Press <RoundButton />.
         </>
       ),
       done: roundPlayed,

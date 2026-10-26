@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { findShipIn, Lesson, roundPlayed } from "lib/tutorial/lesson";
 
 export const captain: Lesson = {
@@ -91,7 +92,7 @@ export const captain: Lesson = {
       body: <p>The results include a Leadership line: who the captain inspired.</p>,
       task: (
         <>
-          Press <b>Next Round</b>.
+          Press <RoundButton />.
         </>
       ),
       done: roundPlayed,

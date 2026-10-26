@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { fireOrders, withdrawn, Lesson, roundPlayed } from "lib/tutorial/lesson";
 
 /** The System Defense Boat's weapons, by mount: 0 the beam turret, 1 the missile turret. */
@@ -112,7 +113,7 @@ export const missiles: Lesson = {
       ),
       task: (
         <>
-          Press <b>Next Round</b>, then look for Warden&apos;s missiles on the screen.
+          Press <RoundButton />, then look for Warden&apos;s missiles on the screen.
         </>
       ),
       done: (now) => now.entities.missiles.some((m) => m.source === "Warden"),
@@ -148,7 +149,7 @@ export const missiles: Lesson = {
       body: <p>Watch your missiles close on Raider and strike.</p>,
       task: (
         <>
-          Press <b>Next Round</b>.
+          Press <RoundButton />.
         </>
       ),
       done: roundPlayed,

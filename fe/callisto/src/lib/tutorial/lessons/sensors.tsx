@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { SensorAction } from "components/controls/Actions";
 import { findShipIn, Lesson, TutorialContext } from "lib/tutorial/lesson";
 
@@ -91,7 +92,7 @@ export const sensors: Lesson = {
       ),
       task: (
         <>
-          Press <b>Next Round</b>, so Killer picks up Beowulf as a contact.
+          Press <RoundButton />, so Killer picks up Beowulf as a contact.
         </>
       ),
       done: (now) => (findShipIn(now.entities, "Killer")?.contacts ?? []).includes("Beowulf"),
@@ -125,7 +126,7 @@ export const sensors: Lesson = {
       ),
       task: (
         <>
-          Press <b>Next Round</b>, and watch for <b>Locks: Beowulf</b> under the menu.
+          Press <RoundButton />, and watch for <b>Locks: Beowulf</b> under the menu.
         </>
       ),
       done: (now) => (findShipIn(now.entities, "Killer")?.sensor_locks ?? []).includes("Beowulf"),
@@ -142,7 +143,7 @@ export const sensors: Lesson = {
       ),
       task: (
         <>
-          Choose <b>Break Sensor Lock: Beowulf</b>, then press <b>Next Round</b>.
+          Choose <b>Break Sensor Lock: Beowulf</b>, then press <RoundButton />.
         </>
       ),
       done: (now) => !(findShipIn(now.entities, "Beowulf")?.sensor_locks ?? []).includes("Killer"),

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { findShipIn, Lesson, TutorialContext } from "lib/tutorial/lesson";
 
 /** Whether this game has AI crews: the server has an AI service, so Kite came in crewed by it. */
@@ -64,7 +65,7 @@ export const fleet: Lesson = {
       ),
       task: (
         <>
-          Press <b>Next Round</b>, and read what the AI captains say.
+          Press <RoundButton />, and read what the AI captains say.
         </>
       ),
       done: (now, start) => (now.entities.round ?? 1) > (start.entities.round ?? 1),

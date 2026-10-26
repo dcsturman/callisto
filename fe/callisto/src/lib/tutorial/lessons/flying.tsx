@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RoundButton } from "components/tutorial/RoundButton";
 import { kmBetween, Lesson, planOf } from "lib/tutorial/lesson";
 
 export const flying: Lesson = {
@@ -103,7 +104,11 @@ export const flying: Lesson = {
           range to Beowulf drop in the Ships panel.
         </p>
       ),
-      task: "Press Next Round until Killer is within 2,000 km of Beowulf.",
+      task: (
+        <>
+          Press <RoundButton /> until Killer is within 2,000 km of Beowulf.
+        </>
+      ),
       done: (now) => kmBetween(now.entities, "Killer", "Beowulf") < 2000,
     },
     {
