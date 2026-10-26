@@ -145,6 +145,7 @@ export function ShipSummary() {
                   give her away. */}
               {row.post && !row.undetected && (
                 <span
+                  data-tutorial="post-readout"
                   className="ship-summary-post"
                   style={{color: POST_COLOUR}}
                   title="Whether she is within her post's radius: holding it">

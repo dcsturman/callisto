@@ -43,7 +43,12 @@ function startOf(scenario: string): TutorialContext {
     filename: scenario,
     round: 1,
   } as unknown as EntityList;
-  return { entities, ui: uiReducer(undefined, { type: "" }), user: userReducer(undefined, { type: "" }) };
+  return {
+    entities,
+    ui: uiReducer(undefined, { type: "" }),
+    user: userReducer(undefined, { type: "" }),
+    actions: {},
+  };
 }
 
 describe("the tutorial's lessons", () => {

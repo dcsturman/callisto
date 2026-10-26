@@ -595,7 +595,7 @@ export function ViewControls() {
         />{" "}
         Gravity Well
       </label>
-      <label style={{ display: "flex" }}>
+      <label style={{ display: "flex" }} data-tutorial="jump-limit-toggle">
         {" "}
         <input
           type="checkbox"

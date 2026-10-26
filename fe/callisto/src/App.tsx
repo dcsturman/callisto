@@ -222,7 +222,7 @@ function Simulator() {
               side without opening each ship. Nothing when no ship is AI. */}
           {joinedScenario && !scenarioBuilderMode && <FleetComms />}
         </div>
-        <div className="admin-button-window" ref={adminWindow}>
+        <div className="admin-button-window" ref={adminWindow} data-tutorial="session-panel">
           <h2>
             {joinedScenario &&
               (tutorialMode

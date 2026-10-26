@@ -26,10 +26,20 @@ export function Coach() {
   const entities = useAppSelector(entitiesSelector);
   const ui = useAppSelector((state) => state.ui);
   const user = useAppSelector((state) => state.user);
-  const now: TutorialContext = useMemo(() => ({ entities, ui, user }), [entities, ui, user]);
+  const actions = useAppSelector((state) => state.actions);
+  const now: TutorialContext = useMemo(() => ({ entities, ui, user, actions }), [entities, ui, user, actions]);
 
   const lesson = lessonById(lessonId);
-  const steps = lesson?.steps ?? [];
+
+  // The game as the lesson began: the first picture with its ships in, kept
+  // for the lesson. Steps with a `when` are judged against it, once, so the
+  // lesson does not change shape under the player as the game moves on.
+  const lessonStart = useRef<{ lessonId: string | null; context: TutorialContext } | null>(null);
+  if (lessonStart.current?.lessonId !== lessonId && entities.ships.length > 0) {
+    lessonStart.current = { lessonId, context: now };
+  }
+  const opening = lessonStart.current?.lessonId === lessonId ? lessonStart.current.context : null;
+  const steps = (lesson?.steps ?? []).filter((s) => s.when == null || (opening != null && s.when(opening)));
   const index = Math.min(stepIndex, Math.max(steps.length - 1, 0));
   const step = steps[index];
   const last = index === steps.length - 1;

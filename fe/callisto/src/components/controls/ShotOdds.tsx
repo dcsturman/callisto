@@ -128,14 +128,14 @@ export function ShotOdds(args: {ship: Ship}) {
 
   if (!shown) {
     return (
-      <button type="button" className="odds-toggle" onClick={() => setShown(true)}>
+      <button type="button" className="odds-toggle" data-tutorial="shot-odds" onClick={() => setShown(true)}>
         Show shot odds
       </button>
     );
   }
 
   return (
-    <div className="shot-odds">
+    <div className="shot-odds" data-tutorial="shot-odds">
       <div className="odds-head">
         <select
           className="salvo-select"

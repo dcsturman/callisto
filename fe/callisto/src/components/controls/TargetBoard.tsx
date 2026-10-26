@@ -115,7 +115,9 @@ export function TargetBoard(args: {ship: Ship}) {
   if (rows.length === 0) {
     return (
       <>
-        <p className="sensor-empty">{showAllies ? "No contacts." : "No hostile contacts."}</p>
+        <p className="sensor-empty" data-tutorial="target-board">
+          {showAllies ? "No contacts." : "No hostile contacts."}
+        </p>
         {allyToggle}
       </>
     );
@@ -123,7 +125,7 @@ export function TargetBoard(args: {ship: Ship}) {
 
   return (
     <>
-    <ul className="target-rows">
+    <ul className="target-rows" data-tutorial="target-board">
       {rows.map((row) => (
         <li key={row.name} className="target-row">
           <div className="target-head">

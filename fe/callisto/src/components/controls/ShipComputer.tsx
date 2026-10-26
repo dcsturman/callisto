@@ -264,7 +264,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
     }
     return (
       <>
-        <div className="pilot-actions-row">
+        <div className="pilot-actions-row" data-tutorial="pilot-evade">
           <label className="control-label">Evade</label>
           <input
             className="control-input"
@@ -551,8 +551,8 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
   const handoff = ship.handoff_sensors === true;
 
   return (
-    <div className="control-label">
-      <div className="emissions-row">
+    <div className="control-label" data-tutorial="sensor-orders">
+      <div className="emissions-row" data-tutorial="sensor-emissions-toggles">
         <label className="emissions-toggle" title="Active radar/lidar. Running dark keeps the contacts you already hold but acquires nothing new, drops your sensor locks, and stops handing opponents DM+2 to find you.">
           <input
             type="checkbox"
@@ -602,6 +602,7 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
       </div>
       <select
         className="sensor-action-select control-input "
+        data-tutorial="sensor-action"
         value={sensorActionToString(currentSensor)}
         onChange={handleSensorActionChange}>
         <option value="none"></option>

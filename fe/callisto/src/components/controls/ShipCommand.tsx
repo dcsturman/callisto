@@ -35,7 +35,7 @@ export function ShipCommand(args: { ship: Ship }) {
   return (
     <div className="ship-command">
       {(aiCrews || ai) && (
-      <div className="ship-command-crew">
+      <div className="ship-command-crew" data-tutorial="ship-crew">
         <h2>Crew</h2>
         <span className={ai ? "controller-chip controller-chip-ai" : "controller-chip"}>
           {ai ? "AI" : "People"}
@@ -62,7 +62,7 @@ export function ShipCommand(args: { ship: Ship }) {
               : (args.ship.ai_report.rationale ?? "Orders given.")}
         </p>
       )}
-      <label className="ship-command-orders">
+      <label className="ship-command-orders" data-tutorial="ship-orders">
         <h2>Orders</h2>
         <textarea
           className="ship-command-orders-text"

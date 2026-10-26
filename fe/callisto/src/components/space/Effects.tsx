@@ -555,7 +555,7 @@ export function ResultsWindow() {
   );
 
   return (
-    <div id="results-window" className="computer-window">
+    <div id="results-window" className="computer-window" data-tutorial="results">
       <h1>Results</h1>
       <br></br>
       {messages.length === 0 && <h2>No results</h2>}

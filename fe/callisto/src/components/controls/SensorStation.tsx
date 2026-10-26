@@ -64,7 +64,7 @@ export function SensorStation(args: {ship: Ship}) {
  */
 function EyesOnUs(args: {watchers: Watcher[]}) {
   return (
-    <div className="sensor-block">
+    <div className="sensor-block" data-tutorial="eyes-on-us">
       <SectionTag icon={<EyeIcon />}>Eyes on us</SectionTag>
       {args.watchers.length === 0 ? (
         <p className="sensor-empty">Nobody has found us.</p>

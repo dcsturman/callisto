@@ -53,7 +53,7 @@ export function ComputerBoard(args: {ship: Ship}) {
   const isRunning = (software: Software) => running.some((on) => sameSoftware(on, software));
 
   return (
-    <div className="computer-board">
+    <div className="computer-board" data-tutorial="computer-board">
       <div className="computer-summary">
         <span
           className="computer-processing"
@@ -88,7 +88,7 @@ export function ComputerBoard(args: {ship: Ship}) {
           Auto-Repair has no repair drones to work with: the program does nothing on this hull.
         </p>
       )}
-      <ul className="software-list">
+      <ul className="software-list" data-tutorial="software-list">
         {installed.map((software) => {
           const on = isRunning(software);
           const fixed = alwaysRunning(software);

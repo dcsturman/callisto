@@ -5833,6 +5833,23 @@ mod tests {
     assert!(checked > 0, "no ships with software found -- has the fixture moved?");
   }
 
+  /// The missiles lesson opens with Raider's salvo already inbound, which
+  /// only works if a scenario's missiles survive loading.
+  #[test_log::test(tokio::test)]
+  async fn the_missiles_lesson_starts_with_missiles_inbound() {
+    config_test_ship_templates().await;
+    let name = "./scenarios/tutorial-5-missiles.json";
+    let bytes = fs::read(name).expect("the missiles lesson's scenario");
+    let entities = Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+    assert_eq!(entities.missiles.len(), 2);
+    for missile in entities.missiles.values() {
+      let missile = missile.read().unwrap();
+      assert_eq!(missile.source, "Raider");
+      assert_eq!(missile.target, "Warden");
+      assert!(missile.target_ptr.is_some(), "the missile is aimed at the loaded Warden");
+    }
+  }
+
   #[test_log::test(tokio::test)]
   async fn every_bundled_scenario_loads() {
     config_test_ship_templates().await;

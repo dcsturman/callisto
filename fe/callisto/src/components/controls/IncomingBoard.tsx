@@ -52,7 +52,7 @@ export function IncomingBoard(args: {ship: Ship}) {
   }, [inbound]);
 
   return (
-    <div className="incoming-board">
+    <div className="incoming-board" data-tutorial="incoming">
       <h3 className="incoming-heading">Salvoes</h3>
       {inbound.length === 0 ? (
         <p className="sensor-empty">Nothing inbound.</p>
