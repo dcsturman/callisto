@@ -184,8 +184,9 @@ function Simulator() {
   return (
     <>
       <div className="mainscreen-container">
-        {/* A scenario being built or taught has no winner to announce. */}
-        {joinedScenario && !tutorialMode && !scenarioBuilderMode && <VictoryScreen />}
+        {/* A scenario being built has no winner to announce. A lesson does:
+            seeing the real screen teaches it better than describing it. */}
+        {joinedScenario && !scenarioBuilderMode && <VictoryScreen />}
         {/* The console: the ship's dossier, then a card for every station
             this player works, in one column that spills into a second only
             when the first is full. Screen space is the scarce thing on a

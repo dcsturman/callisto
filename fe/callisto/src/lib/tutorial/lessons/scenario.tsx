@@ -141,8 +141,9 @@ export const scenario: Lesson = {
       body: (
         <>
           <p>
-            Time is up and Killer is at her post, so Blue has held. In a real game the victory screen says so, and
-            offers <b>Keep Going</b> or <b>Exit Scenario</b>.
+            Time is up and Killer is at her post, so Blue has held, and the victory screen says so. It offers{" "}
+            <b>Keep Going</b>, to play on past the end, or <b>Exit Scenario</b>, which here takes you back to the
+            lessons.
           </p>
           <p>
             Games also end when only one side has ships left. Next: playing with your own fleet, and with AI
