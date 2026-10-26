@@ -176,6 +176,24 @@ export const sensors: Lesson = {
       done: (now) => (findShipIn(now.entities, "Killer")?.sensor_locks ?? []).includes("Beowulf"),
     },
     {
+      id: "locked-on",
+      title: "Locked on",
+      target: ["sensor-locks", "target-board"],
+      body: (
+        <>
+          <p>
+            Killer has a lock on Beowulf. You can see it in two places: <b>Locks: Beowulf</b> under the
+            Sensors card&apos;s menu, and a <b>lock</b> tag on Beowulf&apos;s line in the Gunner card&apos;s Targets
+            board, where the gunners will see it.
+          </p>
+          <p>
+            Every attack Killer makes on Beowulf now gets DM+2. The lock holds until Beowulf breaks it, or Killer
+            turns her active sensors off.
+          </p>
+        </>
+      ),
+    },
+    {
       id: "break",
       title: "Shake off her lock",
       target: ["sensor-action"],

@@ -652,7 +652,7 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
           ))}
       </select>
       {ship.sensor_locks.length > 0 && (
-        <p className="plan-accel-text">
+        <p className="plan-accel-text" data-tutorial="sensor-locks">
           Locks:{" "}
           {entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
         </p>
