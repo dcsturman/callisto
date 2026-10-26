@@ -98,6 +98,18 @@ export const captain: Lesson = {
       done: roundPlayed,
     },
     {
+      id: "computer",
+      title: "The ship's computer",
+      target: ["computer-board"],
+      body: (
+        <p>
+          The captain also runs the ship&apos;s <b>Computer</b>, at the bottom of their card: which programs it
+          runs, from Evade and Fire Control to Jump Control. They serve every station, so they are the
+          captain&apos;s call. Lesson 8 goes through it.
+        </p>
+      ),
+    },
+    {
       id: "done",
       title: "In command",
       body: (

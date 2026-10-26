@@ -118,7 +118,8 @@ export const jumping: Lesson = {
       body: (
         <>
           <p>
-            The Engineer card&apos;s <b>Computer</b> section is the ship&apos;s computer. Its rating,{" "}
+            The Captain card&apos;s <b>Computer</b> section is the ship&apos;s computer: the captain runs it,
+            since its programs serve every station. Its rating,{" "}
             <b>Computer/20</b> on a Harrier, is its <em>Bandwidth</em>: how much software it can run at once.
             Every program costs Bandwidth, more at higher levels, and the bar shows how much is in use.
           </p>
@@ -165,7 +166,7 @@ export const jumping: Lesson = {
       ),
       task: (
         <>
-          In the Engineer card&apos;s <b>Computer</b> section, untick <b>Fire Control</b>, then tick{" "}
+          In the Captain card&apos;s <b>Computer</b> section, untick <b>Fire Control</b>, then tick{" "}
           <b>Jump Control</b>.
         </>
       ),
