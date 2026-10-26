@@ -98,6 +98,50 @@ export const sensors: Lesson = {
       done: (now) => (findShipIn(now.entities, "Killer")?.contacts ?? []).includes("Beowulf"),
     },
     {
+      id: "contact",
+      title: "What a contact tells you",
+      target: ["contact-detail", "ships-panel"],
+      body: (
+        <>
+          <p>
+            Beowulf is no longer a blip. In the Ships panel, her hull, thrust and range now read as numbers
+            instead of &ldquo;?&rdquo;, and she appears on the Gunner card&apos;s Targets board.
+          </p>
+          <p>
+            The Sensors card&apos;s <b>Contact detail</b> is the operator&apos;s full reading of every ship
+            they have found:
+          </p>
+          <ul>
+            <li>
+              <b>Her class and size</b>: a Free Trader, 200 tons.
+            </li>
+            <li>
+              <b>thrust</b>: how many G she can pull now, with her design&apos;s rating beside it if damage has
+              cut it.
+            </li>
+            <li>
+              <b>sensors</b>: her sensor grade, which says how well she can find and lock on to you.
+            </li>
+            <li>
+              <b>stealth</b> and <b>CM</b> (countermeasures), if she has any: what makes her hard to find and
+              hard to keep locked.
+            </li>
+            <li>
+              <b>Damage</b>: each system hit, and how badly, worst first. Nothing shows while she is whole.
+            </li>
+            <li>
+              <b>Her armament</b>: one mark per weapon, its shape the mount and its colour the weapon. Hover over
+              one for its name.
+            </li>
+          </ul>
+          <p>
+            That is what your gunners and pilot plan with: a fast ship you cannot outrun, or a lightly armed one
+            you can close on safely.
+          </p>
+        </>
+      ),
+    },
+    {
       id: "lock",
       title: "Lock on",
       target: ["sensor-action"],

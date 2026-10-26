@@ -211,7 +211,7 @@ function ContactDetail(args: {
   }
 
   return (
-    <div className="sensor-block">
+    <div className="sensor-block" data-tutorial="contact-detail">
       <SectionTag>Contact detail</SectionTag>
       <ul className="contact-detail-list">
         {contacts.map((ship) => {
