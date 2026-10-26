@@ -2373,10 +2373,15 @@ h3.control-form {
 
 .contact-detail-line {
     display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 2px 10px;
     align-items: baseline;
     font-size: var(--font-xs);
     opacity: 0.85;
+}
+
+.contact-detail-stat {
+    white-space: nowrap;
 }
 
 .contact-detail-label {
