@@ -59,10 +59,40 @@ export const jumping: Lesson = {
       title: "The Jump board",
       target: ["jump-board"],
       body: (
-        <p>
-          The Engineer card&apos;s <b>Jump</b> board says whether Killer can jump, and checks everything it needs:
-          fuel, distance from gravity, power, the Jump Control program, and the drive itself.
-        </p>
+        <>
+          <p>
+            The Engineer card&apos;s <b>Jump</b> board is a checklist. At the top is the verdict:{" "}
+            <b>Ready to jump</b>, <b>Cannot jump</b>, or <b>Ready — jump-N only</b> when the ship can go, but not
+            as far as her drive is rated for. Below it, a line for everything a jump needs, each with a ✓ when it
+            is met, a ✕ when it stops the jump, or a ⚠ when it only shortens it:
+          </p>
+          <ul>
+            <li>
+              <b>Fuel</b>: a jump burns a tenth of the ship&apos;s tonnage per jump number. Short of that, she can
+              still jump, but less far.
+            </li>
+            <li>
+              <b>Clear of gravity</b>: how far she is from the nearest planet, against its 100-diameter limit.
+            </li>
+            <li>
+              <b>Power</b>: the drive draws power at the moment of the jump, so there must be enough spare.
+            </li>
+            <li>
+              <b>Jump Control</b>: the computer program that plots the jump. Not running, no jump.
+            </li>
+            <li>
+              <b>Astrogation</b>: the course, plotted by the bridge and computer. Bridge or computer damage stops
+              it.
+            </li>
+            <li>
+              <b>Drive</b>: the jump drive itself, and how far it can take her now. Damage shortens it.
+            </li>
+          </ul>
+          <p>
+            Killer has two ✕s: she is only 18,000 km from Rubble, inside its 20,000 km limit, and Jump Control is
+            not running. The next two steps fix them.
+          </p>
+        </>
       ),
     },
     {
@@ -141,6 +171,19 @@ export const jumping: Lesson = {
       ),
       done: (now) =>
         (findShipIn(now.entities, "Killer")?.software_running ?? []).some((program) => program.kind === "JumpControl"),
+    },
+    {
+      id: "ready",
+      title: "Ready to jump",
+      target: ["jump-board"],
+      body: (
+        <p>
+          Every line on the Jump board should now be ticked, and the verdict read <b>Ready to jump</b>. If one still
+          shows ✕, it says why. One catch: the server only marks a ship clear of gravity at the end of a round, so
+          the engineer&apos;s <b>Jump</b> order is offered the round after she gets clear, even when the board
+          already shows the ✓.
+        </p>
+      ),
     },
     {
       id: "jump",
