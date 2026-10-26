@@ -32,6 +32,7 @@ export function CornerPanel({
   className,
   initialOpen = true,
   extra,
+  tutorial,
   children,
 }: {
   id: string;
@@ -40,6 +41,8 @@ export function CornerPanel({
   initialOpen?: boolean;
   /** Anything to show in the header beside the title. */
   extra?: ReactNode;
+  /** The `data-tutorial` marker the tutorial points at this panel by. */
+  tutorial?: string;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(() => remembered(id, initialOpen));
@@ -48,7 +51,10 @@ export function CornerPanel({
     setOpen(!open);
   };
   return (
-    <div id={id} className={`corner-panel ${className ?? ""} ${open ? "" : "corner-panel-shut"}`}>
+    <div
+      id={id}
+      className={`corner-panel ${className ?? ""} ${open ? "" : "corner-panel-shut"}`}
+      data-tutorial={tutorial}>
       <h2 className="corner-panel-header">
         <button
           type="button"

@@ -239,6 +239,7 @@ export function Stations(args: {ship: Ship}) {
             key={card.id}
             title={look.title}
             icon={look.icon}
+            tutorial={`station-${card.id.replace(/-\d+$/, "")}`}
             crew={cardCrew(card.id, args.ship, operators, engineers)}
             onMoveUp={
               index === 0

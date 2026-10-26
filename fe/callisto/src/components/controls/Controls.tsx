@@ -69,7 +69,7 @@ function ShipList(args: {
   const filter = useMemo(() => [EntitySelectorType.Ship], []);
 
   return (
-    <div className="control-launch-div">
+    <div className="control-launch-div" data-tutorial="ship-menu">
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
         id="ship-list-dropdown"
@@ -312,7 +312,7 @@ export function Controls() {
           <hr />
         </>
       )}
-      <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
+      <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true} tutorial="ship-dossier">
         {shipName == null ? (
           <ShipList moveCamera={moveCameraToShip} />
         ) : (
@@ -531,7 +531,7 @@ export function Controls() {
           </>
         )}
       </Accordion>
-      <div className="round-counter" title="The round now being played">
+      <div className="round-counter" title="The round now being played" data-tutorial="round-counter">
         Round {entities.round ?? 1}
         {entities.metadata?.rounds != null && ` of ${entities.metadata.rounds}`}
       </div>
@@ -548,6 +548,7 @@ export function Controls() {
       {isReferee(roles, shipName) ? (
         <button
           className="control-input control-button blue-button button-next-round"
+          data-tutorial="next-round"
           // Reset the computer and route on the next round.  If this gets any more complex move it into its
           // own function.
           onClick={() => {
@@ -563,6 +564,7 @@ export function Controls() {
       ) : (
         <button
           className="control-input control-button blue-button button-next-round"
+          data-tutorial="next-round"
           title={
             amReady
               ? "Take it back if you still have orders to give"
@@ -583,7 +585,7 @@ export function ViewControls() {
   const dispatch = useAppDispatch();
 
   return (
-    <CornerPanel id="view-panel" title="View" className="view-controls-window">
+    <CornerPanel id="view-panel" title="View" className="view-controls-window" tutorial="view-panel">
       <label style={{ display: "flex" }}>
         {" "}
         <input

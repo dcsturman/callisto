@@ -12,19 +12,22 @@ import {
 } from "components/scenarios/SideCrews";
 import { RootState, store, resetState } from "state/store";
 import { useAppSelector, useAppDispatch } from "state/hooks";
-import { AppMode, setAppMode } from "state/tutorialSlice";
+import { AppMode, setAppMode, setShowLessonList } from "state/tutorialSlice";
+import { LessonList } from "components/tutorial/LessonList";
 import {
   scenarioLoadErrorsSelector,
   dismissScenarioLoadErrors,
 } from "state/serverSlice";
 
-const TUTORIAL_SCENARIO = "tutorial.json";
 export const TUTORIAL_PREFIX = "$TUTORIAL-";
 export const SCENARIO_BUILDER_PREFIX = "SCENARIO-";
 
+/** The tutorial's own scenario files, which are lessons, not games. */
+export const isTutorialScenario = (file: string) => file.startsWith("tutorial");
+
 // This function will generate a three word name (with hyphens between the words) or random words
 // to be used as the name for a new scenario.
-function generateUniqueHyphenatedName() {
+export function generateUniqueHyphenatedName() {
   // eslint-disable-next-line array-element-newline
   const words = [
     "ocean",
@@ -151,7 +154,7 @@ function generateUniqueHyphenatedName() {
 }
 
 type ScenarioManagerProps = unknown;
-type ScenarioManagerScreen = "mode-select" | "game" | "builder";
+type ScenarioManagerScreen = "mode-select" | "game" | "builder" | "tutorial";
 
 export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   const activeScenarios = useAppSelector(
@@ -164,8 +167,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   const sortedSelector = createSelector(
     (state: RootState) => state.server.scenarioTemplates,
     (templates: [string, MetaData][]) => {
+      // Lessons are started from the tutorial, not offered as games.
       return templates
-        .slice()
+        .filter((template) => !isTutorialScenario(template[0]))
         .sort((a: [string, MetaData], b: [string, MetaData]) =>
           a[1].name.localeCompare(b[1].name),
         );
@@ -187,13 +191,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
       .sort((a, b) => a.localeCompare(b));
   }, [activeScenarios]);
 
-  const builderTemplates = useMemo(
-    () =>
-      sortedTemplates.filter(
-        (scenario: [string, MetaData]) => scenario[0] !== TUTORIAL_SCENARIO,
-      ),
-    [sortedTemplates],
-  );
+  const builderTemplates = sortedTemplates;
 
   const [scenario, setScenario] = React.useState<string | null>(
     sortedFilteredScenarios[0] ?? null,
@@ -216,7 +214,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   const aiService = useAppSelector((state) => state.server.aiService);
   const aiShips = aiService ? aiShipsOf(templateSides, crews) : [];
   const [screen, setScreen] =
-    React.useState<ScenarioManagerScreen>("mode-select");
+    React.useState<ScenarioManagerScreen>(() =>
+      store.getState().tutorial.showLessonList ? "tutorial" : "mode-select",
+    );
   const [showScenarioIntro, setShowScenarioIntro] = React.useState<{
     name: string;
     description: string;
@@ -358,15 +358,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
     createScenario(builderScenarioName, "");
   }
 
-  function launchTutorial() {
-    prepareScenarioLaunch(AppMode.Tutorial);
-    const random_tutorial_name =
-      TUTORIAL_PREFIX + generateUniqueHyphenatedName();
-    createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
-  }
-
   function backToModeSelect() {
     setShowScenarioIntro(null);
+    dispatch(setShowLessonList(false));
     setScreen("mode-select");
   }
 
@@ -497,9 +491,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
                 <div className="scenario-mode-buttons">
                   <button
                     className="blue-button tutorial-button"
-                    onClick={launchTutorial}
+                    onClick={() => setScreen("tutorial")}
                   >
-                    Launch Tutorial
+                    Tutorial
                   </button>
                   <button
                     className="blue-button tutorial-button"
@@ -510,6 +504,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
                 </div>
               </>
             )}
+            {screen === "tutorial" && <LessonList onBack={backToModeSelect} />}
             {screen === "builder" && (
               <>
                 <div className="authentication-blurb">

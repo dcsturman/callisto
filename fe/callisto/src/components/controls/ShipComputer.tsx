@@ -295,6 +295,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
           <hr />
           <button
             className="control-input control-button blue-button"
+            data-tutorial="full-stop"
             onClick={() => {
               setNavigationTarget({
                 p_x: ship.position[0],
@@ -314,7 +315,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
           </button>
           <hr />
           <SectionTag icon={<FaCompass />}>Navigation</SectionTag>
-          <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
+          <form className="target-entry-form" onSubmit={handleNavigationSubmit} data-tutorial="nav-target">
             <label className="control-label" style={{display: "flex"}}>
               Nav Target:
               <EntitySelector
@@ -436,7 +437,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
             />
           </form>
           {proposedPlan && (
-            <div id="proposed-plan-region">
+            <div id="proposed-plan-region" data-tutorial="proposed-plan">
               <h2 className="control-form">Proposed Plan</h2>
               <NavigationPlan plan={proposedPlan.plan} />
               <button

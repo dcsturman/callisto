@@ -8,12 +8,22 @@ export enum AppMode {
 
 export interface TutorialState {
   appMode: AppMode;
+  /**
+   * The lesson being played, by id. Kept when the app mode changes: leaving a
+   * scenario switches the mode back to Game after the fact, and "Next lesson"
+   * leaves one lesson and starts the next in the same moment.
+   */
+  lessonId: string | null;
   stepIndex: number;
+  /** Open the scenario screen on the lesson list: we came back from a lesson. */
+  showLessonList: boolean;
 }
 
 const initialState: TutorialState = {
   appMode: AppMode.Game,
+  lessonId: null,
   stepIndex: 0,
+  showLessonList: false,
 };
 
 export const tutorialSlice = createSlice({
@@ -26,11 +36,19 @@ export const tutorialSlice = createSlice({
         state.stepIndex = 0;
       }
     },
+    /** Start a lesson from its first step. */
+    setLesson: (state, action: PayloadAction<string>) => {
+      state.lessonId = action.payload;
+      state.stepIndex = 0;
+    },
+    setShowLessonList: (state, action: PayloadAction<boolean>) => {
+      state.showLessonList = action.payload;
+    },
     increment: (state) => {
       state.stepIndex++;
     },
     decrement: (state) => {
-      state.stepIndex--;
+      state.stepIndex = Math.max(0, state.stepIndex - 1);
     },
     reset: (state) => {
       state.stepIndex = 0;
@@ -40,7 +58,7 @@ export const tutorialSlice = createSlice({
 });
 
 export type TutorialReducer = ReturnType<typeof tutorialSlice.reducer>;
-export const { setAppMode, increment, decrement, reset, resetServer } =
+export const { setAppMode, setLesson, setShowLessonList, increment, decrement, reset, resetServer } =
   tutorialSlice.actions;
 
 export default tutorialSlice.reducer;

@@ -319,7 +319,11 @@ fn setup_reloadable_test_files(port: u16) -> (PathBuf, String, String, String) {
     let entry = entry.unwrap();
     fs::copy(entry.path(), design_dir.join(entry.file_name())).unwrap();
   }
-  fs::copy("scenarios/tutorial.json", scenario_dir.join("tutorial.json")).unwrap();
+  fs::copy(
+    "scenarios/tutorial-1-getting-around.json",
+    scenario_dir.join("tutorial-1-getting-around.json"),
+  )
+  .unwrap();
 
   (
     root,
@@ -353,7 +357,11 @@ fn append_test_design(design_dir: &str, design_name: &str) {
 }
 
 fn add_test_scenario(scenario_dir: &str, scenario_name: &str) {
-  fs::copy("scenarios/tutorial.json", PathBuf::from(scenario_dir).join(scenario_name)).unwrap();
+  fs::copy(
+    "scenarios/tutorial-1-getting-around.json",
+    PathBuf::from(scenario_dir).join(scenario_name),
+  )
+  .unwrap();
 }
 
 /**

@@ -49,7 +49,7 @@ import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
 import { ScenarioManager } from "components/scenarios/ScenarioManager";
-import { Tutorial } from "components/Tutorial";
+import { Coach } from "components/tutorial/Coach";
 import { VictoryScreen } from "components/VictoryScreen";
 import { ConfirmDialog } from "components/ConfirmDialog";
 
@@ -184,7 +184,6 @@ function Simulator() {
   return (
     <>
       <div className="mainscreen-container">
-        {!tutorialMode || <Tutorial />}
         {/* A scenario being built or taught has no winner to announce. */}
         {joinedScenario && !tutorialMode && !scenarioBuilderMode && <VictoryScreen />}
         {/* The console: the ship's dossier, then a card for every station
@@ -203,6 +202,8 @@ function Simulator() {
             or a gunner with no way to see the other ships or turn the range
             rings on. */}
         <div className="top-right-stack">
+          {/* The tutorial's coach, first in the column, where it is read. */}
+          {tutorialMode && <Coach />}
           {/* View and Ships side by side across the top, so neither pushes
               the other down; each folds to its header. */}
           <div className="top-right-row">

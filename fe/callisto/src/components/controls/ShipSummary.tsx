@@ -100,7 +100,7 @@ export function ShipSummary() {
     });
 
   return (
-    <CornerPanel id="ships-panel" title="Ships" className="ship-summary-window">
+    <CornerPanel id="ships-panel" title="Ships" className="ship-summary-window" tutorial="ships-panel">
       <ul
         className={
           showRangeColumn
