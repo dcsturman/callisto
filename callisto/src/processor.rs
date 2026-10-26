@@ -803,7 +803,10 @@ impl Processor {
         if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
           log.round(resolved.round, &resolved.effects, &entities);
         }
-        let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(Box::new(entities))];
+        let mut msgs = vec![
+          ResponseMsg::Effects(resolved),
+          ResponseMsg::EntityResponse(Box::new(entities)),
+        ];
         if let Some(server_id) = server_id {
           msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
         }
@@ -1223,6 +1226,9 @@ impl Processor {
         vec![
           ResponseMsg::JoinedScenario(create_scenario.name),
           ResponseMsg::Scenarios(self.build_scenarios_msg()),
+          // As on joining: without it the creator's console offered no way
+          // to hand a ship to the AI, only to take one back.
+          ResponseMsg::AiCrews(self.ai_crews_shown(player)),
           ResponseMsg::EntityResponse(Box::new(entities)),
           ResponseMsg::Users(self.members.get_user_context(server.get_id())),
         ]
@@ -1459,7 +1465,10 @@ fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
 
 fn response_with_update(server: &PlayerManager, result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| match server.clone_entities() {
-    Ok(entities) => vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(Box::new(entities))],
+    Ok(entities) => vec![
+      ResponseMsg::SimpleMsg(msg),
+      ResponseMsg::EntityResponse(Box::new(entities)),
+    ],
     Err(e) => entity_clone_failure_response(&e),
   })
 }
