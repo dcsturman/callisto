@@ -18,12 +18,16 @@ export const sensors: Lesson = {
       body: (
         <>
           <p>
-            As the GM you see every ship on the screen. Killer&apos;s crew do not. A ship can shoot at, lock on to
-            or jam only the ships it has as <b>contacts</b>, and every ship starts the scenario with none.
+            As the GM you can see every ship on the screen, but players crewing a single ship like Killer cannot.
+            A ship they have no <em>sensor contact</em> on is only a <em>blip</em>: a faint dot on the screen with
+            its name, while its hull, thrust and range read &ldquo;?&rdquo;. In most scenarios every enemy ship
+            starts as a blip.
           </p>
           <p>
-            Finding contacts is the sensor operator&apos;s job, and it happens by itself: at the end of each
-            round, every ship with its active sensors on rolls to find each ship it has not yet found.
+            A ship can shoot at, lock on to, or jam only the ships it has as contacts. Finding them is the sensor
+            operator&apos;s job, but it needs no order from them: at the end of each round, every ship with its
+            sensors <em>active</em> tries to find each ship it has not yet found that is closer than{" "}
+            <em>Distant</em> range (50,000 km).
           </p>
         </>
       ),
