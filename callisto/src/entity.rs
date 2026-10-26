@@ -1992,6 +1992,32 @@ impl Entities {
     observer.read().unwrap().detects(&target.read().unwrap())
   }
 
+  /// Drop the sensor locks of every ship running dark, as a round runs. A lock
+  /// is active illumination, which a dark ship is not doing; see
+  /// `Ship::set_emissions`.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  pub fn drop_locks_of_dark_ships(&mut self) -> Vec<EffectMsg> {
+    let mut names: Vec<&String> = self.ships.keys().collect();
+    names.sort();
+    names
+      .into_iter()
+      .filter_map(|name| {
+        let mut ship = self.ships[name].write().unwrap();
+        if ship.active_sensors || ship.sensor_locks.is_empty() {
+          return None;
+        }
+        ship.sensor_locks.clear();
+        Some(EffectMsg::about(
+          name,
+          MessageCategory::Detection,
+          "%s is running dark: its sensor locks are dropped.".to_string(),
+        ))
+      })
+      .collect()
+  }
+
   /// Whether `ship_name` is running its active sensors.
   ///
   /// # Panics
@@ -7276,9 +7302,9 @@ mod tests {
     assert!(seeker.sensor_locks.is_empty(), "the lock should go with the contact");
   }
 
-  /// Going dark drops locks but keeps contacts. High Guard p. 77 keeps
-  /// detection "maintained under most circumstances", while a lock is
-  /// deliberate illumination that a quiet ship is not performing.
+  /// Going dark drops locks but keeps contacts, when the round runs. High
+  /// Guard p. 77 keeps detection "maintained under most circumstances", while
+  /// a lock is deliberate illumination that a quiet ship is not performing.
   #[test]
   fn going_dark_drops_locks_but_keeps_contacts() {
     let mut entities = Entities::default();
@@ -7287,36 +7313,61 @@ mod tests {
       entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     }
     entities.establish_initial_contacts();
-    let alpha = entities.ships.get("Alpha").unwrap();
-    alpha.write().unwrap().sensor_locks.push("Bravo".to_string());
+    entities.ships["Alpha"].write().unwrap().sensor_locks.push("Bravo".to_string());
 
-    let dropped = alpha.write().unwrap().set_emissions(Some(false), None);
+    let at_stake = entities.ships["Alpha"].write().unwrap().set_emissions(Some(false), None);
+    assert!(at_stake, "going dark with a lock held should say the lock is at stake");
+    assert_eq!(
+      entities.ships["Alpha"].read().unwrap().sensor_locks,
+      vec!["Bravo".to_string()],
+      "the lock holds until the round runs"
+    );
 
-    assert!(dropped, "going dark should report that locks were dropped");
-    let alpha = alpha.read().unwrap();
+    let effects = entities.drop_locks_of_dark_ships();
+    assert_eq!(effects.len(), 1, "one ship lost its locks: {effects:?}");
+    let alpha = entities.ships["Alpha"].read().unwrap();
     assert!(!alpha.active_sensors);
-    assert!(alpha.sensor_locks.is_empty(), "locks should not survive going dark");
+    assert!(alpha.sensor_locks.is_empty(), "locks should not survive a round run dark");
     assert_eq!(alpha.contacts, vec!["Bravo".to_string()], "contacts should survive going dark");
   }
 
-  /// Only the transition to dark drops locks; coming back up, or setting the
-  /// state it already had, leaves them alone.
+  /// Turning the sensors off and back on before the round runs costs nothing:
+  /// the locks are only dropped from a ship still dark when it does.
   #[test]
-  fn only_going_dark_drops_locks() {
+  fn changing_your_mind_before_the_round_keeps_the_locks() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for name in ["Alpha", "Bravo"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    entities.establish_initial_contacts();
+    {
+      let mut alpha = entities.ships["Alpha"].write().unwrap();
+      alpha.sensor_locks.push("Bravo".to_string());
+      alpha.set_emissions(Some(false), None);
+      assert!(!alpha.set_emissions(Some(true), None), "coming back up puts nothing at stake");
+    }
+
+    assert_eq!(entities.drop_locks_of_dark_ships().len(), 0, "nothing to drop");
+    assert_eq!(entities.ships["Alpha"].read().unwrap().sensor_locks, vec!["Bravo".to_string()]);
+  }
+
+  /// Only going dark puts locks at stake; coming back up, or setting the state
+  /// it already had, does not.
+  #[test]
+  fn only_going_dark_puts_locks_at_stake() {
     let design = Arc::new(ShipDesignTemplate::default());
     let mut ship = Ship::new("Alpha".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     ship.sensor_locks.push("Bravo".to_string());
 
     assert!(
       !ship.set_emissions(Some(true), None),
-      "already-lit sensors should not drop locks"
+      "already-lit sensors put no locks at stake"
     );
-    assert_eq!(ship.sensor_locks.len(), 1);
-
-    assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
-    assert!(ship.sensor_locks.is_empty(), "the lock should be gone: {:?}", ship.sensor_locks);
-    // Already dark: nothing left to drop, so no second report.
+    assert!(ship.set_emissions(Some(false), None), "going dark should");
+    // Already dark: nothing new to report.
     assert!(!ship.set_emissions(Some(false), None));
+    assert_eq!(ship.sensor_locks.len(), 1, "setting emissions never drops a lock itself");
   }
 
   /// A ship running dark cannot take a new lock, contact or no contact.

@@ -2249,13 +2249,20 @@ impl Ship {
   /// `None` leaves a setting alone, so a caller can change one without knowing
   /// the other.
   ///
-  /// Shutting them down drops every sensor lock this ship holds. A lock is
-  /// deliberate, continuous illumination of a target - the Stealthed Ships
-  /// table charges DM+2 for "sensor locks, electronic warfare or other
-  /// deliberate use of active sensors" - so it cannot survive going quiet.
-  /// Contacts are kept: High Guard p. 77 has detection "maintained under most
-  /// circumstances" once established, and it is that asymmetry that makes going
-  /// dark a real choice rather than a free one. House rule; RAW does not say.
+  /// A ship still dark when the round runs loses every sensor lock it holds
+  /// (`Entities::drop_locks_of_dark_ships`). A lock is deliberate, continuous
+  /// illumination of a target - the Stealthed Ships table charges DM+2 for
+  /// "sensor locks, electronic warfare or other deliberate use of active
+  /// sensors" - so it cannot survive going quiet. Contacts are kept: High Guard
+  /// p. 77 has detection "maintained under most circumstances" once
+  /// established, and it is that asymmetry that makes going dark a real choice
+  /// rather than a free one. House rule; RAW does not say.
+  ///
+  /// The locks go when the round runs, not here: turning the sensors off and
+  /// back on again before then costs nothing.
+  ///
+  /// Returns whether this went dark with locks held, which will drop unless
+  /// the sensors are back on by the end of the round.
   pub fn set_emissions(&mut self, active_sensors: Option<bool>, transmitting: Option<bool>) -> bool {
     if let Some(transmitting) = transmitting {
       // Sharing a sensor picture means transmitting one. The client greys the
@@ -2270,12 +2277,7 @@ impl Ship {
 
     let going_dark = self.active_sensors && !active_sensors;
     self.active_sensors = active_sensors;
-
-    if going_dark && !self.sensor_locks.is_empty() {
-      self.sensor_locks.clear();
-      return true;
-    }
-    false
+    going_dark && !self.sensor_locks.is_empty()
   }
 
   /// Set possible pilot actions for the next round. These include allocating thrust to dodging as

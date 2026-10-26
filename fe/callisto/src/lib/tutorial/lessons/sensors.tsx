@@ -220,8 +220,8 @@ export const sensors: Lesson = {
             The three switches at the top of the card change how &ldquo;loud&rdquo; Killer is.{" "}
             <b>Active</b> means her <em>active sensors</em> are in use. You need them for two things: to make a
             new sensor contact, and to get a sensor lock. Turning them off is <em>running dark</em>. It makes you
-            harder to find, but you cannot make new contacts, and you drop every lock you hold. Contacts you
-            already have, you keep.
+            harder to find, but you cannot make new contacts, and every lock you hold drops when the round runs
+            (turn Active back on before then and you keep them). Contacts you already have, you keep.
           </p>
           <p>
             <b>Transmit</b> is the transponder and comms. It is very loud, and makes a ship much easier to find.{" "}

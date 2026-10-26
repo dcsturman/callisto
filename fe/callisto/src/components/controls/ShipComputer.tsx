@@ -655,6 +655,9 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
         <p className="plan-accel-text" data-tutorial="sensor-locks">
           Locks:{" "}
           {entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
+          {/* Running dark costs the locks when the round runs, not before:
+              turning Active back on in time keeps them. */}
+          {!activeSensors && " (lost when the round runs, unless Active is back on)"}
         </p>
       )}
     </div>
