@@ -452,6 +452,11 @@ impl Entities {
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
     dest.round = self.round;
+    // The scenario's own details travel with it: a game started from a file
+    // used to lose them, and with them its round limit, which is what the
+    // round counter and a held post's win both read.
+    dest.metadata.clone_from(&self.metadata);
+    dest.filename.clone_from(&self.filename);
 
     // Drop anything whose target has left play before resolving pointers. The
     // live state should never contain an orphan, but if it does, failing here
@@ -5831,6 +5836,22 @@ mod tests {
       }
     }
     assert!(checked > 0, "no ships with software found -- has the fixture moved?");
+  }
+
+  /// A game is a copy of its scenario, and keeps the scenario's details: its
+  /// name, description, owner, file, and round limit.
+  #[test_log::test(tokio::test)]
+  async fn a_copy_keeps_the_scenarios_details() {
+    config_test_ship_templates().await;
+    let name = "./scenarios/tutorial-9-scenario.json";
+    let bytes = fs::read(name).expect("the scenario lesson's scenario");
+    let mut scenario = Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+    scenario.filename = "tutorial-9-scenario.json".to_string();
+    assert_eq!(scenario.metadata.rounds, Some(8));
+
+    let game = scenario.deep_copy().unwrap();
+    assert_eq!(game.metadata, scenario.metadata);
+    assert_eq!(game.filename, "tutorial-9-scenario.json");
   }
 
   /// The missiles lesson opens with Raider's salvo already inbound, which

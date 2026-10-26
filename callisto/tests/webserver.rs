@@ -622,6 +622,64 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   send_quit(&mut stream).await;
 }
 
+/// Saving a scenario from the builder keeps its round limit: the save dialog
+/// does not edit it, and it used to be dropped on every save.
+#[test_log::test(tokio::test)]
+async fn integration_builder_save_keeps_round_limit() {
+  // The replies carry ships, which the test reads with the designs.
+  callisto::ship::config_test_ship_templates().await;
+  let port = get_next_port();
+  let (_root, scenario_dir, design_dir, _added) = setup_reloadable_test_files(port);
+  // A scenario with a round limit to open in the builder.
+  fs::copy(
+    "scenarios/tutorial-9-scenario.json",
+    PathBuf::from(&scenario_dir).join("tutorial-9-scenario.json"),
+  )
+  .unwrap();
+  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir), true)
+    .await
+    .unwrap();
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "SCENARIO-amber-river-lamp".to_string(),
+      scenario: "tutorial-9-scenario.json".to_string(),
+      ai_ships: None,
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::JoinedScenario(_)), "Expected to join, got {body:?}");
+  let _ = stream.next().await.unwrap();
+  drain_post_scenario_messages(&mut stream).await;
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::SaveScenario(SaveScenarioMsg {
+      name: "kept-limit".to_string(),
+      display_name: "Kept limit".to_string(),
+      description: "Still has its rounds.".to_string(),
+      force_overwrite: false,
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::ScenarioSaved(_)), "Expected a save, got {body:?}");
+
+  let saved: serde_json::Value =
+    serde_json::from_slice(&fs::read(PathBuf::from(&scenario_dir).join("kept-limit.json")).unwrap()).unwrap();
+  assert_eq!(
+    saved["metadata"]["rounds"],
+    json!(8),
+    "the round limit was dropped: {}",
+    saved["metadata"]
+  );
+  assert_eq!(saved["metadata"]["name"], json!("Kept limit"));
+
+  send_quit(&mut stream).await;
+}
+
 /// The tutorial's builder lesson ends with a save, and the player types the
 /// name: whatever they type, a save from a tutorial builder session must
 /// answer as a save does and write nothing.

@@ -1372,6 +1372,9 @@ impl Processor {
         name: display_label.clone(),
         description: save_msg.description.clone(),
         owner: user_email.clone(),
+        // The save dialog does not edit the round limit, so it goes back out
+        // as it came in. Leaving it to the default dropped it on every save.
+        rounds: entities.metadata.rounds,
         ..MetaData::default()
       };
       entities.filename.clone_from(&file_name);
