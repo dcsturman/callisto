@@ -8,6 +8,9 @@ export enum ViewMode {
   Captain,
   /** A team's commander: the referee's screen cut down to one team. */
   FleetCommand,
+  /** A squadron's commander: Fleet Command cut down to one squadron, seated
+   *  aboard one of its ships, the flagship. */
+  SquadronCommand,
 }
 
 export function stringToViewMode(role: string) {
@@ -28,6 +31,8 @@ export function stringToViewMode(role: string) {
       return ViewMode.Captain;
     case "FleetCommand":
       return ViewMode.FleetCommand;
+    case "SquadronCommand":
+      return ViewMode.SquadronCommand;
   }
 }
 
@@ -52,9 +57,11 @@ export const CUSTOMISABLE_ROLES: ViewMode[] = [
  */
 export const hasRole = (roles: ViewMode[], ...wanted: ViewMode[]): boolean =>
   wanted.some((w) => roles.includes(w)) ||
-  // A fleet commander works every station of the ship they have open, as the
-  // referee does.
-  ((roles.includes(ViewMode.General) || roles.includes(ViewMode.FleetCommand)) &&
+  // A fleet or squadron commander works every station of the ship they have
+  // open, as the referee does.
+  ((roles.includes(ViewMode.General) ||
+    roles.includes(ViewMode.FleetCommand) ||
+    roles.includes(ViewMode.SquadronCommand)) &&
     wanted.some((w) => w !== ViewMode.Observer));
 
 /**
@@ -73,12 +80,17 @@ export const hasRole = (roles: ViewMode[], ...wanted: ViewMode[]): boolean =>
 export const isReferee = (roles: ViewMode[], shipName: string | null): boolean =>
   shipName == null &&
   !roles.includes(ViewMode.Observer) &&
-  // A fleet commander holds a team's ships and says Ready for them.
-  !roles.includes(ViewMode.FleetCommand);
+  // A fleet or squadron commander holds ships and says Ready for them.
+  !roles.includes(ViewMode.FleetCommand) &&
+  !roles.includes(ViewMode.SquadronCommand);
 
 /** "Captain, Gunner" -- names in the order they were chosen. */
 export const rolesToString = (roles: ViewMode[]): string =>
-  roles.map((r) => (r === ViewMode.FleetCommand ? "Fleet Command" : ViewMode[r])).join(", ");
+  roles
+    .map((r) =>
+      r === ViewMode.FleetCommand ? "Fleet Command" : r === ViewMode.SquadronCommand ? "Squadron Command" : ViewMode[r],
+    )
+    .join(", ");
 
 /**
  * Roles as sent on the wire and stored. Accepts the older single-role shape

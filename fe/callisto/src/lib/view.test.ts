@@ -68,3 +68,12 @@ describe("wire shape", () => {
     expect(parseRoles(["not a role"])).toEqual([ViewMode.General]);
   });
 });
+
+describe("Squadron Command", () => {
+  test("says Ready for its squadron, works its ships' stations, and names itself", () => {
+    expect(isReferee([ViewMode.SquadronCommand], null)).toBe(false);
+    expect(hasRole([ViewMode.SquadronCommand], ViewMode.Pilot)).toBe(true);
+    expect(parseRoles(["SquadronCommand"])).toEqual([ViewMode.SquadronCommand]);
+    expect(rolesToString([ViewMode.SquadronCommand])).toBe("Squadron Command");
+  });
+});

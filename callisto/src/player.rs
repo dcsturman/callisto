@@ -13,9 +13,9 @@ use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetAiReport, SetOrders,
-  SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
-  ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, RenameSquadron, Role, SetAiReport,
+  SetOrders, SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning,
+  SetSquadron, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
@@ -402,6 +402,10 @@ impl PlayerManager {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
         if ship.team.is_some() {
+          if added.team != ship.team {
+            // A squadron belongs to its team.
+            added.squadron = None;
+          }
           added.team = ship.team;
         }
         if let Some(controller) = ship.controller {
@@ -600,12 +604,54 @@ impl PlayerManager {
       .write()
       .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
+    if ship.team != request.team {
+      // A squadron belongs to its team.
+      ship.squadron = None;
+    }
     ship.team = request.team;
     info!(
       "(PlayerManager.set_ship_team) {} is now on team {:?}.",
       request.ship_name, request.team
     );
     Ok("Set ship team executed".to_string())
+  }
+
+  /// Put ships in a squadron, or take them out: see [`Entities::set_squadron`].
+  ///
+  /// # Errors
+  /// Returns an error if a ship cannot be found, the ships are on different
+  /// teams, the name is unusable, or the squadron would be too big.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities, or if the server
+  /// has not yet been initialized.
+  pub fn set_squadron(&self, request: &SetSquadron) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    entities.set_squadron(&request.ships, request.squadron.as_deref())
+  }
+
+  /// Rename a team's squadron: see [`Entities::rename_squadron`].
+  ///
+  /// # Errors
+  /// Returns an error if there is no such squadron, the new name is unusable,
+  /// or another squadron on the team already has it.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities, or if the server
+  /// has not yet been initialized.
+  pub fn rename_squadron(&self, request: &RenameSquadron) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    entities.rename_squadron(request.team, &request.from, &request.to)
   }
 
   /// Hand a ship to the AI service, or take it back.

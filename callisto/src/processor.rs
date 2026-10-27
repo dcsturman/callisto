@@ -966,6 +966,8 @@ impl Processor {
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
       RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
+      RequestMsg::SetSquadron(request) => response_with_update(player, player.set_squadron(&request)),
+      RequestMsg::RenameSquadron(request) => response_with_update(player, player.rename_squadron(&request)),
       RequestMsg::SetShipController(request) => {
         if request.controller == Controller::Ai && !self.ai_crews_shown(player) {
           return vec![ResponseMsg::Error(

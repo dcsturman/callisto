@@ -141,6 +141,8 @@ export interface Ship extends Entity {
   handoff_sensors?: boolean;
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
+  /** The squadron she flies in, within her team. */
+  squadron?: string;
   /** Who gives the ship its orders. Absent means the people at its consoles. */
   controller?: Controller;
   /** Standing orders, in plain English. Absent means none. */
