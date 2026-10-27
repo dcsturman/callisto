@@ -4132,3 +4132,30 @@ h3.control-form {
     font-weight: normal;
     color: #9aa092;
 }
+
+/* The player's own choice of console columns (View panel, Columns), over
+   what the screen's width would give. Last, so it wins over the widths. */
+:root[data-columns="1"] {
+    --console-columns: 1;
+}
+
+:root[data-columns="2"] {
+    --console-columns: 2;
+}
+
+:root[data-columns="3"] {
+    --console-columns: 3;
+}
+
+/* Size and Columns in the View panel: menus as wide as their words, not
+   the 50px of a number box. */
+.screen-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 8px;
+}
+
+.screen-size select {
+    width: auto;
+}

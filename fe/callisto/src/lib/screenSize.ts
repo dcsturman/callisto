@@ -29,3 +29,30 @@ export function applyScreenSize(size: ScreenSize) {
     // Not remembered; it still applies now.
   }
 }
+
+/** How many console columns: Auto (by the screen's width), or 1, 2 or 3. */
+export type ConsoleColumns = "auto" | "1" | "2" | "3";
+
+const COLUMNS_KEY = "console-columns";
+
+export function savedColumns(): ConsoleColumns {
+  try {
+    const value = window.localStorage.getItem(COLUMNS_KEY);
+    return value === "1" || value === "2" || value === "3" ? value : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function applyColumns(columns: ConsoleColumns) {
+  if (columns === "auto") {
+    delete document.documentElement.dataset.columns;
+  } else {
+    document.documentElement.dataset.columns = columns;
+  }
+  try {
+    window.localStorage.setItem(COLUMNS_KEY, columns);
+  } catch {
+    // Not remembered; it still applies now.
+  }
+}

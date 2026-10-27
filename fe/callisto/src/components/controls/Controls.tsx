@@ -7,7 +7,14 @@ import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import * as THREE from "three";
 import { CornerPanel } from "lib/CornerPanel";
 import { SideView } from "components/controls/SideView";
-import { applyScreenSize, savedScreenSize, ScreenSize } from "lib/screenSize";
+import {
+  applyColumns,
+  applyScreenSize,
+  ConsoleColumns,
+  savedColumns,
+  savedScreenSize,
+  ScreenSize,
+} from "lib/screenSize";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
@@ -584,6 +591,7 @@ export function Controls() {
 
 export function ViewControls() {
   const [screenSize, setScreenSize] = useState<ScreenSize>(savedScreenSize);
+  const [columns, setColumns] = useState<ConsoleColumns>(savedColumns);
   const gravityWells = useAppSelector((state) => state.ui.gravityWells);
   const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
   const dispatch = useAppDispatch();
@@ -621,6 +629,22 @@ export function ViewControls() {
           <option value="auto">Auto</option>
           <option value="compact">Compact</option>
           <option value="full">Full</option>
+        </select>
+      </label>
+      <label className="screen-size" title="How many columns the console uses; Auto fits as many as the screen has room for">
+        Columns{" "}
+        <select
+          className="control-input"
+          value={columns}
+          onChange={(event) => {
+            const chosen = event.target.value as ConsoleColumns;
+            applyColumns(chosen);
+            setColumns(chosen);
+          }}>
+          <option value="auto">Auto</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
         </select>
       </label>
       <SideView />
