@@ -1266,7 +1266,9 @@ h3.control-form {
    their DM, that line is very wide indeed. */
 #results-window {
     width: 30rem;
-    max-width: 96vw;
+    /* Within the right-hand column, as Fleet Comms is. */
+    max-width: 100%;
+    box-sizing: border-box;
     max-height: 45vh;
     overflow-y: auto;
     overflow-x: hidden;
@@ -3764,7 +3766,10 @@ h3.control-form {
 /* The AI captains' reports, beside the results and shaped like them. */
 #fleet-comms {
     width: 30rem;
-    max-width: 96vw;
+    /* Never wider than the right-hand column it sits in: that column scrolls,
+       so anything wider is clipped at its left edge (26rem on a laptop). */
+    max-width: 100%;
+    box-sizing: border-box;
     max-height: 40vh;
     overflow-y: auto;
     overflow-x: hidden;
