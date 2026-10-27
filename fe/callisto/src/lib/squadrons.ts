@@ -31,3 +31,12 @@ export const teamSquadrons = (ships: Ship[], team: string | null | undefined): S
     .map(([name, members]) => ({ name, ships: members.sort() }))
     .sort((a, b) => a.name.localeCompare(b.name));
 };
+
+/** How many ships `team`'s squadron `name` would hold with `moving` put in
+ *  it: its ships and the movers, each counted once. */
+export const sizeAfterMove = (
+  ships: Ship[],
+  team: string | null | undefined,
+  name: string,
+  moving: string[],
+): number => new Set([...squadronShips(ships, team, name), ...moving]).size;

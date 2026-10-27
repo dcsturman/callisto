@@ -37,6 +37,7 @@ import { nextRound, setReady, setShipTeam } from "lib/serverManager";
 import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { squadronShips } from "lib/squadrons";
 import { SquadronPicker } from "components/controls/SquadronPicker";
+import { SquadronsPanel } from "components/controls/SquadronsPanel";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
@@ -232,6 +233,7 @@ function ScenarioBuilderControls(args: {
       <AddPlanet />
       <hr />
       <EntityList />
+      <SquadronsPanel />
       <button
         type="button"
         className="control-button blue-button save-scenario-anchor"
@@ -336,6 +338,11 @@ export function Controls() {
           <AddShip />
           <hr />
         </>
+      )}
+      {/* Organising the fleet from the top down: the referee any team, a
+          fleet commander their own. */}
+      {(isReferee(roles, shipName) || fleetTeam != null) && entities.ships.length > 0 && (
+        <SquadronsPanel onlyTeam={fleetTeam} />
       )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true} tutorial="ship-dossier">
         {/* A squadron's commander sits aboard her flagship but may open any

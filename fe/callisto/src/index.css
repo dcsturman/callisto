@@ -277,6 +277,94 @@ select.control-input,
     row-gap: 2px;
 }
 
+/* Squadrons panel: a team's ships grouped by squadron, ticked and moved. */
+.squadrons-team {
+    margin-bottom: 6px;
+}
+
+.squadrons-group {
+    margin-bottom: 6px;
+}
+
+.squadrons-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: bold;
+}
+
+.squadrons-group-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.squadrons-count,
+.squadrons-design {
+    font-weight: normal;
+    opacity: 0.7;
+}
+
+.squadrons-link {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0 2px;
+    font: inherit;
+    font-weight: normal;
+}
+
+.squadrons-ships {
+    list-style: none;
+    margin: 2px 0 0 0;
+    padding: 0 0 0 18px;
+    /* A hundred ships stay inside the panel. */
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.squadrons-ships label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.squadrons-ship-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.squadrons-design {
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.squadrons-move {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.squadrons-problem {
+    color: #f08080;
+    margin: 4px 0 0 0;
+}
+
+.squadrons-empty {
+    opacity: 0.7;
+    margin: 0;
+}
+
 /* Scenario-builder entity list (ships + planets) */
 .entity-list {
     margin-top: 8px;
