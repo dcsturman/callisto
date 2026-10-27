@@ -114,7 +114,7 @@ export const fleet: Lesson = {
       ),
       task: (
         <>
-          Choose <b>Fleet Command (Blue)</b> in the seat menu.
+          Choose <b>Fleet Command (Blue)</b> in the seat menu, in the session panel in the bottom corner.
         </>
       ),
       done: (now) => now.user.fleetTeam === "Blue",

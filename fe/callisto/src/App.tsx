@@ -165,6 +165,64 @@ function Simulator() {
   // bottom corner, whose height changes with its user list: on a short screen
   // they otherwise ran down behind it and the two drew over each other.
   const adminWindow = React.useRef<HTMLDivElement>(null);
+
+  // The session panel folds to one line: the game and who is in it. Folded to
+  // start with on a laptop-sized screen; the player's choice is remembered.
+  const [sessionOpen, setSessionOpen] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("session-panel-open");
+      if (saved != null) return saved === "1";
+    } catch {
+      // No storage: fall through to the default.
+    }
+    return window.innerWidth >= 1600;
+  });
+  const toggleSession = () => {
+    setSessionOpen((open) => {
+      try {
+        window.localStorage.setItem("session-panel-open", open ? "0" : "1");
+      } catch {
+        // Not remembered.
+      }
+      return !open;
+    });
+  };
+
+  // Tab hides every panel, to see the battle, and Tab brings them back. Not
+  // while typing or choosing from a menu, where Tab means the next field;
+  // Shift+Tab is left alone for anyone moving through the controls by key.
+  const [panelsHidden, setPanelsHidden] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      const focus = document.activeElement as HTMLElement | null;
+      const typing =
+        focus != null &&
+        (focus.tagName === "INPUT" ||
+          focus.tagName === "TEXTAREA" ||
+          focus.tagName === "SELECT" ||
+          focus.isContentEditable);
+      if (typing) return;
+      event.preventDefault();
+      setPanelsHidden((hidden) => !hidden);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // How many cards the console holds, for its CSS: it uses no more columns
+  // than it has cards. Counted from the DOM, since the station cards come and
+  // go with the roles and ship, which this component does not re-render for.
+  const consoleRef = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = consoleRef.current;
+    if (element == null) return undefined;
+    const count = () => element.style.setProperty("--console-cards", String(Math.max(1, element.children.length)));
+    count();
+    const observer = new MutationObserver(count);
+    observer.observe(element, { childList: true });
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const element = adminWindow.current;
     if (element == null || typeof ResizeObserver === "undefined") {
@@ -183,7 +241,12 @@ function Simulator() {
 
   return (
     <>
-      <div className="mainscreen-container">
+      <div className={panelsHidden ? "mainscreen-container panels-hidden" : "mainscreen-container"}>
+        {panelsHidden && (
+          <div className="panels-hidden-note" role="status">
+            Panels hidden. Press <kbd>Tab</kbd> to show them.
+          </div>
+        )}
         {/* A scenario being built has no winner to announce. A lesson does:
             seeing the real screen teaches it better than describing it. */}
         {joinedScenario && !scenarioBuilderMode && <VictoryScreen />}
@@ -192,7 +255,7 @@ function Simulator() {
             when the first is full. Screen space is the scarce thing on a
             laptop, and the old layout reserved a column whether it had
             anything to put in it or not. */}
-        <div className="console">
+        <div className="console" ref={consoleRef}>
           {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
           {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
             <Stations ship={computerShip} />
@@ -225,21 +288,39 @@ function Simulator() {
         </div>
         <div className="admin-button-window" ref={adminWindow} data-tutorial="session-panel">
           <h2>
-            {joinedScenario &&
-              (tutorialMode
-                ? "Tutorial"
-                : scenarioBuilderMode
-                  ? `Scenario Builder`
-                  : joinedScenario)}
+            <button
+              type="button"
+              className="session-toggle"
+              aria-expanded={sessionOpen}
+              title={sessionOpen ? "Fold the session panel" : "Show who is playing, your seat, and Exit"}
+              onClick={toggleSession}>
+              {sessionOpen ? "\u25BE" : "\u25B8"}{" "}
+              {joinedScenario &&
+                (tutorialMode
+                  ? "Tutorial"
+                  : scenarioBuilderMode
+                    ? `Scenario Builder`
+                    : joinedScenario)}
+              {!sessionOpen && (
+                <span className="session-count">
+                  {" "}
+                  · {users.length} {users.length === 1 ? "player" : "players"}
+                </span>
+              )}
+            </button>
           </h2>
-          <Users users={users} email={email} ships={entities.ships} />
-          {!scenarioBuilderMode && <RoleChooser />}
-          <div className="reset-and-logout-buttons">
-            <Exit email={email} />
-            {isReferee(roles, shipName) && (
-              <ResetButton appMode={appMode} />
-            )}
-          </div>
+          {sessionOpen && (
+            <>
+              <Users users={users} email={email} ships={entities.ships} />
+              {!scenarioBuilderMode && <RoleChooser />}
+              <div className="reset-and-logout-buttons">
+                <Exit email={email} />
+                {isReferee(roles, shipName) && (
+                  <ResetButton appMode={appMode} />
+                )}
+              </div>
+            </>
+          )}
         </div>
         <Canvas
           style={{ position: "absolute" }}

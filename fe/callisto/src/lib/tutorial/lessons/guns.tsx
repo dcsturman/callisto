@@ -144,7 +144,7 @@ export const guns: Lesson = {
       body: (
         <p>
           The Results window lists every roll of the round: hit or miss, the Effect, the damage. Beowulf&apos;s
-          hull shows how much she has left in the Ships panel. Press <b>Okay!</b> to close it.
+          hull shows how much she has left in the Ships panel. If it shows as one line, click <b>Results</b> to open it. Press <b>Okay!</b> to close it.
         </p>
       ),
     },

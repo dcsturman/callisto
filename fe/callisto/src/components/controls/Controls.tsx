@@ -7,6 +7,7 @@ import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import * as THREE from "three";
 import { CornerPanel } from "lib/CornerPanel";
 import { SideView } from "components/controls/SideView";
+import { applyScreenSize, savedScreenSize, ScreenSize } from "lib/screenSize";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
@@ -582,6 +583,7 @@ export function Controls() {
 }
 
 export function ViewControls() {
+  const [screenSize, setScreenSize] = useState<ScreenSize>(savedScreenSize);
   const gravityWells = useAppSelector((state) => state.ui.gravityWells);
   const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
   const dispatch = useAppDispatch();
@@ -605,6 +607,21 @@ export function ViewControls() {
           onChange={() => dispatch(setJumpDistance(!jumpDistance))}
         />{" "}
         100 Diameter Limit
+      </label>
+      <label className="screen-size" title="Auto is compact on a laptop-sized screen and full on a big one">
+        Size{" "}
+        <select
+          className="control-input"
+          value={screenSize}
+          onChange={(event) => {
+            const size = event.target.value as ScreenSize;
+            applyScreenSize(size);
+            setScreenSize(size);
+          }}>
+          <option value="auto">Auto</option>
+          <option value="compact">Compact</option>
+          <option value="full">Full</option>
+        </select>
       </label>
       <SideView />
       {/* Collapsed by default: this is reference material, not a control, and
@@ -643,6 +660,10 @@ export function ViewControls() {
           <dd>faster</dd>
           <dt>drag</dt>
           <dd>look</dd>
+          <dt>
+            <kbd>Tab</kbd>
+          </dt>
+          <dd>hide or show the panels</dd>
         </dl>
       </Accordion>
     </CornerPanel>

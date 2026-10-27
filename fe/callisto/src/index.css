@@ -36,6 +36,66 @@ body {
     --font-md: 10.5pt;
     --font-lg: 12pt;
     --font-xl: 18pt;
+
+    /* Layout. A card is --card-width wide; the console has as many columns
+       as the screen allows, beside a right-hand column of --right-column. */
+    --card-width: 310px;
+    --right-column: 31rem;
+    --console-columns: 3;
+    --control-height: 26px;
+}
+
+/* Fewer console columns where three will not fit beside the right-hand
+   column: two, then one. */
+@media (max-width: 1449px) {
+    :root {
+        --console-columns: 2;
+    }
+}
+
+@media (max-width: 1129px) {
+    :root {
+        --console-columns: 1;
+    }
+}
+
+/* Compact: smaller text, cards and controls. On by itself below 1600px wide
+   (a laptop), unless the player has chosen Full; on anywhere if they chose
+   Compact (View panel, Size). Compact cards fit three columns from 1250px. */
+@media (max-width: 1599px) {
+    :root:not([data-size="full"]) {
+        --font-xs: 7.5pt;
+        --font-sm: 8pt;
+        --font-md: 9.5pt;
+        --font-lg: 10.5pt;
+        --font-xl: 14pt;
+        --card-width: 272px;
+        --right-column: 26rem;
+        --control-height: 22px;
+    }
+}
+
+@media (max-width: 1599px) and (min-width: 1250px) {
+    :root:not([data-size="full"]) {
+        --console-columns: 3;
+    }
+}
+
+@media (max-width: 1249px) and (min-width: 972px) {
+    :root:not([data-size="full"]) {
+        --console-columns: 2;
+    }
+}
+
+:root[data-size="compact"] {
+    --font-xs: 7.5pt;
+    --font-sm: 8pt;
+    --font-md: 9.5pt;
+    --font-lg: 10.5pt;
+    --font-xl: 14pt;
+    --card-width: 272px;
+    --right-column: 26rem;
+    --control-height: 22px;
 }
 
 h1 {
@@ -92,27 +152,30 @@ input {
    the cards a second one beside it -- two reserved columns for what is often
    one column of content, on a screen where that space is the scarce thing. */
 .console {
-    display: flex;
-    flex-direction: column;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 4px;
-    height: 100vh;
-    /* Only as wide as the columns it actually uses. */
-    width: max-content;
-    /* Three columns, and never underneath the top-right stack.
-       A column is 310px and the gap 4px, so three come to 938. Past the
-       third the console keeps wrapping and the extra columns are scrolled
-       to -- which is visible, since the scrollbar is drawn.
-       The stack is `position: fixed`, and the console used to run straight
-       under it: a fourth column landed beneath the Ships window with both
-       drawn on top of each other. 31rem clears the widest panel in it, the
-       results window at 30rem. The floor keeps one whole column on a narrow
-       window rather than squeezing it. */
-    max-width: min(938px, max(314px, calc(100vw - 31rem)));
-    overflow: auto;
+    /* Columns, by the room the screen has: 3, 2 or 1 (--console-columns,
+       set below), and no more than there are cards to fill them
+       (--console-cards, counted by App). The cards flow down each column in
+       turn, and the console scrolls down rather than sideways. */
+    --console-used: min(var(--console-columns), var(--console-cards, 1));
+    column-count: var(--console-used);
+    column-gap: 4px;
+    width: calc(var(--console-used) * var(--card-width) + (var(--console-used) - 1) * 4px);
+    /* Never under the right-hand column, whatever the screen. */
+    max-width: max(var(--card-width), calc(100vw - var(--right-column) - 8px));
+    max-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
     position: relative;
     z-index: 10;
+}
+
+/* A card stays whole in its column, with the gap below it, and takes the
+   column's width: a tight screen narrows the cards rather than overlapping
+   them. */
+.console > * {
+    break-inside: avoid;
+    margin-bottom: 4px;
+    width: auto !important;
 }
 
 /* The console scrolls sideways once the cards need more columns than the
@@ -153,7 +216,7 @@ input {
     /* Takes the height of what is in it, so cards follow it down the column
        rather than starting after a full-height pane. */
     flex: 0 0 auto;
-    width: 310px;
+    width: var(--card-width);
     border: 1px solid #b6bcae;
     background-color: black;
     color-scheme: dark;
@@ -163,7 +226,7 @@ input {
     margin: 2px;
     padding: 2px 4px;
     width: 50px;
-    height: 26px;
+    height: var(--control-height);
     box-sizing: border-box;
     border-radius: 3px;
     color: black;
@@ -279,7 +342,7 @@ select.control-input,
 }
 
 .control-button {
-    height: 26px;
+    height: var(--control-height);
     width: 100%;
     font-size: var(--font-sm);
 }
@@ -454,6 +517,8 @@ select.control-input,
     position: fixed;
     top: 0;
     right: 0px;
+    width: var(--right-column);
+    max-width: 100vw;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -3466,7 +3531,7 @@ h3.control-form {
 .station-card {
     box-sizing: border-box;
     flex: 0 0 auto;
-    width: 310px;
+    width: var(--card-width);
     border: 1px solid #b6bcae;
     background-color: rgba(0, 0, 0, 0.85);
     /* A card taller than the screen scrolls inside itself rather than
@@ -3533,7 +3598,7 @@ h3.control-form {
 }
 
 .stations-note {
-    width: 310px;
+    width: var(--card-width);
     margin: 0;
     padding: 2px 6px;
     font-size: var(--font-xs);
@@ -3962,4 +4027,102 @@ h3.control-form {
 .direction-to-buttons {
     display: flex;
     gap: 4px;
+}
+
+/* Everything in the right-hand column fits its width, scrolling sideways
+   inside itself if it must, so nothing spills over the console. */
+.top-right-stack > * {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* View and Ships share a row where they fit, and stack where they do not. */
+.top-right-row {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+#ships-panel {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* Tab: every panel out of the way, to see the battle. Hidden, not removed,
+   so each comes back as it was. */
+.panels-hidden .console,
+.panels-hidden .top-right-stack,
+.panels-hidden .admin-button-window {
+    display: none;
+}
+
+.panels-hidden-note {
+    position: fixed;
+    left: 8px;
+    bottom: 8px;
+    z-index: 20;
+    padding: 3px 8px;
+    border: 1px solid #4b5a6b;
+    border-radius: 3px;
+    background: rgba(10, 13, 16, 0.8);
+    color: #c8cdc1;
+    font-size: var(--font-sm);
+    pointer-events: none;
+}
+
+/* The session panel's heading folds it: the game's name, and how many are in
+   it while folded. */
+.session-toggle {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    text-align: left;
+}
+
+.session-toggle:focus-visible {
+    outline: 1px solid currentColor;
+}
+
+.session-count {
+    font-size: var(--font-sm);
+    color: #9aa092;
+    font-weight: normal;
+}
+
+/* Results folded to one line: the heading, and Okay! beside it. */
+.results-folded {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.results-folded h1 {
+    flex: 1;
+    margin: 0;
+}
+
+.results-folded .results-dismiss {
+    width: auto;
+    position: static;
+}
+
+.results-toggle {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+}
+
+.results-toggle:focus-visible {
+    outline: 1px solid currentColor;
+}
+
+.results-summary {
+    font-size: var(--font-sm);
+    font-weight: normal;
+    color: #9aa092;
 }

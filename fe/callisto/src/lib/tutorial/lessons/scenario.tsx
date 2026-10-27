@@ -35,7 +35,8 @@ export const scenario: Lesson = {
       target: ["session-panel"],
       body: (
         <p>
-          The session panel in the corner shows the game&apos;s name, who else is playing, and your <b>seat</b>.
+          The session panel in the bottom corner shows the game&apos;s name, who else is playing, and your{" "}
+          <b>seat</b>. On a smaller screen it starts folded to one line: click the game&apos;s name to open it.
           The GM seat sees and works everything, and ends the rounds. Everyone else takes a ship.
         </p>
       ),
@@ -47,7 +48,7 @@ export const scenario: Lesson = {
       body: <p>Taking a ship gives you its console, and its crew&apos;s view of the battle: only what they have found.</p>,
       task: (
         <>
-          Choose <em>Killer</em> in the seat menu.
+          Choose <em>Killer</em> in the seat menu (open the session panel first if it is folded).
         </>
       ),
       done: (now) => now.user.shipName === "Killer",

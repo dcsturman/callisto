@@ -1,4 +1,5 @@
 import * as React from "react";
+import { applyScreenSize, savedScreenSize } from "lib/screenSize";
 import ReactDOM from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import { Provider } from "react-redux";
@@ -58,6 +59,9 @@ function SomethingWentWrong() {
     </div>
   );
 }
+
+// The interface size the player chose, before anything is drawn.
+applyScreenSize(savedScreenSize());
 
 const root = ReactDOM.createRoot(
   document.getElementById("root") as HTMLElement
