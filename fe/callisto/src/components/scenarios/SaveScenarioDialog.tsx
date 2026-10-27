@@ -1,6 +1,8 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { saveScenario, SaveScenarioResult } from "lib/serverManager";
+import { TUTORIAL_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
+import { useAppSelector } from "state/hooks";
 
 interface SaveScenarioDialogProps {
   initialName: string;          // on-disk filename (e.g. "planetfun.json")
@@ -32,6 +34,10 @@ export function SaveScenarioDialog({
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [description, setDescription] = useState(initialDescription);
   const [state, setState] = useState<DialogState>({ kind: "editing" });
+  // In the tutorial's builder the server checks a save but writes nothing.
+  const practice = useAppSelector(
+    (s) => s.user.joinedScenario?.startsWith(TUTORIAL_BUILDER_PREFIX) ?? false,
+  );
 
   useEffect(() => {
     if (state.kind !== "saved") return;
@@ -82,7 +88,11 @@ export function SaveScenarioDialog({
       <div className="save-scenario-dialog">
         <h2>Save Scenario</h2>
         {state.kind === "saved" ? (
-          <p>Saved as <code>{state.filename}</code>.</p>
+          practice ? (
+            <p>Checked. This is the tutorial, so it was not kept.</p>
+          ) : (
+            <p>Saved as <code>{state.filename}</code>.</p>
+          )
         ) : state.kind === "confirm-overwrite" ? (
           <>
             <p>

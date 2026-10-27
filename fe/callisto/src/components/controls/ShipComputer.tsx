@@ -1,4 +1,5 @@
 import * as React from "react";
+import { DirectionTo } from "components/controls/DirectionTo";
 import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
@@ -264,7 +265,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
     }
     return (
       <>
-        <div className="pilot-actions-row">
+        <div className="pilot-actions-row" data-tutorial="pilot-evade">
           <label className="control-label">Evade</label>
           <input
             className="control-input"
@@ -292,9 +293,11 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
       {pilotActions()}
       <>
           {accelerationManager()}
+          <DirectionTo ship={ship} />
           <hr />
           <button
             className="control-input control-button blue-button"
+            data-tutorial="full-stop"
             onClick={() => {
               setNavigationTarget({
                 p_x: ship.position[0],
@@ -314,7 +317,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
           </button>
           <hr />
           <SectionTag icon={<FaCompass />}>Navigation</SectionTag>
-          <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
+          <form className="target-entry-form" onSubmit={handleNavigationSubmit} data-tutorial="nav-target">
             <label className="control-label" style={{display: "flex"}}>
               Nav Target:
               <EntitySelector
@@ -436,7 +439,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
             />
           </form>
           {proposedPlan && (
-            <div id="proposed-plan-region">
+            <div id="proposed-plan-region" data-tutorial="proposed-plan">
               <h2 className="control-form">Proposed Plan</h2>
               <NavigationPlan plan={proposedPlan.plan} />
               <button
@@ -550,8 +553,8 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
   const handoff = ship.handoff_sensors === true;
 
   return (
-    <div className="control-label">
-      <div className="emissions-row">
+    <div className="control-label" data-tutorial="sensor-orders">
+      <div className="emissions-row" data-tutorial="sensor-emissions-toggles">
         <label className="emissions-toggle" title="Active radar/lidar. Running dark keeps the contacts you already hold but acquires nothing new, drops your sensor locks, and stops handing opponents DM+2 to find you.">
           <input
             type="checkbox"
@@ -601,6 +604,7 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
       </div>
       <select
         className="sensor-action-select control-input "
+        data-tutorial="sensor-action"
         value={sensorActionToString(currentSensor)}
         onChange={handleSensorActionChange}>
         <option value="none"></option>
@@ -650,9 +654,12 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, o
           ))}
       </select>
       {ship.sensor_locks.length > 0 && (
-        <p className="plan-accel-text">
+        <p className="plan-accel-text" data-tutorial="sensor-locks">
           Locks:{" "}
           {entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
+          {/* Running dark costs the locks when the round runs, not before:
+              turning Active back on in time keeps them. */}
+          {!activeSensors && " (lost when the round runs, unless Active is back on)"}
         </p>
       )}
     </div>

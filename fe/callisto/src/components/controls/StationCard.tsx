@@ -20,6 +20,8 @@ export function StationCard(args: {
   crew?: string;
   /** Folded away to its heading. Stations start open. */
   initialOpen?: boolean;
+  /** The `data-tutorial` marker the tutorial points at this card by. */
+  tutorial?: string;
   /**
    * Move this card one place earlier or later in the console.
    *
@@ -33,7 +35,9 @@ export function StationCard(args: {
   const [open, setOpen] = useState(args.initialOpen ?? true);
 
   return (
-    <section className={open ? "station-card" : "station-card station-card-closed"}>
+    <section
+      className={open ? "station-card" : "station-card station-card-closed"}
+      data-tutorial={args.tutorial}>
       {/* A row rather than one button, because the arrows are buttons too
           and a button cannot live inside a button. */}
       <div className="station-card-head-row">

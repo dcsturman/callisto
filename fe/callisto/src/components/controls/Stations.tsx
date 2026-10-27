@@ -137,6 +137,12 @@ export function Stations(args: {ship: Ship}) {
           {/* Everything queued this round, with the boost ticks beside it:
               the captain is the one person whose job is the whole round. */}
           <QueuedOrders ship={args.ship} />
+          {/* The computer is the captain's: what it runs (Evade, Fire
+              Control, Jump Control, hand-offs) serves every station, so it
+              belongs with whoever commands them all, and gives the captain
+              something to do between Leadership rolls. */}
+          <SectionTag icon={<GiProcessor />}>Computer</SectionTag>
+          <ComputerBoard ship={args.ship} />
         </>
       ),
     });
@@ -196,9 +202,9 @@ export function Stations(args: {ship: Ship}) {
 
   if (hasRole(roles, ViewMode.Engineer)) {
     // One card per engineer for their orders, and the ship's boards on the
-    // first of them: power, damage, computer and jump belong to the ship
-    // rather than to one of its engineers, the way the sensop's
-    // instruments hang off the first operator's card.
+    // first of them: power, damage and jump belong to the ship rather than
+    // to one of its engineers, the way the sensop's instruments hang off the
+    // first operator's card. The computer is the captain's.
     for (const engineer of crewSlots(engineers.length)) {
       cards.push({
         id: `engineer-${engineer}`,
@@ -212,10 +218,6 @@ export function Stations(args: {ship: Ship}) {
                 <PowerBoard ship={args.ship} />
                 <SectionTag icon={<GiSpanner />}>Damage control</SectionTag>
                 <DamageBoard ship={args.ship} />
-                {/* The computer is a budget like the power plant, and the
-                    two read side by side. */}
-                <SectionTag icon={<GiProcessor />}>Computer</SectionTag>
-                <ComputerBoard ship={args.ship} />
                 {/* Only says anything on a ship with a jump drive. */}
                 <SectionTag icon={<GiJumpAcross />}>Jump</SectionTag>
                 <JumpBoard ship={args.ship} />
@@ -239,6 +241,7 @@ export function Stations(args: {ship: Ship}) {
             key={card.id}
             title={look.title}
             icon={look.icon}
+            tutorial={`station-${card.id.replace(/-\d+$/, "")}`}
             crew={cardCrew(card.id, args.ship, operators, engineers)}
             onMoveUp={
               index === 0

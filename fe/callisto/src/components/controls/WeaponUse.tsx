@@ -397,6 +397,7 @@ function CalledShotMenu(args: {
 
   return (
     <select
+      data-tutorial="called-shot"
       className="called-shot-menu"
       name="called_shot_system"
       value={system ? system : "No called shot"}
@@ -694,7 +695,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
 
   return (
     <>
-      <div className="control-launch-div">
+      <div className="control-launch-div" data-tutorial="fire-target">
         target:
         <EntitySelector
           id={"fire-target"}
@@ -708,9 +709,11 @@ export const FireControl: React.FC<FireControlProps> = () => {
           excludeSameTeam
         />
       </div>
-      <div className="weapon-list">{weaponButtons}</div>
+      <div className="weapon-list" data-tutorial="weapon-buttons">
+        {weaponButtons}
+      </div>
       {passiveDefences.length > 0 && (
-        <div className="weapon-passive-list">
+        <div className="weapon-passive-list" data-tutorial="automatic-defences">
           <span className="weapon-passive-label">Automatic:</span>{" "}
           {passiveDefences.join(", ")}
         </div>
@@ -1014,7 +1017,7 @@ export function Actions(args: {
       title = "Boost this action with leadership";
     }
     return (
-      <span className="boost-checkbox-cell">
+      <span className="boost-checkbox-cell" data-tutorial="boost-checkbox">
         <input
           type="checkbox"
           className="boost-checkbox"
@@ -1109,7 +1112,7 @@ export function Actions(args: {
   const crewTag = (index: number, count: number) => (count > 1 ? `#${index + 1} ` : "");
 
   return (
-    <div className="control-form">
+    <div className="control-form" data-tutorial="captain-actions">
       <h2>Actions</h2>
       {showBoostCheckbox && (
         <div className="actions-column-header">
@@ -1277,7 +1280,7 @@ export function Actions(args: {
 
         // Point defence is lasers only (High Guard p. 30).
         return isLaserKind(kind) ? (
-          <div className="fire-actions-div" key={index + "_pd_img"}>
+          <div className="fire-actions-div" key={index + "_pd_img"} data-tutorial="point-defense-order">
             <div onClick={() => onClick(action.weapon_id)}>
               <p>
                 <RayIcon

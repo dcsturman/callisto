@@ -804,7 +804,9 @@ pub struct ScenarioLoadErrorMsg {
 pub enum ResponseMsg {
   AuthResponse(AuthResponse),
   DesignTemplateResponse(ShipDesignTemplateMsg),
-  EntityResponse(Entities),
+  // Boxed: the game's state is by far the largest response, and every
+  // other message would otherwise be as big as it.
+  EntityResponse(Box<Entities>),
   FlightPath(FlightPathMsg),
   Effects(EffectsMsg),
   Users(Vec<UserData>),

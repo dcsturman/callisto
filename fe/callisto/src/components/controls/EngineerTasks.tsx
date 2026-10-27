@@ -133,7 +133,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship, engineer = 0
   };
 
   return (
-    <div className="engineer-tasks">
+    <div className="engineer-tasks" data-tutorial="engineer-orders">
       <select
         className="control-input"
         value={selectedValue}

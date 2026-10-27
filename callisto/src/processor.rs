@@ -151,6 +151,42 @@ pub fn is_scenario_builder(scenario_id: &str) -> bool {
   scenario_id.starts_with(SCENARIO_BUILDER_PREFIX)
 }
 
+/// The prefix of the builder sessions the tutorial starts: a builder session,
+/// marked as the tutorial's. Mirrors `TUTORIAL_BUILDER_PREFIX` in the
+/// frontend's `ScenarioManager.tsx`.
+pub const TUTORIAL_BUILDER_PREFIX: &str = "SCENARIO-$TUTORIAL-";
+
+/// Whether a builder session is the tutorial's. Saving from one checks the
+/// scenario and answers as a save does, but writes nothing: the player types
+/// the name, and a practice save must never become a real scenario.
+#[must_use]
+pub fn is_tutorial_builder(scenario_id: &str) -> bool {
+  scenario_id.starts_with(TUTORIAL_BUILDER_PREFIX)
+}
+
+/// Why a save may not replace the file already at `full_path`, if it may
+/// not: someone else owns it, or the player has not said to overwrite it.
+async fn refuse_to_overwrite(full_path: &str, user_email: &str, force_overwrite: bool) -> Option<ResponseMsg> {
+  // Only the owner is read, so the file needs no ship templates to parse.
+  #[derive(serde::Deserialize)]
+  struct ExistingMeta {
+    #[serde(default)]
+    metadata: MetaData,
+  }
+
+  let existing_bytes = read_local_or_cloud_file(full_path).await.ok()?;
+  let existing = serde_json::from_slice::<ExistingMeta>(&existing_bytes).ok()?;
+  let existing_owner = existing.metadata.owner;
+  // Empty owner = pre-ownership scenario; treat as orphaned and allow takeover.
+  if !existing_owner.is_empty() && existing_owner != user_email {
+    return Some(ResponseMsg::Error(format!("NOT_OWNER:{existing_owner}")));
+  }
+  if !force_overwrite {
+    return Some(ResponseMsg::Error("SCENARIO_EXISTS".to_string()));
+  }
+  None
+}
+
 impl Processor {
   /// Build a new processor.
   ///
@@ -227,6 +263,29 @@ impl Processor {
 
   /// Tell the AI service about any change to which ships in this scenario it
   /// should be crewing. Cheap when nothing changed: one pass over the ships.
+  /// A connection has gone. A person's seat waits for them to reconnect, but
+  /// a service's never does: the AI service does not come back for a crew it
+  /// has released. So a service leaves its game, and the game's other players
+  /// are sent the Users list without it, rather than seeing it there for good.
+  async fn leave_if_service(&mut self, leaving: &Connection, connections: &mut [Connection]) {
+    if !leaving.player.is_service() {
+      return;
+    }
+    let (Some(server), Some(session_key)) = (leaving.player.server.clone(), leaving.player.get_session_key()) else {
+      return;
+    };
+    self.members.remove(server.get_id(), &session_key);
+    let users = ResponseMsg::Users(self.members.get_user_context(server.get_id()));
+    let text: Utf8Bytes = serde_json::to_string(&users).expect("Failed to serialize users").into();
+    for connection in connections.iter_mut() {
+      if connection.player.server.as_ref() == Some(&server) {
+        connection.stream.send(Message::Text(text.clone())).await.unwrap_or_else(|e| {
+          error!("(leave_if_service) Failed to send users: {e:?}");
+        });
+      }
+    }
+  }
+
   fn reconcile_ai_crews(&mut self, server: Option<&Arc<Server>>) {
     let (Some(client), Some(server)) = (&self.ai_service, server) else {
       return;
@@ -525,7 +584,8 @@ impl Processor {
             }
           });
           // Mark this stream for deletion
-          connections.remove(index);
+          let leaving = connections.remove(index);
+          self.leave_if_service(&leaving, &mut connections).await;
           debug!("(processor) Removed connection.  Now {} connections.", connections.len());
         }
         ActiveProcessorEvent::Message(Some((index, Some(res)))) => {
@@ -533,7 +593,8 @@ impl Processor {
         }
         ActiveProcessorEvent::Message(Some((index, None))) => {
           info!("(processor) Connection {index} disconnected.  Removing.");
-          connections.remove(index);
+          let leaving = connections.remove(index);
+          self.leave_if_service(&leaving, &mut connections).await;
         }
         ActiveProcessorEvent::Message(None) => {
           warn!("(processor) Strange response from message stream.  Exiting.");
@@ -767,7 +828,10 @@ impl Processor {
         if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
           log.round(resolved.round, &resolved.effects, &entities);
         }
-        let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
+        let mut msgs = vec![
+          ResponseMsg::Effects(resolved),
+          ResponseMsg::EntityResponse(Box::new(entities)),
+        ];
         if let Some(server_id) = server_id {
           msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
         }
@@ -954,7 +1018,7 @@ impl Processor {
         match player.clone_entities() {
           Ok(entities) => vec![
             ResponseMsg::CaptainActionResult(result),
-            ResponseMsg::EntityResponse(entities),
+            ResponseMsg::EntityResponse(Box::new(entities)),
           ],
           Err(e) => entity_clone_failure_response(&e),
         }
@@ -1187,7 +1251,10 @@ impl Processor {
         vec![
           ResponseMsg::JoinedScenario(create_scenario.name),
           ResponseMsg::Scenarios(self.build_scenarios_msg()),
-          ResponseMsg::EntityResponse(entities),
+          // As on joining: without it the creator's console offered no way
+          // to hand a ship to the AI, only to take one back.
+          ResponseMsg::AiCrews(self.ai_crews_shown(player)),
+          ResponseMsg::EntityResponse(Box::new(entities)),
           ResponseMsg::Users(self.members.get_user_context(server.get_id())),
         ]
       }
@@ -1202,7 +1269,7 @@ impl Processor {
       RequestMsg::EntitiesRequest => {
         info!("Received and processing get request.");
         match player.get_entities() {
-          Ok(entities) => vec![ResponseMsg::EntityResponse(entities)],
+          Ok(entities) => vec![ResponseMsg::EntityResponse(Box::new(entities))],
           Err(e) => entity_clone_failure_response(&e),
         }
       }
@@ -1266,7 +1333,7 @@ impl Processor {
     if let Some(server) = &player.server {
       vec![
         ResponseMsg::AiCrews(self.ai_crews_shown(player)),
-        ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
+        ResponseMsg::EntityResponse(Box::new(server.get_unlocked_entities().unwrap().clone())),
         ResponseMsg::Users(self.members.get_user_context(server.get_id())),
       ]
     } else {
@@ -1279,15 +1346,6 @@ impl Processor {
   /// enforcement, and force-overwrite handshake. On success, refreshes the
   /// global scenarios snapshot and broadcasts an updated `Scenarios` message.
   async fn handle_save_scenario(&self, player: &PlayerManager, save_msg: SaveScenarioMsg) -> Vec<ResponseMsg> {
-    // Local helper — only used to read the owner out of an existing scenario file
-    // without needing the ship-template context that full Entities deserialization
-    // requires. Declared up front so it doesn't sit between statements.
-    #[derive(serde::Deserialize)]
-    struct ExistingMeta {
-      #[serde(default)]
-      metadata: MetaData,
-    }
-
     let Some(user_email) = player.get_email() else {
       return vec![ResponseMsg::Error(
         "Must be authenticated to save a scenario.".to_string(),
@@ -1317,17 +1375,12 @@ impl Processor {
     };
     let file_stem = file_name.trim_end_matches(".json").to_string();
     let full_path = format!("{}/{}", self.scenario_dir, file_name);
+    let practice = is_tutorial_builder(server.get_id());
 
-    if let Ok(existing_bytes) = read_local_or_cloud_file(&full_path).await {
-      if let Ok(existing) = serde_json::from_slice::<ExistingMeta>(&existing_bytes) {
-        let existing_owner = existing.metadata.owner;
-        // Empty owner = pre-ownership scenario; treat as orphaned and allow takeover.
-        if !existing_owner.is_empty() && existing_owner != user_email {
-          return vec![ResponseMsg::Error(format!("NOT_OWNER:{existing_owner}"))];
-        }
-        if !save_msg.force_overwrite {
-          return vec![ResponseMsg::Error("SCENARIO_EXISTS".to_string())];
-        }
+    // A practice save never reaches the file, so whose it is does not matter.
+    if !practice {
+      if let Some(refusal) = refuse_to_overwrite(&full_path, &user_email, save_msg.force_overwrite).await {
+        return vec![refusal];
       }
     }
 
@@ -1350,6 +1403,10 @@ impl Processor {
         name: display_label.clone(),
         description: save_msg.description.clone(),
         owner: user_email.clone(),
+        // The save dialog does not edit the round limit, so it goes back out
+        // as it came in. Leaving it to the default dropped it on every save.
+        rounds: entities.metadata.rounds,
+        escape_needed: entities.metadata.escape_needed,
         ..MetaData::default()
       };
       entities.filename.clone_from(&file_name);
@@ -1358,6 +1415,19 @@ impl Processor {
         Err(e) => return vec![ResponseMsg::Error(format!("Failed to serialize scenario: {e}"))],
       }
     };
+
+    if practice {
+      event!(
+        target: LOG_SCENARIO_ACTIVITY,
+        Level::INFO,
+        email = user_email.as_str(),
+        scenario = file_name.as_str(),
+        action = "tutorial save, not written"
+      );
+      // Everything a save checks has been checked; nothing is written, and no
+      // scenario list changes.
+      return vec![ResponseMsg::ScenarioSaved(file_name)];
+    }
 
     if let Err(e) = write_local_or_cloud_file(&full_path, json).await {
       return vec![ResponseMsg::Error(format!("Failed to write scenario: {e}"))];
@@ -1420,7 +1490,10 @@ fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
 
 fn response_with_update(server: &PlayerManager, result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| match server.clone_entities() {
-    Ok(entities) => vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(entities)],
+    Ok(entities) => vec![
+      ResponseMsg::SimpleMsg(msg),
+      ResponseMsg::EntityResponse(Box::new(entities)),
+    ],
     Err(e) => entity_clone_failure_response(&e),
   })
 }

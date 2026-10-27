@@ -6,6 +6,15 @@ import {
 import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import * as THREE from "three";
 import { CornerPanel } from "lib/CornerPanel";
+import { SideView } from "components/controls/SideView";
+import {
+  applyColumns,
+  applyScreenSize,
+  ConsoleColumns,
+  savedColumns,
+  savedScreenSize,
+  ScreenSize,
+} from "lib/screenSize";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
@@ -69,7 +78,7 @@ function ShipList(args: {
   const filter = useMemo(() => [EntitySelectorType.Ship], []);
 
   return (
-    <div className="control-launch-div">
+    <div className="control-launch-div" data-tutorial="ship-menu">
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
         id="ship-list-dropdown"
@@ -202,7 +211,7 @@ function ScenarioBuilderControls(args: {
   }, [args.entities.metadata?.description, templateLookup]);
 
   return (
-    <div className="controls-pane">
+    <div className="controls-pane" data-tutorial="builder-controls">
       <h1>Controls</h1>
       <hr />
       {Object.keys(args.shipTemplates).length > 0 && (
@@ -217,6 +226,7 @@ function ScenarioBuilderControls(args: {
       <button
         type="button"
         className="control-button blue-button save-scenario-anchor"
+        data-tutorial="builder-save"
         onClick={() => setSaveOpen(true)}
       >
         Save Scenario
@@ -312,7 +322,7 @@ export function Controls() {
           <hr />
         </>
       )}
-      <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
+      <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true} tutorial="ship-dossier">
         {shipName == null ? (
           <ShipList moveCamera={moveCameraToShip} />
         ) : (
@@ -531,7 +541,7 @@ export function Controls() {
           </>
         )}
       </Accordion>
-      <div className="round-counter" title="The round now being played">
+      <div className="round-counter" title="The round now being played" data-tutorial="round-counter">
         Round {entities.round ?? 1}
         {entities.metadata?.rounds != null && ` of ${entities.metadata.rounds}`}
       </div>
@@ -548,6 +558,7 @@ export function Controls() {
       {isReferee(roles, shipName) ? (
         <button
           className="control-input control-button blue-button button-next-round"
+          data-tutorial="next-round"
           // Reset the computer and route on the next round.  If this gets any more complex move it into its
           // own function.
           onClick={() => {
@@ -563,6 +574,7 @@ export function Controls() {
       ) : (
         <button
           className="control-input control-button blue-button button-next-round"
+          data-tutorial="next-round"
           title={
             amReady
               ? "Take it back if you still have orders to give"
@@ -578,12 +590,14 @@ export function Controls() {
 }
 
 export function ViewControls() {
+  const [screenSize, setScreenSize] = useState<ScreenSize>(savedScreenSize);
+  const [columns, setColumns] = useState<ConsoleColumns>(savedColumns);
   const gravityWells = useAppSelector((state) => state.ui.gravityWells);
   const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
   const dispatch = useAppDispatch();
 
   return (
-    <CornerPanel id="view-panel" title="View" className="view-controls-window">
+    <CornerPanel id="view-panel" title="View" className="view-controls-window" tutorial="view-panel">
       <label style={{ display: "flex" }}>
         {" "}
         <input
@@ -593,7 +607,7 @@ export function ViewControls() {
         />{" "}
         Gravity Well
       </label>
-      <label style={{ display: "flex" }}>
+      <label style={{ display: "flex" }} data-tutorial="jump-limit-toggle">
         {" "}
         <input
           type="checkbox"
@@ -602,6 +616,38 @@ export function ViewControls() {
         />{" "}
         100 Diameter Limit
       </label>
+      <label className="screen-size" title="Auto is compact on a laptop-sized screen and full on a big one">
+        Size{" "}
+        <select
+          className="control-input"
+          value={screenSize}
+          onChange={(event) => {
+            const size = event.target.value as ScreenSize;
+            applyScreenSize(size);
+            setScreenSize(size);
+          }}>
+          <option value="auto">Auto</option>
+          <option value="compact">Compact</option>
+          <option value="full">Full</option>
+        </select>
+      </label>
+      <label className="screen-size" title="How many columns the console uses; Auto fits as many as the screen has room for">
+        Columns{" "}
+        <select
+          className="control-input"
+          value={columns}
+          onChange={(event) => {
+            const chosen = event.target.value as ConsoleColumns;
+            applyColumns(chosen);
+            setColumns(chosen);
+          }}>
+          <option value="auto">Auto</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </label>
+      <SideView />
       {/* Collapsed by default: this is reference material, not a control, and
           the top-right corner has no room to spare. It exists at all because
           the flight keys were documented nowhere -- not in the tutorial, not
@@ -638,6 +684,10 @@ export function ViewControls() {
           <dd>faster</dd>
           <dt>drag</dt>
           <dd>look</dd>
+          <dt>
+            <kbd>Tab</kbd>
+          </dt>
+          <dd>hide or show the panels</dd>
         </dl>
       </Accordion>
     </CornerPanel>

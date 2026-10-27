@@ -53,6 +53,7 @@ export const CaptainTasks: React.FC<CaptainTasksProps> = ({ ship }) => {
       <button
         type="button"
         className="control-input control-button blue-button"
+        data-tutorial="leadership-button"
         disabled={rolled}
         onClick={() => captainAction(ship.name)}
         title={
@@ -62,7 +63,11 @@ export const CaptainTasks: React.FC<CaptainTasksProps> = ({ ship }) => {
       >
         {buttonLabel}
       </button>
-      {postRollText && <p className="plan-accel-text">{postRollText}</p>}
+      {postRollText && (
+        <p className="plan-accel-text" data-tutorial="leadership-result">
+          {postRollText}
+        </p>
+      )}
       {boosts.length > 0 && (
         <ul className="captain-boost-list">
           {/* Only the first N, in the order given, are inspired: the list is

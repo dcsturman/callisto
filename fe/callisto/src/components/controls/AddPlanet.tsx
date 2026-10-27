@@ -152,7 +152,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
   );
 
   return (
-    <Accordion id="add-planet-header" title="Add Planet" initialOpen={false}>
+    <Accordion id="add-planet-header" title="Add Planet" initialOpen={false} tutorial="builder-add-planet">
       <form id="add-planet" className="control-form" onSubmit={handleSubmit}>
         <div id="add-planet-top-part">
           <label className="control-label">

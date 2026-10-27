@@ -74,7 +74,7 @@ export function FleetComms() {
   }
 
   return (
-    <CornerPanel id="fleet-comms" title="Fleet Comms" className="computer-window">
+    <CornerPanel id="fleet-comms" title="Fleet Comms" className="computer-window" tutorial="fleet-comms">
       {sides.map((side) => {
           const status = sideStatus(side.ships);
           const plan = side.ships.find((ship) => ship.ai_report?.plan)?.ai_report?.plan;

@@ -71,7 +71,7 @@ export function Magazine(args: {ship: Ship}) {
   }
 
   return (
-    <ul className="magazine-rows">
+    <ul className="magazine-rows" data-tutorial="magazine">
       {rows.map((row) => (
         <li key={row.label} className={row.count === 0 ? "magazine-row magazine-out" : "magazine-row"}>
           <span className="magazine-label">{row.label}</span>

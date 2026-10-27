@@ -3,7 +3,7 @@ import {useMemo} from "react";
 
 import {Ship} from "lib/entities";
 import {vectorDistance} from "lib/Util";
-import {TURN_IN_SECONDS} from "lib/universal";
+import {roundsToImpact} from "lib/missileEta";
 import {useAppSelector} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
 
@@ -21,22 +21,14 @@ export function IncomingBoard(args: {ship: Ship}) {
     () =>
       entities.missiles
         .filter((missile) => missile.target === args.ship.name)
-        .map((missile) => {
-          const distance = vectorDistance(missile.position, args.ship.position);
-          // Closing speed along the line of flight is what decides how long
-          // there is; a missile under thrust arrives sooner than this, so
-          // this is the kind estimate.
-          const closing = Math.max(
-            1,
-            vectorDistance(missile.velocity, args.ship.velocity)
-          );
-          return {
-            name: missile.name,
-            source: missile.source,
-            distance,
-            rounds: Math.max(1, Math.ceil(distance / (closing * TURN_IN_SECONDS))),
-          };
-        }),
+        .map((missile) => ({
+          name: missile.name,
+          source: missile.source,
+          distance: vectorDistance(missile.position, args.ship.position),
+          // Thrust and all: see roundsToImpact. A salvo that will not arrive
+          // within its horizon sorts last.
+          rounds: roundsToImpact(missile, args.ship) ?? Infinity,
+        })),
     [entities.missiles, args.ship]
   );
 
@@ -52,7 +44,7 @@ export function IncomingBoard(args: {ship: Ship}) {
   }, [inbound]);
 
   return (
-    <div className="incoming-board">
+    <div className="incoming-board" data-tutorial="incoming">
       <h3 className="incoming-heading">Salvoes</h3>
       {inbound.length === 0 ? (
         <p className="sensor-empty">Nothing inbound.</p>
@@ -63,7 +55,7 @@ export function IncomingBoard(args: {ship: Ship}) {
               <span className="incoming-count">{group.count}</span>
               <span className="incoming-from">from {[...group.sources].join(", ")}</span>
               <span className={rounds <= 1 ? "incoming-eta incoming-now" : "incoming-eta"}>
-                {rounds <= 1 ? "this round" : `${rounds} rounds`}
+                {rounds <= 1 ? "this round" : rounds === Infinity ? "not closing" : `${rounds} rounds`}
               </span>
             </li>
           ))}

@@ -85,7 +85,7 @@ export function PowerBoard(args: {ship: Ship}) {
     queued?.kind === "SetPower" && queued.system === "Basic" ? !queued.online : null;
 
   return (
-    <div className="power-board">
+    <div className="power-board" data-tutorial="power-board">
       <div className="power-summary">
         <span
           className="power-supply"
