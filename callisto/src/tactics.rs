@@ -236,6 +236,19 @@ fn offensive(kind: WeaponType) -> bool {
   !matches!(kind, WeaponType::Sand | WeaponType::PointDefense | WeaponType::Repulsor)
 }
 
+/// How many missiles one launch from this mount puts in flight, firing
+/// `kind`, and how many points of a point-defence pool each one costs: a
+/// torpedo two, a missile one. `None` if `kind` is not a launcher here.
+#[must_use]
+pub fn launch_size(weapon: &Weapon, kind: WeaponType) -> Option<(u32, u32)> {
+  let firing = weapon.firing(kind)?;
+  let missiles = match profile_for(kind, firing.mount)?.salvo? {
+    Salvo::PerGun => u32::from(firing.count),
+    Salvo::Fixed(missiles) => u32::from(missiles),
+  };
+  Some((missiles, if kind == WeaponType::Torpedo { 2 } else { 1 }))
+}
+
 /// The mounts on `ship` that can fire on a target at this range, each with the
 /// gun kind that would fire: its direct-fire guns if they reach, else its
 /// launcher. Launchers always bear -- the salvo flies to its target. Mounts

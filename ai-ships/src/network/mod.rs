@@ -13,6 +13,7 @@ pub mod action;
 pub mod commander;
 pub mod encode;
 pub mod history;
+pub mod missiles;
 pub mod net;
 pub mod orders;
 pub mod side;

@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use callisto::tactics::{EngineerVerb, Helm, Intent, SensorVerb};
 use rand::SeedableRng;
 
-use crate::network::action::{side_intents, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
+use crate::network::action::{side_intents, side_intents_with, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
 use crate::network::encode::{believed_hull, remember, side_goal};
 use crate::network::encode::{encode_ship, Context, Memory, Picture, OBS_LEN};
 use crate::network::history::History;
@@ -237,6 +237,9 @@ pub struct SideCommander {
   rng: Option<rand::rngs::SmallRng>,
   goal: Option<callisto::ship::Goal>,
   last: serde_json::Value,
+  /// Whether missiles are shared out across the side against point defence;
+  /// off only to measure the old way against it (`network-legacy`).
+  missile_sharing: bool,
 }
 
 impl SideCommander {
@@ -251,6 +254,7 @@ impl SideCommander {
       rng: None,
       goal: None,
       last: serde_json::Value::Null,
+      missile_sharing: true,
     }
   }
 }
@@ -332,7 +336,7 @@ impl Commander for SideCommander {
           .map(|ship| (ship, choice, &picture))
       })
       .collect();
-    let mut intents = side_intents(&own_ships, view);
+    let mut intents = side_intents_with(&own_ships, view, self.missile_sharing);
     crate::network::side::hold_at_post(&mut intents, ctx.post);
     let intents: Vec<(String, Intent)> = intents
       .into_iter()
@@ -374,7 +378,8 @@ fn cached<T>(
 /// Replace the file to change it; its layout must match this build's.
 pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 
-/// A commander by name: `network`, the built-in per-side network; a baseline
+/// A commander by name: `network`, the built-in per-side network
+/// (`network-legacy` with its missiles shared out the old way); a baseline
 /// (`close`, `hold`, ...); or a trained network from its exported file --
 /// `net:<file.cpol>` for the per-ship network, `side:<file.cside>` for the
 /// per-side one, each playing its best choice, or with `~` (`net~:`,
@@ -383,9 +388,13 @@ pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 /// Each file is read once.
 #[must_use]
 pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
-  if name == "network" {
-    let net = cached(&LOADED_SIDE, name, |_| SideNet::from_bytes(BUILT_IN, "the built-in network"))?;
-    return Some(Box::new(SideCommander::new(net)));
+  if name == "network" || name == "network-legacy" {
+    let net = cached(&LOADED_SIDE, "network", |_| {
+      SideNet::from_bytes(BUILT_IN, "the built-in network")
+    })?;
+    let mut commander = SideCommander::new(net);
+    commander.missile_sharing = name == "network";
+    return Some(Box::new(commander));
   }
   let Some((kind, rest)) = name.split_once(':') else {
     return crate::commander::named(name, seed);

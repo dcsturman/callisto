@@ -251,6 +251,16 @@ fn root_of<'a>(ship: &'a str, guides: &'a HashMap<String, String>) -> Option<&'a
 /// model commander's squadrons fly. Follows that go round in a loop hold.
 #[must_use]
 pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> Vec<(String, Intent)> {
+  side_intents_with(own, view, true)
+}
+
+/// [`side_intents`], with the side-wide missile sharing on or off. Off, the
+/// launchers go with the guns, as they did before point defence was
+/// counted: kept as a baseline to measure against.
+#[must_use]
+pub fn side_intents_with(
+  own: &[(&Ship, &Choice, &Picture)], view: &Observation, missile_sharing: bool,
+) -> Vec<(String, Intent)> {
   let mut helms: BTreeMap<String, Helm> = BTreeMap::new();
   let mut guides: HashMap<String, String> = HashMap::new();
   for (ship, choice, picture) in own {
@@ -325,7 +335,12 @@ pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> V
       (name.to_string(), intent)
     })
     .collect::<Vec<_>>();
-  share_fire(&mut intents, own, view);
+  share_fire(&mut intents, own, view, missile_sharing);
+  if !missile_sharing {
+    return intents;
+  }
+  let ships: Vec<&Ship> = own.iter().map(|(ship, _, _)| *ship).collect();
+  crate::network::missiles::share_missiles(&mut intents, &ships, view);
   intents
 }
 
@@ -343,8 +358,11 @@ pub const ENOUGH: f64 = 1.5;
 /// to `ENOUGH` times its hull, counting what the ships before her sent. A big
 /// ship takes every gun; a fighter takes one, and the rest move on. Guns left
 /// over still fire at the priority. Called shots and named mounts are left
-/// as they are.
-fn share_fire(intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture)], view: &Observation) {
+/// as they are. Launchers are not counted here: they are shared out after,
+/// across the side (`missiles::share_missiles`).
+fn share_fire(
+  intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture)], view: &Observation, skip_launchers: bool,
+) {
   let enemies = view.enemies();
   let hull = |name: &str| {
     enemies
@@ -370,10 +388,24 @@ fn share_fire(intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture
         return vec![];
       };
       let band = tactics::band_at((contact.position - ship.get_position()).magnitude());
+      // Launchers are shared out separately, across the side, against point
+      // defence (`missiles::share_missiles`).
+      let launchers: Vec<usize> = tactics::weapons_that_bear(ship, band)
+        .into_iter()
+        .filter(|(mount, kind)| skip_launchers && tactics::launch_size(&ship.weapons()[*mount], *kind).is_some())
+        .map(|(mount, _)| mount)
+        .collect();
       view
         .engagement(name, target)
         .and_then(|table| table.we_hit.iter().find(|odds| odds.band == band))
-        .map(|odds| odds.by_mount.iter().copied().filter(|(_, damage)| *damage > 0.0).collect())
+        .map(|odds| {
+          odds
+            .by_mount
+            .iter()
+            .copied()
+            .filter(|(mount, damage)| *damage > 0.0 && !launchers.contains(mount))
+            .collect()
+        })
         .unwrap_or_default()
     };
     let room = |target: &str, sent: &HashMap<String, f64>| {

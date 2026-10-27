@@ -110,3 +110,22 @@ network plays both sides, 200 games per variant, 40-round limit.
   without allies. The hull kept rises from about 14% back to 18–20%.
 - **Conclusion:** show a squadron every enemy (up to 20, assigned ones first), and restrict what it
   may engage with masks. Do not hide enemies from the network.
+
+## Missiles shared out against point defence (2026-10-27)
+
+**The change.** Launchers are no longer shared out with the guns. `ai-ships/src/network/missiles.rs`
+decides for the whole side, after the guns:
+- **Each target's point-defence pool** comes from its batteries' dice.
+- **Missiles are grouped by the round they land,** counting those already in flight.
+- **A package is committed** to a defended target only when what it is expected to get through beats
+  what those launchers would do against undefended targets.
+- **The rest go where they do most,** up to each target's remaining hull, or are held and not fired.
+- **`network-legacy`** plays the old way, for comparison.
+
+**Results**, 200 games each:
+
+| Scenario | New against old | Notes |
+|---|---|---|
+| Fighter Screen | New wins 126–68 as Blue, and 124–65 as Red | The cruiser stops firing into the other cruiser's point defence (6 a round can never beat ~21) and sends every missile at fighters |
+| Fighter Swarm | No change (106 and 103 wins for the missile side) | Fighters have no point defence, so both versions already sent missiles at them |
+| Missile Wall (an experiment: 3 pocket warships, 36 missiles a round, against 2 Kinunirs and 6 fighters) | Both win all 200 | New ends in 4.4 rounds rather than 4.7, with 31% fewer missiles fired |
