@@ -47,13 +47,20 @@ pub struct Directive {
   pub say: Option<String>,
   #[serde(default)]
   pub squadrons: Vec<Script>,
+  /// When to ask the commander again.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub call_me_when: Vec<Trigger>,
 }
 
 /// One squadron's orders: its steps, in turn. `squadron` `*` is every
-/// squadron without a script of its own.
+/// squadron without a script of its own. A script naming a `ship` instead
+/// takes that ship out of her squadron to fight on her own.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct Script {
+  #[serde(default)]
   pub squadron: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ship: Option<String>,
   #[serde(default)]
   pub steps: Vec<Step>,
 }
@@ -110,59 +117,93 @@ impl Rule {
   }
 }
 
-/// How a squadron moves.
+/// How a squadron moves: `network` (as the network chooses), `burn`
+/// toward (or `away` from) a place at up to `thrust` G, or `arrive` at a
+/// place -- or at `band` of it, on this side -- by `round`, the squadron
+/// arriving together.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
-#[serde(tag = "mode", rename_all = "snake_case")]
-pub enum Movement {
-  /// As the network chooses.
+pub struct Movement {
+  #[serde(default)]
+  pub mode: Mode,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub toward: Option<Place>,
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub away: bool,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub thrust: Option<f64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub at: Option<Place>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub band: Option<Range>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub round: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
   #[default]
   Network,
-  /// Toward a place (or away from it), at up to `thrust` G.
-  Burn {
-    toward: Place,
-    #[serde(default)]
-    away: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    thrust: Option<f64>,
-  },
-  /// To a place -- or to `band` of it, on this side -- by `round`, all the
-  /// squadron arriving together.
-  Arrive {
-    at: Place,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    band: Option<Range>,
-    round: u32,
-  },
+  Burn,
+  Arrive,
 }
 
-/// A place, named as the players know it.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum Place {
-  Planet(String),
-  Ship(String),
+/// A place, named as the players know it: the first of these given.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct Place {
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub planet: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ship: Option<String>,
   /// The middle of one of our squadrons.
-  Squadron(String),
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub squadron: Option<String>,
   /// The middle of the enemies a rule picks out.
-  Enemies(Rule),
-  /// A point, in metres.
-  At([f64; 3]),
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub enemies: Option<Rule>,
+  /// A point, in km.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub at_km: Option<[f64; 3]>,
 }
 
-/// When a step ends.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum Until {
+/// When a step ends: as soon as any of these given is true.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct Until {
   /// This round has begun.
-  Round(u32),
-  /// Any of the squadron is within `band` of the place.
-  Within { of: Place, band: Range },
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub round: Option<u32>,
+  /// Any of the squadron is within a band of a place.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub within: Option<Within>,
   /// The squadron took damage last round.
-  FiredOn,
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub fired_on: bool,
   /// The squadron has lost this share of its hull since the step began.
-  Losses(f32),
-  /// Any of these.
-  Any(Vec<Until>),
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub losses: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Within {
+  pub of: Place,
+  pub band: Range,
+}
+
+/// When the commander wants to be asked again: any of these given.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct Trigger {
+  /// This squadron (any, if absent) has lost this share of its hull since
+  /// the orders were given.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub squadron: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub losses: Option<f32>,
+  /// Enemies not seen when the orders were given have been found.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub new_enemies: bool,
+  /// This round has begun.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub round: Option<u32>,
 }
 
 /// Where a squadron is in its script.
@@ -174,12 +215,22 @@ struct Progress {
   hull_last_round: u32,
 }
 
+/// The group name of a ship with orders of her own.
+fn detached_name(ship: &str) -> String {
+  format!("ship:{ship}")
+}
+
 /// Our squadrons as they stand: by name, each with her ships, in name order.
+/// Ships in `detached` have orders of their own and fight alone.
 #[must_use]
-pub fn squadrons(own: &[Ship]) -> Vec<(String, Vec<String>)> {
+pub fn squadrons(own: &[Ship], detached: &[String]) -> Vec<(String, Vec<String>)> {
   let mut named: HashMap<String, Vec<String>> = HashMap::new();
   let mut loose: Vec<String> = Vec::new();
   for ship in own {
+    if detached.iter().any(|name| name == ship.get_name()) {
+      named.insert(detached_name(ship.get_name()), vec![ship.get_name().to_string()]);
+      continue;
+    }
     match &ship.squadron {
       Some(name) => named.entry(name.clone()).or_default().push(ship.get_name().to_string()),
       None => loose.push(ship.get_name().to_string()),
@@ -222,25 +273,31 @@ fn ships_of<'a>(view: &'a Observation, names: &[String]) -> Vec<&'a Ship> {
 
 /// Where `place` is now, if it can be found.
 fn locate(place: &Place, view: &Observation, groups: &[(String, Vec<String>)]) -> Option<Vec3> {
-  match place {
-    Place::Planet(name) => view
+  if let Some(name) = &place.planet {
+    return view
       .planets
       .iter()
       .find(|planet| planet.get_name() == name)
-      .map(Entity::get_position),
-    Place::Ship(name) => view
+      .map(Entity::get_position);
+  }
+  if let Some(name) = &place.ship {
+    return view
       .own
       .iter()
       .find(|ship| ship.get_name() == name)
       .map(Entity::get_position)
-      .or_else(|| view.contacts.iter().find(|contact| contact.name == *name).map(|c| c.position)),
-    Place::Squadron(name) => groups
+      .or_else(|| view.contacts.iter().find(|contact| contact.name == *name).map(|c| c.position));
+  }
+  if let Some(name) = &place.squadron {
+    return groups
       .iter()
       .find(|(group, _)| group == name)
-      .and_then(|(_, ships)| middle(ships_of(view, ships).into_iter().map(Entity::get_position))),
-    Place::Enemies(rule) => middle(view.enemies().into_iter().filter(|c| rule.matches(c)).map(|c| c.position)),
-    Place::At([x, y, z]) => Some(Vec3::new(*x, *y, *z)),
+      .and_then(|(_, ships)| middle(ships_of(view, ships).into_iter().map(Entity::get_position)));
   }
+  if let Some(rule) = &place.enemies {
+    return middle(view.enemies().into_iter().filter(|c| rule.matches(c)).map(|c| c.position));
+  }
+  place.at_km.map(|[x, y, z]| Vec3::new(x, y, z) * 1000.0)
 }
 
 /// Whether `until` has come, for a squadron of `ships` in `progress`.
@@ -248,21 +305,21 @@ fn reached(
   until: &Until, view: &Observation, ships: &[&Ship], groups: &[(String, Vec<String>)], progress: &Progress,
 ) -> bool {
   let hull: u32 = ships.iter().map(|ship| ship.current_hull).sum();
-  match until {
-    Until::Round(round) => view.round >= *round,
-    Until::Within { of, band } => locate(of, view, groups).is_some_and(|at| {
+  let round = until.round.is_some_and(|round| view.round >= round);
+  let within = until.within.as_ref().is_some_and(|within| {
+    locate(&within.of, view, groups).is_some_and(|at| {
       ships
         .iter()
-        .any(|ship| tactics::band_at((at - ship.get_position()).magnitude()) as usize <= *band as usize)
-    }),
-    Until::FiredOn => hull < progress.hull_last_round,
-    #[allow(clippy::cast_precision_loss)]
-    Until::Losses(share) => {
-      progress.hull_at_step > 0
-        && (progress.hull_at_step - hull.min(progress.hull_at_step)) as f32 >= share * progress.hull_at_step as f32
-    }
-    Until::Any(any) => any.iter().any(|until| reached(until, view, ships, groups, progress)),
-  }
+        .any(|ship| tactics::band_at((at - ship.get_position()).magnitude()) as usize <= within.band as usize)
+    })
+  });
+  let fired_on = until.fired_on && hull < progress.hull_last_round;
+  #[allow(clippy::cast_precision_loss)]
+  let losses = until.losses.is_some_and(|share| {
+    progress.hull_at_step > 0
+      && (progress.hull_at_step - hull.min(progress.hull_at_step)) as f32 >= share * progress.hull_at_step as f32
+  });
+  round || within || fired_on || losses
 }
 
 /// The enemies a squadron's pass is shown, in order of claim on the slots,
@@ -351,47 +408,43 @@ fn steer(
   movement: &Movement, view: &Observation, ships: &[&Ship], groups: &[(String, Vec<String>)],
 ) -> Option<(Helm, Option<f64>)> {
   let centre = middle(ships.iter().map(|ship| ship.get_position()))?;
-  match movement {
-    Movement::Network => None,
-    Movement::Burn { toward, away, thrust } => {
-      let at = locate(toward, view, groups)?;
-      let target = if *away {
+  let station = |at: Vec3| Helm::Station {
+    position: [at.x, at.y, at.z],
+  };
+  match movement.mode {
+    Mode::Network => None,
+    Mode::Burn => {
+      let at = locate(movement.toward.as_ref()?, view, groups)?;
+      let target = if movement.away {
         // Far enough the other way that she never arrives.
         centre + (centre - at).normalize() * 1.0e12
       } else {
         at
       };
-      Some((
-        Helm::Station {
-          position: [target.x, target.y, target.z],
-        },
-        *thrust,
-      ))
+      Some((station(target), movement.thrust))
     }
-    Movement::Arrive { at, band, round } => {
-      let at = locate(at, view, groups)?;
-      let target = match band {
+    Mode::Arrive => {
+      let at = locate(movement.at.as_ref()?, view, groups)?;
+      let target = match movement.band {
         Some(band) => {
           let offset = centre - at;
           let distance = offset.magnitude();
           if distance < 1.0 {
             at
           } else {
-            at + offset / distance * tactics::aim_point(*band).min(distance)
+            at + offset / distance * tactics::aim_point(band).min(distance)
           }
         }
         None => at,
+      };
+      let Some(round) = movement.round else {
+        return Some((station(target), movement.thrust));
       };
       // Accelerate half the way and brake the rest, in the rounds left:
       // d = a t^2 / 4.
       let time = f64::from(round.saturating_sub(view.round).max(1)) * DELTA_TIME_F64;
       let needed = 4.0 * (target - centre).magnitude() / (time * time) / G;
-      Some((
-        Helm::Station {
-          position: [target.x, target.y, target.z],
-        },
-        Some(needed.max(0.05)),
-      ))
+      Some((station(target), Some(needed.max(0.05))))
     }
   }
 }
@@ -422,7 +475,7 @@ impl FleetCommander {
       .squadrons
       .iter()
       .filter(|script| self.directive.squadrons.contains(script))
-      .map(|script| script.squadron.clone())
+      .map(|script| script.ship.as_deref().map_or_else(|| script.squadron.clone(), detached_name))
       .collect();
     self.progress.retain(|name, _| unchanged.contains(name));
     self.directive = directive;
@@ -433,19 +486,40 @@ impl FleetCommander {
     &self.directive
   }
 
-  fn script(&self, squadron: &str) -> Option<&Script> {
+  fn script(&self, group: &str) -> Option<&Script> {
     let scripts = &self.directive.squadrons;
+    if let Some(ship) = group.strip_prefix("ship:") {
+      return scripts.iter().find(|script| script.ship.as_deref() == Some(ship));
+    }
     scripts
       .iter()
-      .find(|script| script.squadron == squadron)
-      .or_else(|| scripts.iter().find(|script| script.squadron == "*"))
+      .find(|script| script.ship.is_none() && script.squadron == group)
+      .or_else(|| scripts.iter().find(|script| script.ship.is_none() && script.squadron == "*"))
+  }
+
+  /// Ships with orders of their own.
+  fn detached(&self) -> Vec<String> {
+    self
+      .directive
+      .squadrons
+      .iter()
+      .filter_map(|script| script.ship.clone())
+      .collect()
+  }
+
+  /// Where a squadron (or a detached ship, `ship:<name>`) is in its script:
+  /// the step it is on and how many it has.
+  #[must_use]
+  pub fn step_of(&self, group: &str) -> Option<(usize, usize)> {
+    let steps = self.script(group)?.steps.len();
+    Some((self.progress.get(group).map_or(0, |progress| progress.step), steps))
   }
 }
 
 #[async_trait]
 impl Commander for FleetCommander {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
-    let groups = squadrons(&view.own);
+    let groups = squadrons(&view.own, &self.detached());
     let mut intents = Vec::new();
     for (name, members) in &groups {
       let ships = ships_of(view, members);
@@ -510,19 +584,21 @@ mod tests {
             {"squadron": "Lance", "steps": [
               {"engage": {"designs": ["Light Fighter"]},
                "movement": {"mode": "arrive", "at": {"enemies": {"designs": ["Light Fighter"]}}, "band": "Medium", "round": 4},
-               "until": {"any": [{"round": 4}, "fired_on"]}},
+               "until": {"round": 4, "fired_on": true}},
               {"engage": {"designs": ["Light Fighter"]}}
             ]},
+            {"ship": "CS Hesperus", "steps": [{"movement": {"mode": "burn", "toward": {"planet": "Jupiter"}, "away": true}}]},
             {"squadron": "*", "steps": [{"goal": "hold", "post": {"planet": "Jupiter"}}]}
-          ]}"#,
+          ],
+          "call_me_when": [{"squadron": "Lance", "losses": 0.5}, {"new_enemies": true}]}"#,
     )
     .unwrap();
-    assert_eq!(directive.squadrons.len(), 2);
-    assert_eq!(
-      directive.squadrons[0].steps[0].until,
-      Some(Until::Any(vec![Until::Round(4), Until::FiredOn]))
-    );
-    assert_eq!(directive.squadrons[1].steps[0].goal, Some(Goal::Hold));
+    assert_eq!(directive.squadrons.len(), 3);
+    let until = directive.squadrons[0].steps[0].until.as_ref().unwrap();
+    assert_eq!((until.round, until.fired_on), (Some(4), true));
+    assert_eq!(directive.squadrons[1].ship.as_deref(), Some("CS Hesperus"));
+    assert_eq!(directive.squadrons[2].steps[0].goal, Some(Goal::Hold));
+    assert_eq!(directive.call_me_when.len(), 2);
   }
 
   #[test]

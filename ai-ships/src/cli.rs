@@ -76,6 +76,10 @@ struct Args {
   /// in the opening round, then exit.
   #[arg(long)]
   show_prompt: Option<String>,
+  /// Play nothing: print what the fleet commander would be sent for this
+  /// side, with every ordinary ship already found, and its size.
+  #[arg(long)]
+  show_admiral: Option<String>,
 }
 
 fn parse_side(text: &str) -> Result<(String, String), String> {
@@ -99,6 +103,22 @@ pub async fn run(extra: &Extra<'_>) -> Result<(), Box<dyn std::error::Error>> {
   let args = Args::parse();
   replace_ship_templates(load_ship_templates_from_dir(&args.designs).await?);
 
+  if let Some(side) = &args.show_admiral {
+    let view = crate::harness::engaged_view(&args.scenario, side).await?;
+    let orders = crate::admiral::orders_of(&view.own);
+    let situation = crate::admiral::situation(&view, &orders, &crate::fleet::Directive::default(), &|_: &str| None);
+    let schema = crate::admiral::schema().to_string();
+    let system = crate::admiral::system();
+    println!("{system}\n\n---\n\n{situation}");
+    // About four characters to a token.
+    eprintln!(
+      "\nsystem prompt ~{} tokens, tool schema ~{}, situation ~{}",
+      system.len() / 4,
+      schema.len() / 4,
+      situation.len() / 4
+    );
+    return Ok(());
+  }
   if let Some(side) = &args.show_prompt {
     let view = opening_view(&args.scenario, side).await?;
     println!(

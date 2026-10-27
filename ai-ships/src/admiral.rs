@@ -1,0 +1,576 @@
+//! What the fleet commander -- a language model -- is told, and what it
+//! answers with: the system prompt, the situation each call, and the one
+//! tool it calls, `give_orders`, whose arguments are a [`Directive`].
+//!
+//! The model never sees a coordinate. Designs are described once each;
+//! enemies come grouped by design and position; every distance is a range
+//! band and kilometres; every place has a name the scripts can use.
+
+use std::collections::BTreeMap;
+use std::fmt::Write;
+use std::sync::Arc;
+
+use callisto::combat::battery_intercept_dice;
+use callisto::entity::{Entity, Vec3};
+use callisto::ship::{get_ship_template, Range, Ship, ShipDesignTemplate};
+use callisto::tactics;
+use cgmath::InnerSpace;
+use serde_json::{json, Value};
+
+use crate::fleet::{squadrons, Directive};
+use crate::observation::{Contact, Observation};
+
+pub const TOOL_NAME: &str = "give_orders";
+pub const TOOL_DESCRIPTION: &str =
+  "Give every squadron its script, say in a sentence or two what you ordered, and say when to be asked again.";
+
+/// Enemies of one design within this of each other are one group (metres):
+/// Medium range.
+const GROUP_SPAN: f64 = 10_000_000.0;
+/// Names listed for a group before the rest are counted.
+const NAMES_SHOWN: usize = 6;
+
+/// The fixed instructions: who the model is, what scripts can say, how
+/// these fights go, and worked examples.
+#[must_use]
+pub fn system() -> &'static str {
+  include_str!("prompt/admiral.md")
+}
+
+/// The orders the side's ships carry, read as its commanders gave them: the
+/// fleet's, each squadron's where it differs, and each ship's where hers
+/// differs from both.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Orders {
+  pub fleet: Option<String>,
+  pub squadrons: Vec<(String, String)>,
+  pub ships: Vec<(String, String)>,
+}
+
+impl Orders {
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.fleet.is_none() && self.squadrons.is_empty() && self.ships.is_empty()
+  }
+}
+
+/// Read `own`'s orders by scope.
+#[must_use]
+pub fn orders_of(own: &[Ship]) -> Orders {
+  let text = |ship: &Ship| {
+    ship
+      .orders
+      .as_deref()
+      .map(str::trim)
+      .filter(|t| !t.is_empty())
+      .map(str::to_string)
+  };
+  let shared = |ships: &[&Ship]| {
+    let first = ships.first().and_then(|ship| text(ship))?;
+    ships.iter().all(|ship| text(ship).as_ref() == Some(&first)).then_some(first)
+  };
+  let all: Vec<&Ship> = own.iter().collect();
+  let fleet = if all.len() > 1 { shared(&all) } else { None };
+  let mut orders = Orders {
+    fleet: fleet.clone(),
+    ..Orders::default()
+  };
+  for (name, members) in squadrons(own, &[]) {
+    let ships: Vec<&Ship> = own.iter().filter(|ship| members.iter().any(|m| m == ship.get_name())).collect();
+    let squadron = if ships.len() > 1 && !name.starts_with('(') {
+      shared(&ships).filter(|text| Some(text) != fleet.as_ref())
+    } else {
+      None
+    };
+    if let Some(text) = &squadron {
+      orders.squadrons.push((name.clone(), text.clone()));
+    }
+    let above = squadron.or_else(|| fleet.clone());
+    for ship in ships {
+      if let Some(own) = text(ship).filter(|own| Some(own) != above.as_ref()) {
+        orders.ships.push((ship.get_name().to_string(), own));
+      }
+    }
+  }
+  orders
+}
+
+fn km(metres: f64) -> String {
+  #[allow(clippy::cast_possible_truncation)]
+  let whole = (metres / 1000.0).round() as i64;
+  let digits = whole.abs().to_string();
+  let grouped: Vec<String> = digits
+    .as_bytes()
+    .rchunks(3)
+    .rev()
+    .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+    .collect();
+  format!("{}{} km", if whole < 0 { "-" } else { "" }, grouped.join(","))
+}
+
+fn band_name(band: Range) -> &'static str {
+  match band {
+    Range::Short => "Short",
+    Range::Medium => "Medium",
+    Range::Long => "Long",
+    Range::VeryLong => "VeryLong",
+    Range::Distant => "Distant",
+  }
+}
+
+/// "Medium (8,200 km)".
+fn how_far(metres: f64) -> String {
+  format!("{} ({})", band_name(tactics::band_at(metres)), km(metres))
+}
+
+/// "closing 3.1 km/s", "opening 0.4 km/s" or "holding range".
+fn motion(km_per_second: f64) -> String {
+  if km_per_second.abs() < 0.05 {
+    "holding range".to_string()
+  } else if km_per_second > 0.0 {
+    format!("closing {km_per_second:.1} km/s")
+  } else {
+    format!("opening {:.1} km/s", -km_per_second)
+  }
+}
+
+/// The closing speed of two things, km/s, positive when closing.
+fn closing(from: Vec3, from_velocity: Vec3, to: Vec3, to_velocity: Vec3) -> f64 {
+  let offset = to - from;
+  let distance = offset.magnitude();
+  if distance < 1.0 {
+    return 0.0;
+  }
+  -(to_velocity - from_velocity).dot(offset / distance) / 1000.0
+}
+
+fn middle(points: impl Iterator<Item = Vec3>) -> Vec3 {
+  let (sum, count) = points.fold((Vec3::new(0.0, 0.0, 0.0), 0.0), |(sum, count), p| (sum + p, count + 1.0));
+  if count > 0.0 {
+    sum / count
+  } else {
+    sum
+  }
+}
+
+/// One line for a design: size, drive, protection, and every mount with the
+/// furthest band it reaches.
+fn describe_design(design: &Arc<ShipDesignTemplate>) -> String {
+  let ship = Ship::new(
+    design.name.clone(),
+    Vec3::new(0.0, 0.0, 0.0),
+    Vec3::new(0.0, 0.0, 0.0),
+    design,
+    None,
+    None,
+  );
+  let mut mounts: BTreeMap<String, usize> = BTreeMap::new();
+  for (index, weapon) in ship.weapons().iter().enumerate() {
+    let label = if let Some(dice) = battery_intercept_dice(weapon) {
+      format!("point defence battery ({dice}D a round)")
+    } else {
+      // The furthest band any of its guns reaches; launchers fly anywhere.
+      let reach = [
+        Range::Distant,
+        Range::VeryLong,
+        Range::Long,
+        Range::Medium,
+        Range::Short,
+      ]
+      .into_iter()
+      .find_map(|band| {
+        tactics::weapons_that_bear(&ship, band)
+          .into_iter()
+          .find(|(mount, _)| *mount == index)
+          .map(|(_, kind)| (band, kind))
+      });
+      let kind = weapon.guns.first().map(|gun| gun.kind);
+      let guns = if weapon.guns.len() > 1 {
+        format!("{}-gun ", weapon.guns.len())
+      } else {
+        String::new()
+      };
+      match (reach, kind) {
+        (Some((_, fires)), _) if tactics::launch_size(weapon, fires).is_some() => {
+          format!("{guns}{fires:?} {:?} (any range)", weapon.mount)
+        }
+        (Some((band, fires)), _) => format!("{guns}{fires:?} {:?} (to {})", weapon.mount, band_name(band)),
+        (None, Some(kind)) => format!("{guns}{kind:?} {:?} (defensive)", weapon.mount),
+        (None, None) => continue,
+      }
+    };
+    *mounts.entry(label).or_default() += 1;
+  }
+  let weapons: Vec<String> = mounts
+    .into_iter()
+    .map(|(label, count)| if count > 1 { format!("{count} x {label}") } else { label })
+    .collect();
+  let stealth = design
+    .stealth
+    .map(|stealth| format!(", {stealth:?} stealth"))
+    .unwrap_or_default();
+  format!(
+    "{}: {} t, {} G, hull {}, armour {}{stealth}; {}",
+    design.name,
+    design.displacement,
+    design.maneuver,
+    design.hull,
+    design.armor,
+    if weapons.is_empty() {
+      "unarmed".to_string()
+    } else {
+      weapons.join(", ")
+    }
+  )
+}
+
+/// One group of enemies: the same design, close together.
+struct Group<'a> {
+  name: String,
+  design: &'a str,
+  ships: Vec<&'a Contact>,
+}
+
+/// The enemy, grouped by design and position, nearest to `from` first.
+fn enemy_groups<'a>(enemies: &[&'a Contact], from: Vec3) -> Vec<Group<'a>> {
+  let mut groups: Vec<Group> = Vec::new();
+  for contact in enemies {
+    match groups.iter_mut().find(|group| {
+      group.design == contact.design && (group.ships[0].position - contact.position).magnitude() <= GROUP_SPAN
+    }) {
+      Some(group) => group.ships.push(contact),
+      None => groups.push(Group {
+        name: String::new(),
+        design: &contact.design,
+        ships: vec![contact],
+      }),
+    }
+  }
+  groups.sort_by(|a, b| {
+    let distance = |group: &Group| (middle(group.ships.iter().map(|c| c.position)) - from).magnitude();
+    distance(a).total_cmp(&distance(b))
+  });
+  for (i, group) in groups.iter_mut().enumerate() {
+    group.name = format!("E{}", i + 1);
+  }
+  groups
+}
+
+fn share(part: u32, whole: u32) -> u32 {
+  (100 * u64::from(part) / u64::from(whole.max(1))).try_into().unwrap_or(100)
+}
+
+fn group_middle(group: &Group) -> Vec3 {
+  middle(group.ships.iter().map(|c| c.position))
+}
+
+fn group_velocity(group: &Group) -> Vec3 {
+  middle(group.ships.iter().map(|c| c.velocity))
+}
+
+/// The orders section: by scope, ships given the same orders on one line.
+fn write_orders(out: &mut String, orders: &Orders) {
+  let _ = writeln!(out, "\n## Orders");
+  if orders.is_empty() {
+    let _ = writeln!(out, "None given: fight under the scenario's goal.");
+  }
+  if let Some(fleet) = &orders.fleet {
+    let _ = writeln!(out, "Fleet: {fleet}");
+  }
+  for (squadron, text) in &orders.squadrons {
+    let _ = writeln!(out, "Squadron {squadron}: {text}");
+  }
+  // Ships given the same orders read as one line.
+  let mut by_text: Vec<(&str, Vec<&str>)> = Vec::new();
+  for (ship, text) in &orders.ships {
+    match by_text.iter_mut().find(|(said, _)| *said == text.as_str()) {
+      Some((_, ships)) => ships.push(ship),
+      None => by_text.push((text, vec![ship])),
+    }
+  }
+  for (text, ships) in by_text {
+    let who = if ships.len() == 1 { "Ship" } else { "Ships" };
+    let _ = writeln!(out, "{who} {}: {text}", ships.join(", "));
+  }
+}
+
+/// Our squadrons: make-up, hull, speed, the nearest enemy, the script.
+fn write_squadrons(
+  out: &mut String, view: &Observation, groups: &[Group], steps: &dyn Fn(&str) -> Option<(usize, usize)>,
+) {
+  let _ = writeln!(out, "\n## Our squadrons");
+  for (name, members) in squadrons(&view.own, &[]) {
+    let ships: Vec<&Ship> = view
+      .own
+      .iter()
+      .filter(|ship| members.iter().any(|m| m == ship.get_name()))
+      .collect();
+    let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+    for ship in &ships {
+      *kinds.entry(ship.design.name.as_str()).or_default() += 1;
+    }
+    let make_up: Vec<String> = kinds.iter().map(|(design, n)| format!("{n} x {design}")).collect();
+    let hull: u32 = ships.iter().map(|ship| ship.current_hull).sum();
+    let built: u32 = ships.iter().map(|ship| ship.design.hull).sum();
+    let at = middle(ships.iter().map(|ship| ship.get_position()));
+    let velocity = middle(ships.iter().map(|ship| ship.get_velocity()));
+    let nearest = groups
+      .iter()
+      .min_by(|a, b| {
+        (group_middle(a) - at)
+          .magnitude()
+          .total_cmp(&(group_middle(b) - at).magnitude())
+      })
+      .map(|group| {
+        format!(
+          "; nearest enemy {} at {}, {}",
+          group.name,
+          how_far((group_middle(group) - at).magnitude()),
+          motion(closing(at, velocity, group_middle(group), group_velocity(group)))
+        )
+      })
+      .unwrap_or_default();
+    let script = match steps(&name) {
+      Some((step, of)) => format!("; on step {} of {of}", step + 1),
+      None => "; no script: the crews fight freely".to_string(),
+    };
+    let _ = writeln!(
+      out,
+      "- {name}: {}; hull {}%; {:.1} km/s{nearest}{script}. Ships: {}",
+      make_up.join(", "),
+      share(hull, built),
+      velocity.magnitude() / 1000.0,
+      members.join(", ")
+    );
+  }
+}
+
+/// What the commander is shown this call: the round, the orders, the
+/// designs, our squadrons and their scripts, the enemy, the places, and the
+/// scripts as they stand. `steps` says where a squadron is in its script.
+#[must_use]
+pub fn situation(
+  view: &Observation, orders: &Orders, directive: &Directive, steps: &dyn Fn(&str) -> Option<(usize, usize)>,
+) -> String {
+  let mut out = String::new();
+  let _ = writeln!(out, "Round {}.", view.round);
+
+  write_orders(&mut out, orders);
+
+  let enemies = view.enemies();
+  let mut designs: Vec<String> = view
+    .own
+    .iter()
+    .map(|ship| ship.design.name.clone())
+    .chain(enemies.iter().map(|contact| contact.design.clone()))
+    .collect();
+  designs.sort();
+  designs.dedup();
+  let _ = writeln!(out, "\n## Designs");
+  for name in &designs {
+    if let Some(design) = get_ship_template(name) {
+      let _ = writeln!(out, "- {}", describe_design(&design));
+    }
+  }
+
+  let centre = middle(view.own.iter().map(Entity::get_position));
+  let groups = enemy_groups(&enemies, centre);
+
+  write_squadrons(&mut out, view, &groups, steps);
+
+  let _ = writeln!(out, "\n## Enemy");
+  if groups.is_empty() && view.blips.is_empty() {
+    let _ = writeln!(out, "None found yet.");
+  }
+  for group in &groups {
+    let hull: u32 = group.ships.iter().map(|c| c.current_hull).sum();
+    let built: u32 = group.ships.iter().map(|c| c.design_hull).sum();
+    let names: Vec<&str> = group.ships.iter().take(NAMES_SHOWN).map(|c| c.name.as_str()).collect();
+    let more = group.ships.len().saturating_sub(NAMES_SHOWN);
+    let _ = writeln!(
+      out,
+      "- {}: {} x {}; hull {}%; {} from our middle, {}. Ships: {}{}",
+      group.name,
+      group.ships.len(),
+      group.design,
+      share(hull, built),
+      how_far((group_middle(group) - centre).magnitude()),
+      motion(closing(
+        centre,
+        middle(view.own.iter().map(Entity::get_velocity)),
+        group_middle(group),
+        group_velocity(group)
+      )),
+      names.join(", "),
+      if more > 0 {
+        format!(" and {more} more")
+      } else {
+        String::new()
+      }
+    );
+  }
+  if !view.blips.is_empty() {
+    let nearest = view.blips.iter().map(|blip| blip.distance).fold(f64::INFINITY, f64::min);
+    let _ = writeln!(
+      out,
+      "- Unidentified: {} {}, nearest {} from one of ours.",
+      view.blips.len(),
+      if view.blips.len() == 1 { "blip" } else { "blips" },
+      how_far(nearest)
+    );
+  }
+
+  if !view.planets.is_empty() {
+    let _ = writeln!(out, "\n## Places");
+    for planet in &view.planets {
+      let _ = writeln!(
+        out,
+        "- {}: {} from our middle.",
+        planet.get_name(),
+        how_far((planet.get_position() - centre).magnitude())
+      );
+    }
+  }
+
+  let _ = writeln!(out, "\n## Scripts now");
+  if directive.squadrons.is_empty() {
+    let _ = writeln!(out, "None.");
+  } else {
+    let _ = writeln!(out, "{}", serde_json::to_string(directive).unwrap_or_default());
+  }
+  out
+}
+
+/// The `give_orders` tool's parameters, as JSON Schema: a [`Directive`].
+#[must_use]
+pub fn schema() -> Value {
+  let text = |what: &str| json!({"type": "string", "description": what});
+  let names = |what: &str| json!({"type": "array", "items": {"type": "string"}, "description": what});
+  let band = json!({"type": "string", "enum": ["Short", "Medium", "Long", "VeryLong", "Distant"]});
+  let rule = json!({
+    "type": "object",
+    "description": "Which enemies: any of the designs or ships named (any at all if neither), within the tonnage limits.",
+    "properties": {
+      "designs": names("Design names, exactly as listed."),
+      "ships": names("Ship names, exactly as listed."),
+      "max_tons": {"type": "integer"},
+      "min_tons": {"type": "integer"}
+    }
+  });
+  let place = json!({
+    "type": "object",
+    "description": "A place: give one of these.",
+    "properties": {
+      "planet": text("A planet, as listed under Places."),
+      "ship": text("A ship, ours or an enemy contact."),
+      "squadron": text("The middle of one of our squadrons."),
+      "enemies": rule,
+      "at_km": {"type": "array", "items": {"type": "number"}, "description": "x, y, z in km."}
+    }
+  });
+  let until = json!({
+    "type": "object",
+    "description": "When the step ends: as soon as any one given is true.",
+    "properties": {
+      "round": {"type": "integer", "description": "This round has begun."},
+      "within": {"type": "object", "properties": {"of": place, "band": band}, "required": ["of", "band"],
+        "description": "Any of the squadron is within this band of the place."},
+      "fired_on": {"type": "boolean", "description": "The squadron took damage last round."},
+      "losses": {"type": "number", "description": "Share of the squadron's hull lost during the step, 0 to 1."}
+    }
+  });
+  let movement = json!({
+    "type": "object",
+    "properties": {
+      "mode": {"type": "string", "enum": ["network", "burn", "arrive"],
+        "description": "network: the crews manoeuvre (default). burn: toward a place, or away from it, at up to thrust G. arrive: at a place, or at band of it, by round, together."},
+      "toward": place,
+      "away": {"type": "boolean"},
+      "thrust": {"type": "number", "description": "G."},
+      "at": place,
+      "band": band,
+      "round": {"type": "integer"}
+    }
+  });
+  let step = json!({
+    "type": "object",
+    "description": "What the squadron does until `until`; the last step has no `until`.",
+    "properties": {
+      "goal": {"type": "string", "enum": ["destroy", "hold", "raid", "escape"]},
+      "post": place,
+      "post_radius_km": {"type": "number"},
+      "engage": rule,
+      "threats": {"type": "integer", "description": "Enemies that can hit the squadron it may also engage. Default 8."},
+      "movement": movement,
+      "until": until
+    }
+  });
+  json!({
+    "type": "object",
+    "properties": {
+      "say": text("One or two sentences to your commanders: what you ordered, and anything you could not do."),
+      "squadrons": {
+        "type": "array",
+        "description": "Every squadron's script. `*` is every squadron without its own; `ship` instead of `squadron` gives one ship orders of her own.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "squadron": text("A squadron's name as listed, or *."),
+            "ship": text("A ship's name, for a ship with orders of her own."),
+            "steps": {"type": "array", "items": step}
+          },
+          "required": ["steps"]
+        }
+      },
+      "call_me_when": {
+        "type": "array",
+        "description": "When to be asked again: any one of these.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "squadron": text("Whose losses; any squadron if absent."),
+            "losses": {"type": "number", "description": "Share of hull lost since these orders, 0 to 1."},
+            "new_enemies": {"type": "boolean", "description": "Enemies not yet seen are found."},
+            "round": {"type": "integer"}
+          }
+        }
+      }
+    },
+    "required": ["say", "squadrons"]
+  })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn kilometres_are_grouped() {
+    assert_eq!(km(8_204_400.0), "8,204 km");
+    assert_eq!(km(950_000.0), "950 km");
+    assert_eq!(km(52_000_000.0), "52,000 km");
+  }
+
+  /// The examples in the system prompt are orders the executor reads.
+  #[test]
+  fn the_prompts_examples_are_directives() {
+    let examples: Vec<&str> = system()
+      .split("```json")
+      .skip(1)
+      .filter_map(|rest| rest.split("```").next())
+      .collect();
+    assert_eq!(examples.len(), 3);
+    for example in examples {
+      let directive: Result<Directive, _> = serde_json::from_str(example);
+      assert!(directive.is_ok(), "{example}: {directive:?}");
+    }
+  }
+
+  #[test]
+  fn the_schema_names_the_directive_fields() {
+    let schema = schema();
+    for field in ["say", "squadrons", "call_me_when"] {
+      assert!(schema["properties"][field].is_object(), "{field}");
+    }
+  }
+}

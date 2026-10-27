@@ -162,3 +162,39 @@ decides for the whole side, after the guns:
 - **A bad order loses:** the strict assignment costs 25 wins.
 - **Holding still and dodging wins this scenario,** as the strategy notes predicted.
 - **The timed arrival flies the meeting point** until each squadron is fired on. Medium by round 4 needed about 12 G here, so the ships arrived late.
+
+## Phase 2b: what the fleet commander is told (2026-10-27)
+
+`ai-ships/src/admiral.rs` and `ai-ships/src/prompt/admiral.md`:
+
+**System prompt.** About 1,500 tokens, the same on every call and cached. It covers:
+- the commander's job, and how fleet, squadron and ship orders apply;
+- everything a script can say;
+- how these fights go: the agreed strategy;
+- three worked examples, which a test parses as real orders.
+
+**Tool `give_orders`.** Its schema is about 1,500 tokens, also cached. Its arguments are a `Directive`. The format is now flat, plain objects with optional fields:
+- places: `planet`, `ship`, `squadron`, `enemies`, `at_km`;
+- `until`: ends on any one given;
+- `movement`: a `mode` plus its fields.
+
+Scripts can also name a single `ship`, which then fights in its own pass. `call_me_when` triggers are part of the format and take effect in 2c.
+
+**Situation.** Built fresh each call:
+- the round;
+- the orders by scope, read from the text ships carry, with ships given the same orders on one line;
+- each design on the plot, described once: tonnage, thrust, hull, armour, stealth, and every mount with its furthest band;
+- our squadrons: make-up, hull, speed, nearest enemy group, script step;
+- the enemy, grouped by design and position (E1, E2, …);
+- planets, and the current scripts.
+
+It gives no coordinates. Measured sizes:
+
+| Scenario | Situation |
+|---|---|
+| Thebus | ~420 tokens |
+| Fighter Screen | ~320 tokens |
+| Aslan Border Clash | ~650 tokens |
+| A made-up 100 against 100, five squadrons a side | ~790 tokens |
+
+A call is therefore about 3k cached tokens plus under 1k fresh, which is well under 1¢ on Gemini 3.8 Flash; most of the cost is the reply. `harness --show-admiral <side>` prints the lot for any scenario.

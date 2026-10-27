@@ -300,6 +300,22 @@ pub async fn opening_view(scenario: &str, side: &str) -> Result<crate::observati
   Ok(observe(&world, &ships))
 }
 
+/// The view `side` would have once every ordinary ship in reach had been
+/// found: the opening view of an engagement already under way.
+///
+/// # Errors
+/// Returns an error if the side is not in the scenario.
+pub async fn engaged_view(scenario: &str, side: &str) -> Result<crate::observation::Observation, String> {
+  let server = Arc::new(Server::new("harness-view", scenario).await);
+  let player = PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(1);
+  let world = player.get_entities().map_err(|e| format!("{e:?}"))?;
+  world.establish_initial_contacts();
+  let ships = sides(&world)
+    .remove(side)
+    .ok_or_else(|| format!("no side {side} in {scenario}"))?;
+  Ok(observe(&world, &ships))
+}
+
 /// Play one game of `scenario` (a scenario file path), with the commander
 /// `commanders` names for each side, for at most `max_rounds`.
 ///
