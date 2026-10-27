@@ -1,0 +1,211 @@
+{
+  "metadata": {
+    "name": "Tutorial 5: Missiles",
+    "owner": "dcsturman@gmail.com",
+    "description": "Lesson 5 of the tutorial: Warden, a system defence boat, shoots down the courier Raider's missiles and fires back."
+  },
+  "planets": [
+    {
+      "name": "Sun",
+      "position": [
+        -149600000000.0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "#fdb813",
+      "radius": 696000000.0,
+      "mass": 1.989e+30
+    },
+    {
+      "name": "Mercury",
+      "position": [
+        -100000000000.0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!mercury",
+      "primary": "Sun",
+      "radius": 2430000.0,
+      "mass": 3.3e+23
+    },
+    {
+      "name": "Venus",
+      "position": [
+        -40000000000.0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!venus",
+      "primary": "Sun",
+      "radius": 6050000.0,
+      "mass": 4.86e+24
+    },
+    {
+      "name": "Earth",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!earth",
+      "primary": "Sun",
+      "radius": 6371000.0,
+      "mass": 5.972e+24
+    },
+    {
+      "name": "Moon",
+      "position": [
+        0,
+        0,
+        38400000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!moon",
+      "primary": "Earth",
+      "radius": 1700000.0,
+      "mass": 7e+21
+    }
+  ],
+  "ships": [
+    {
+      "name": "Warden",
+      "position": [
+        7000000.0,
+        -7000000.0,
+        7000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "crew": {
+        "pilot": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "contacts": [
+        "Raider"
+      ]
+    },
+    {
+      "name": "Raider",
+      "position": [
+        7000000.0,
+        11000000.0,
+        7000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Courier - Ktiyhui",
+      "team": "Red",
+      "crew": {
+        "pilot": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "contacts": [
+        "Warden"
+      ]
+    }
+  ],
+  "missiles": [
+    {
+      "name": "Raider::Warden::0",
+      "position": [
+        7000000.0,
+        -1000000.0,
+        7000000.0
+      ],
+      "velocity": [
+        0,
+        -2000,
+        0
+      ],
+      "source": "Raider",
+      "target": "Warden",
+      "acceleration": [
+        0,
+        0,
+        0
+      ],
+      "burns": 8
+    },
+    {
+      "name": "Raider::Warden::1",
+      "position": [
+        7000000.0,
+        -850000.0,
+        7000000.0
+      ],
+      "velocity": [
+        0,
+        -2000,
+        0
+      ],
+      "source": "Raider",
+      "target": "Warden",
+      "acceleration": [
+        0,
+        0,
+        0
+      ],
+      "burns": 8
+    }
+  ]
+}

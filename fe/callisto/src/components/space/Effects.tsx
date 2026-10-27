@@ -1,6 +1,6 @@
 import * as React from "react";
 import { ShipNameTag, ShipRef } from "components/controls/ShipNameTag";
-import {useCallback, useMemo} from "react";
+import {useCallback, useMemo, useState} from "react";
 import * as THREE from "three";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
@@ -554,10 +554,63 @@ export function ResultsWindow() {
     [messages, shipFilter, categoryFilter]
   );
 
+  // Folded to one line, the round's results take no more room than a header:
+  // how many lines, and how many checks passed and failed. Open, the whole
+  // list. Folded to start with on a laptop-sized screen; the choice is
+  // remembered.
+  const [open, setOpen] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("results-open");
+      if (saved != null) return saved === "1";
+    } catch {
+      // No storage: fall through to the default.
+    }
+    return window.innerWidth >= 1600;
+  });
+  const toggle = () =>
+    setOpen((was) => {
+      try {
+        window.localStorage.setItem("results-open", was ? "0" : "1");
+      } catch {
+        // Not remembered.
+      }
+      return !was;
+    });
+  const passed = messages.filter((msg) => msg.succeeded === true).length;
+  const failed = messages.filter((msg) => msg.succeeded === false).length;
+  const heading = (
+    <h1>
+      <button type="button" className="results-toggle" aria-expanded={open} onClick={toggle}>
+        {open ? "\u25BE" : "\u25B8"} Results
+      </button>
+      <span className="results-summary">
+        {" "}
+        · {messages.length} {messages.length === 1 ? "line" : "lines"}
+        {passed + failed > 0 && (
+          <>
+            {" · "}
+            <span className="result-pass">{"\u2713"}</span> {passed} <span className="result-fail">{"\u2715"}</span>{" "}
+            {failed}
+          </>
+        )}
+      </span>
+    </h1>
+  );
+
+  if (!open) {
+    return (
+      <div id="results-window" className="computer-window results-folded" data-tutorial="results">
+        {heading}
+        <button className="control-input control-button blue-button results-dismiss" onClick={closeWindow}>
+          Okay!
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div id="results-window" className="computer-window">
-      <h1>Results</h1>
-      <br></br>
+    <div id="results-window" className="computer-window" data-tutorial="results">
+      {heading}
       {messages.length === 0 && <h2>No results</h2>}
       {messages.length > 0 && <ResultFilter events={messages} />}
       {messages.length > 0 && shown.length === 0 && (

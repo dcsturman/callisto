@@ -184,16 +184,28 @@ fn close_keeps_its_decisions_through_the_heads() {
 #[test]
 fn each_goal_scores_as_agreed() {
   use callisto::ship::Goal;
-  use callisto_rl::game::{terminal, Ending, Tally};
+  use callisto_rl::game::{terminal, Ending, Escape, Tally};
   // Hull kept below half unless a test says otherwise, so cowardice is not in play.
   let tally = |dealt: f32, jumped: f32, holding: bool| Tally {
     dealt,
-    jumped,
+    escape: Escape {
+      share: jumped,
+      ..Escape::default()
+    },
     holding,
     held: 0.0,
     kept: 0.4,
     enemy_escaping: false,
-    enemy_jumped: 0.0,
+    enemy_escape: Escape::default(),
+  };
+  // A tally whose escape has, or has not, made its number, or kept enough alive.
+  let with = |base: Tally, made: bool, alive: bool| Tally {
+    escape: Escape {
+      made,
+      alive,
+      ..base.escape
+    },
+    ..base
   };
   let none = tally(0.0, 0.0, false);
   // Destroy: running is nearly as bad as dying; a draw is as bad.
@@ -225,32 +237,63 @@ fn each_goal_scores_as_agreed() {
   assert!((terminal(Goal::Raid, Ending::WeFled, &tally(0.2, 0.0, false)) + 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::EnemyFled, &tally(0.2, 0.0, false)) + 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::Draw, &tally(0.2, 0.0, false)) + 1.0).abs() < 1e-6);
-  // Escape: only jumping out counts.
-  assert!((terminal(Goal::Escape, Ending::WeFled, &tally(0.0, 1.0, false)) - 1.0).abs() < 1e-6);
+  // Escape: as the victory screen judges it. Escaped is a win; a draw with
+  // enough still alive is a draw; anything less is a loss, softened a little
+  // for each ship that got away.
+  assert!((terminal(Goal::Escape, Ending::WeFled, &with(tally(0.0, 0.75, false), true, true)) - 1.0).abs() < 1e-6);
   assert!((terminal(Goal::Escape, Ending::WeFled, &none) + 1.0).abs() < 1e-6);
-  assert!(terminal(Goal::Escape, Ending::WeDestroyed, &tally(0.0, 0.5, false)).abs() < 1e-6);
+  assert!((terminal(Goal::Escape, Ending::WeDestroyed, &tally(0.0, 0.5, false)) + 0.75).abs() < 1e-6);
+  assert!(terminal(Goal::Escape, Ending::Draw, &with(tally(0.0, 0.25, false), false, true)).abs() < 1e-6);
+  assert!((terminal(Goal::Escape, Ending::Draw, &tally(0.0, 0.25, false)) + 0.875).abs() < 1e-6);
   // Cowardice: running with more than half the hull left, unless leaving is the goal.
   let healthy = Tally { kept: 0.8, ..none };
   assert!((terminal(Goal::Destroy, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Hold, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::WeFled, &Tally { dealt: 0.3, ..healthy }) - 0.6).abs() < 1e-6);
-  assert!((terminal(Goal::Escape, Ending::WeFled, &Tally { jumped: 1.0, ..healthy }) - 1.0).abs() < 1e-6);
-  // Against an escaping side, the escape's mirror: each ship that gets away
-  // costs what it earns the other side, whatever this side's goal.
-  let escaping = |share: f32| Tally {
+  assert!(
+    (terminal(
+      Goal::Escape,
+      Ending::WeFled,
+      &with(
+        Tally {
+          escape: Escape {
+            share: 1.0,
+            ..Escape::default()
+          },
+          ..healthy
+        },
+        true,
+        true
+      )
+    ) - 1.0)
+      .abs()
+      < 1e-6
+  );
+  // Against an escaping side, the escape's mirror, whatever this side's goal.
+  let escaping = |share: f32, made: bool, alive: bool| Tally {
     enemy_escaping: true,
-    enemy_jumped: share,
+    enemy_escape: Escape { share, made, alive },
     ..none
   };
-  assert!((terminal(Goal::Destroy, Ending::EnemyFled, &escaping(1.0)) + 1.0).abs() < 1e-6);
-  assert!((terminal(Goal::Destroy, Ending::EnemyDestroyed, &escaping(0.0)) - 1.0).abs() < 1e-6);
-  assert!(terminal(Goal::Destroy, Ending::EnemyFled, &escaping(0.5)).abs() < 1e-6);
-  let (ours, theirs) = (
-    terminal(Goal::Escape, Ending::WeFled, &tally(0.0, 0.3, false)),
-    terminal(Goal::Destroy, Ending::EnemyFled, &escaping(0.3)),
-  );
-  assert!((ours + theirs).abs() < 1e-6, "zero-sum: {ours} against {theirs}");
+  assert!((terminal(Goal::Destroy, Ending::EnemyFled, &escaping(1.0, true, true)) + 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::EnemyDestroyed, &escaping(0.0, false, false)) - 1.0).abs() < 1e-6);
+  assert!(terminal(Goal::Destroy, Ending::Draw, &escaping(0.25, false, true)).abs() < 1e-6);
+  for (share, made, alive, ending) in [
+    (0.3, false, false, Ending::Draw),
+    (0.5, false, false, Ending::EnemyFled),
+    (0.25, false, true, Ending::Draw),
+    (1.0, true, true, Ending::EnemyFled),
+  ] {
+    let ours_ending = if ending == Ending::EnemyFled {
+      Ending::WeFled
+    } else {
+      ending
+    };
+    let ours = terminal(Goal::Escape, ours_ending, &with(tally(0.0, share, false), made, alive));
+    let theirs = terminal(Goal::Destroy, ending, &escaping(share, made, alive));
+    assert!((ours + theirs).abs() < 1e-6, "zero-sum: {ours} against {theirs}");
+  }
 }
 
 #[test]

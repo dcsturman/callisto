@@ -41,7 +41,7 @@ use callisto::action::ShipAction;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, CreateScenarioMsg, EffectMsg, JoinScenarioMsg, LoginMsg, RequestMsg,
-  ResponseMsg, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+  ResponseMsg, SaveScenarioMsg, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -319,7 +319,11 @@ fn setup_reloadable_test_files(port: u16) -> (PathBuf, String, String, String) {
     let entry = entry.unwrap();
     fs::copy(entry.path(), design_dir.join(entry.file_name())).unwrap();
   }
-  fs::copy("scenarios/tutorial.json", scenario_dir.join("tutorial.json")).unwrap();
+  fs::copy(
+    "scenarios/tutorial-1-getting-around.json",
+    scenario_dir.join("tutorial-1-getting-around.json"),
+  )
+  .unwrap();
 
   (
     root,
@@ -353,7 +357,11 @@ fn append_test_design(design_dir: &str, design_name: &str) {
 }
 
 fn add_test_scenario(scenario_dir: &str, scenario_name: &str) {
-  fs::copy("scenarios/tutorial.json", PathBuf::from(scenario_dir).join(scenario_name)).unwrap();
+  fs::copy(
+    "scenarios/tutorial-1-getting-around.json",
+    PathBuf::from(scenario_dir).join(scenario_name),
+  )
+  .unwrap();
 }
 
 /**
@@ -609,6 +617,113 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   assert!(
     saw_failure_refresh,
     "Did not receive the scenario-failure refresh that clears a stale load-error banner."
+  );
+
+  send_quit(&mut stream).await;
+}
+
+/// Saving a scenario from the builder keeps its round limit: the save dialog
+/// does not edit it, and it used to be dropped on every save.
+#[test_log::test(tokio::test)]
+async fn integration_builder_save_keeps_round_limit() {
+  // The replies carry ships, which the test reads with the designs.
+  callisto::ship::config_test_ship_templates().await;
+  let port = get_next_port();
+  let (_root, scenario_dir, design_dir, _added) = setup_reloadable_test_files(port);
+  // A scenario with a round limit to open in the builder.
+  fs::copy(
+    "scenarios/tutorial-9-scenario.json",
+    PathBuf::from(&scenario_dir).join("tutorial-9-scenario.json"),
+  )
+  .unwrap();
+  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir), true)
+    .await
+    .unwrap();
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "SCENARIO-amber-river-lamp".to_string(),
+      scenario: "tutorial-9-scenario.json".to_string(),
+      ai_ships: None,
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::JoinedScenario(_)), "Expected to join, got {body:?}");
+  let _ = stream.next().await.unwrap();
+  drain_post_scenario_messages(&mut stream).await;
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::SaveScenario(SaveScenarioMsg {
+      name: "kept-limit".to_string(),
+      display_name: "Kept limit".to_string(),
+      description: "Still has its rounds.".to_string(),
+      force_overwrite: false,
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::ScenarioSaved(_)), "Expected a save, got {body:?}");
+
+  let saved: serde_json::Value =
+    serde_json::from_slice(&fs::read(PathBuf::from(&scenario_dir).join("kept-limit.json")).unwrap()).unwrap();
+  assert_eq!(
+    saved["metadata"]["rounds"],
+    json!(8),
+    "the round limit was dropped: {}",
+    saved["metadata"]
+  );
+  assert_eq!(saved["metadata"]["name"], json!("Kept limit"));
+
+  send_quit(&mut stream).await;
+}
+
+/// The tutorial's builder lesson ends with a save, and the player types the
+/// name: whatever they type, a save from a tutorial builder session must
+/// answer as a save does and write nothing.
+#[test_log::test(tokio::test)]
+async fn integration_tutorial_builder_save_writes_nothing() {
+  let port = get_next_port();
+  let (_root, scenario_dir, design_dir, _added) = setup_reloadable_test_files(port);
+  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir), true)
+    .await
+    .unwrap();
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "SCENARIO-$TUTORIAL-amber-river-lamp".to_string(),
+      scenario: String::new(),
+      ai_ships: None,
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::JoinedScenario(_)), "Expected to join, got {body:?}");
+  // Creating a scenario also sends the scenario list, then the usual state.
+  let _ = stream.next().await.unwrap();
+  drain_post_scenario_messages(&mut stream).await;
+
+  let body = rpc(
+    &mut stream,
+    RequestMsg::SaveScenario(SaveScenarioMsg {
+      name: "my-first-scenaro".to_string(),
+      display_name: "My first scenario".to_string(),
+      description: "Practice.".to_string(),
+      force_overwrite: false,
+    }),
+  )
+  .await;
+  assert!(
+    matches!(&body, ResponseMsg::ScenarioSaved(file) if file == "my-first-scenaro.json"),
+    "Expected the save to answer as saved, got {body:?}"
+  );
+  assert!(
+    !PathBuf::from(&scenario_dir).join("my-first-scenaro.json").exists(),
+    "A tutorial save wrote a scenario file."
   );
 
   send_quit(&mut stream).await;
@@ -2393,6 +2508,60 @@ async fn integration_service_login() {
   drain_initialization_messages(&mut stream).await;
   test_create_scenario(&mut stream).await.unwrap();
   send_quit(&mut stream).await;
+}
+
+/// An AI crew that is released drops its connection, and leaves the game:
+/// the people still in it are sent a Users list without it. A person whose
+/// connection drops keeps their seat, to come back to.
+#[test_log::test(tokio::test)]
+async fn integration_a_dropped_service_leaves_the_game() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+  let service_name = callisto::service_auth::SHARED_SECRET_IDENTITY
+    .split('@')
+    .next()
+    .unwrap()
+    .to_string();
+  let has_service = |users: &[callisto::payloads::UserData]| users.iter().any(|u| u.display_name == service_name);
+
+  let mut gm = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut gm).await.unwrap();
+  test_create_scenario(&mut gm).await.unwrap();
+
+  let mut service = open_socket(port).await.unwrap();
+  let accepted = rpc(
+    &mut service,
+    RequestMsg::ServiceLogin(callisto::payloads::ServiceLoginMsg {
+      token: TEST_SERVICE_TOKEN.to_string(),
+    }),
+  )
+  .await;
+  assert!(matches!(accepted, ResponseMsg::AuthResponse(_)), "got {accepted:?}");
+  drain_initialization_messages(&mut service).await;
+  test_join_scenario(&mut service).await.unwrap();
+
+  // The GM sees the service join...
+  let mut seen = false;
+  while !seen {
+    if let ResponseMsg::Users(users) = next_response_with_timeout(&mut gm, Duration::from_secs(5)).await {
+      seen = has_service(&users);
+    }
+  }
+  // ...and, once its connection drops, leave. Within a deadline: other
+  // messages keep arriving, so waiting on each one alone would never fail.
+  service.close(None).await.unwrap();
+  let gone = timeout(Duration::from_secs(10), async {
+    loop {
+      if let ResponseMsg::Users(users) = next_response_with_timeout(&mut gm, Duration::from_secs(5)).await {
+        if !has_service(&users) {
+          return;
+        }
+      }
+    }
+  })
+  .await;
+  assert!(gone.is_ok(), "the GM was never sent a Users list without the dropped service");
+  send_quit(&mut gm).await;
 }
 
 /// The next call a stand-in AI service received, or `None` after a wait.

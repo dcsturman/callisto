@@ -38,7 +38,7 @@ export function EmissionProfile(args: {ship: Ship}) {
   const level = emissionLevel(total);
 
   return (
-    <div className="emission-profile">
+    <div className="emission-profile" data-tutorial="emissions">
       <SectionTag icon={<FaSatelliteDish />}>Emissions</SectionTag>
       <EmissionGauge total={total} level={level} />
       <ul className="emission-terms">

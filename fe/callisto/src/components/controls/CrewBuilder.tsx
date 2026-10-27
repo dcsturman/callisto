@@ -128,7 +128,7 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   const engineers = customCrew.engineers ?? [];
 
   return (
-    <div className="crew-builder-window">
+    <div className="crew-builder-window" data-tutorial="builder-crew">
       <h3>{shipName}&apos;s Crew</h3>
       {/* One row per station, label left and value right, all on the same
           grid so the numbers line up down the panel. */}

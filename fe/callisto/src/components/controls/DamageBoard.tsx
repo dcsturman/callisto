@@ -77,7 +77,7 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
   ].filter((entry) => entry.attempts > 0);
 
   return (
-    <div className="damage-board">
+    <div className="damage-board" data-tutorial="damage-board">
       {/* The whole ship at a glance, before the list of what is wrong with
           it. Green all over is the answer most rounds, and reading that off a
           drawing is faster than reading it off an absence of rows. */}
@@ -146,7 +146,7 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
         </ul>
       )}
       {design != null && (
-        <div className="damage-hull">
+        <div className="damage-hull" data-tutorial="hull-armour">
           Hull {args.ship.current_hull}/{design.hull} · Armour {args.ship.current_armor}/{design.armor}
         </div>
       )}

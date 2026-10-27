@@ -41,7 +41,7 @@ async fn request(socket: &mut Backend) -> Option<RequestMsg> {
 fn world(round: u32) -> ResponseMsg {
   let mut world = Entities::new();
   world.round = round;
-  ResponseMsg::EntityResponse(world)
+  ResponseMsg::EntityResponse(Box::new(world))
 }
 
 fn config(port: u16, attempts: u32) -> Arc<CrewConfig> {

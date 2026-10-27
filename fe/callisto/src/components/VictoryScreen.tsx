@@ -1,6 +1,8 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { exit_scenario } from "lib/serverManager";
+import { leaveLesson } from "lib/tutorial/launch";
+import { AppMode } from "state/tutorialSlice";
 import { SideSeen, outcome, rememberSides, timeUp } from "lib/victory";
 import { useAppDispatch, useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
@@ -12,6 +14,7 @@ import { setJoinedScenario } from "state/userSlice";
  * the outcome changes -- a reset, say, brings the losers back.
  */
 export function VictoryScreen() {
+  const inLesson = useAppSelector((state) => state.tutorial.appMode === AppMode.Tutorial);
   const entities = useAppSelector(entitiesSelector);
   const joinedScenario = useAppSelector((state) => state.user.joinedScenario);
   const dispatch = useAppDispatch();
@@ -24,7 +27,7 @@ export function VictoryScreen() {
   }
 
   seen.current.sides = rememberSides(seen.current.sides, entities.ships);
-  const ended = outcome(seen.current.sides, entities.ships) ?? timeUp(entities, seen.current.sides);
+  const ended = outcome(seen.current.sides, entities.ships, entities) ?? timeUp(entities, seen.current.sides);
 
   // Back to a live game (a reset, or a ship added): forget the dismissal, so
   // the next ending is announced too.
@@ -39,6 +42,11 @@ export function VictoryScreen() {
   }
 
   const exit = () => {
+    // From a lesson, back to the lesson list, as the coach's own button does.
+    if (inLesson) {
+      leaveLesson();
+      return;
+    }
     dispatch(setJoinedScenario(null));
     exit_scenario();
   };

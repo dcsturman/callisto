@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "name": "Tutorial 9: Playing a scenario",
+    "owner": "dcsturman@gmail.com",
+    "description": "Lesson 9 of the tutorial: Killer (Blue) must hold the post at the Outpost moonlet until the eight rounds run out. The trader Beowulf (Red) is far off.",
+    "rounds": 8
+  },
+  "planets": [
+    {
+      "name": "Outpost",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!moon",
+      "radius": 300000.0,
+      "mass": 1e+18
+    }
+  ],
+  "ships": [
+    {
+      "name": "Killer",
+      "position": [
+        15000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "crew": {
+        "pilot": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "engineering_jump": 2,
+        "mechanic": 2,
+        "leadership": 2
+      },
+      "goal": "hold",
+      "post": "Outpost",
+      "post_radius": 5000,
+      "orders": "Hold the Outpost until the time runs out."
+    },
+    {
+      "name": "Beowulf",
+      "position": [
+        0.0,
+        60000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Free Trader",
+      "team": "Red"
+    }
+  ]
+}

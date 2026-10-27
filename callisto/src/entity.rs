@@ -93,6 +93,23 @@ pub struct Entities {
   /// where the fight has got to. Never in a scenario file: a saved scenario
   /// opens at the start, and Reset goes back to it.
   pub round: u32,
+
+  /// The ships that have jumped out of the scenario, and whether they got
+  /// away or misjumped. A ship that leaves is otherwise simply gone, exactly
+  /// as if destroyed, and an Escape side's whole goal is the difference. On
+  /// the wire for the victory screen; never in a scenario file.
+  pub departed: Vec<Departure>,
+}
+
+/// A ship that jumped out of the scenario.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Departure {
+  pub name: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub team: Option<crate::ship::Team>,
+  /// Got away: a successful jump. A misjump also leaves, but the ship is
+  /// lost in jump space, which is no escape.
+  pub safe: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -113,6 +130,11 @@ pub struct MetaData {
   /// could run out the clock.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub rounds: Option<u32>,
+  /// How many of an Escape side's ships must jump out safely for it to have
+  /// escaped. Absent, more than two-thirds of them. The victory screen
+  /// judges it; training scores the share that got away.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub escape_needed: Option<u32>,
   /// The scenario's sides and their ships, for the new-game screen to offer
   /// each side to people or the AI. Filled in when the scenario list is
   /// loaded; never written to a scenario file.
@@ -384,6 +406,7 @@ impl Entities {
       metadata: MetaData::default(),
       filename: String::new(),
       round: 1,
+      departed: Vec::new(),
     }
   }
 
@@ -452,6 +475,12 @@ impl Entities {
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
     dest.round = self.round;
+    // The scenario's own details travel with it: a game started from a file
+    // used to lose them, and with them its round limit, which is what the
+    // round counter and a held post's win both read.
+    dest.metadata.clone_from(&self.metadata);
+    dest.filename.clone_from(&self.filename);
+    dest.departed.clone_from(&self.departed);
 
     // Drop anything whose target has left play before resolving pointers. The
     // live state should never contain an orphan, but if it does, failing here
@@ -1987,6 +2016,32 @@ impl Entities {
     observer.read().unwrap().detects(&target.read().unwrap())
   }
 
+  /// Drop the sensor locks of every ship running dark, as a round runs. A lock
+  /// is active illumination, which a dark ship is not doing; see
+  /// `Ship::set_emissions`.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  pub fn drop_locks_of_dark_ships(&mut self) -> Vec<EffectMsg> {
+    let mut names: Vec<&String> = self.ships.keys().collect();
+    names.sort();
+    names
+      .into_iter()
+      .filter_map(|name| {
+        let mut ship = self.ships[name].write().unwrap();
+        if ship.active_sensors || ship.sensor_locks.is_empty() {
+          return None;
+        }
+        ship.sensor_locks.clear();
+        Some(EffectMsg::about(
+          name,
+          MessageCategory::Detection,
+          "%s is running dark: its sensor locks are dropped.".to_string(),
+        ))
+      })
+      .collect()
+  }
+
   /// Whether `ship_name` is running its active sensors.
   ///
   /// # Panics
@@ -2827,6 +2882,12 @@ impl Entities {
             let (result, jumped) = self.process_jump(ship_name, engineer, boost, rng);
             if jumped {
               jumped_ships.push(ship_name.clone());
+              let team = self.ships.get(ship_name).and_then(|ship| ship.read().unwrap().team);
+              self.departed.push(Departure {
+                name: ship_name.clone(),
+                team,
+                safe: result.success,
+              });
             }
             result
           }
@@ -3442,12 +3503,15 @@ impl Serialize for Entities {
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
       actions: ShipActionList,
+      #[serde(skip_serializing_if = "<[Departure]>::is_empty")]
+      departed: &'a [Departure],
     }
 
     let mut entities = Entities {
       metadata: &self.metadata,
       filename: &self.filename,
       round: self.round,
+      departed: &self.departed,
       ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
@@ -3499,6 +3563,8 @@ impl<'de> Deserialize<'de> for Entities {
       metadata: MetaData,
       #[serde(default = "first_round")]
       round: u32,
+      #[serde(default)]
+      departed: Vec<Departure>,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -3524,6 +3590,7 @@ impl<'de> Deserialize<'de> for Entities {
       // Scenario files don't carry their own basename; load_from_file populates it.
       filename: String::new(),
       round: guts.round,
+      departed: guts.departed,
     })
   }
 }
@@ -5833,6 +5900,39 @@ mod tests {
     assert!(checked > 0, "no ships with software found -- has the fixture moved?");
   }
 
+  /// A game is a copy of its scenario, and keeps the scenario's details: its
+  /// name, description, owner, file, and round limit.
+  #[test_log::test(tokio::test)]
+  async fn a_copy_keeps_the_scenarios_details() {
+    config_test_ship_templates().await;
+    let name = "./scenarios/tutorial-9-scenario.json";
+    let bytes = fs::read(name).expect("the scenario lesson's scenario");
+    let mut scenario = Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+    scenario.filename = "tutorial-9-scenario.json".to_string();
+    assert_eq!(scenario.metadata.rounds, Some(8));
+
+    let game = scenario.deep_copy().unwrap();
+    assert_eq!(game.metadata, scenario.metadata);
+    assert_eq!(game.filename, "tutorial-9-scenario.json");
+  }
+
+  /// The missiles lesson opens with Raider's salvo already inbound, which
+  /// only works if a scenario's missiles survive loading.
+  #[test_log::test(tokio::test)]
+  async fn the_missiles_lesson_starts_with_missiles_inbound() {
+    config_test_ship_templates().await;
+    let name = "./scenarios/tutorial-5-missiles.json";
+    let bytes = fs::read(name).expect("the missiles lesson's scenario");
+    let entities = Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+    assert_eq!(entities.missiles.len(), 2);
+    for missile in entities.missiles.values() {
+      let missile = missile.read().unwrap();
+      assert_eq!(missile.source, "Raider");
+      assert_eq!(missile.target, "Warden");
+      assert!(missile.target_ptr.is_some(), "the missile is aimed at the loaded Warden");
+    }
+  }
+
   #[test_log::test(tokio::test)]
   async fn every_bundled_scenario_loads() {
     config_test_ship_templates().await;
@@ -6798,6 +6898,56 @@ mod tests {
     );
   }
 
+  /// A ship that jumps out is recorded as departed, with whether it got away
+  /// (a successful jump) or misjumped, so an escape can be told from a ship
+  /// destroyed. Whatever the dice, the record matches the roll's message.
+  #[test_log::test(tokio::test)]
+  async fn a_jump_is_recorded_as_a_departure() {
+    use crate::software::SoftwareKind;
+    config_test_ship_templates().await;
+    for seed in 0..12 {
+      let name = "./scenarios/tutorial-8-jump.json";
+      let bytes = fs::read(name).expect("the jump lesson's scenario");
+      let mut entities =
+        Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+      {
+        let mut killer = entities.ships["Killer"].write().unwrap();
+        killer.enable_jump();
+        // Room for Jump Control, as the lesson has the player make.
+        killer.set_software_running(
+          Software {
+            kind: SoftwareKind::FireControl,
+            level: 2,
+          },
+          false,
+        );
+        killer.set_software_running(
+          Software {
+            kind: SoftwareKind::JumpControl,
+            level: 2,
+          },
+          true,
+        );
+      }
+      let mut rng = SmallRng::seed_from_u64(seed);
+      let effects = entities.engineer_actions(
+        &[("Killer".to_string(), vec![ShipAction::Jump { engineer: 0 }])],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      let said = format!("{effects:?}");
+      assert!(!entities.ships.contains_key("Killer"), "Killer should have left: {said}");
+      assert_eq!(entities.departed.len(), 1, "{said}");
+      let departure = &entities.departed[0];
+      assert_eq!(departure.name, "Killer");
+      assert_eq!(departure.team, Some(crate::ship::Team::Blue));
+      assert_eq!(departure.safe, said.contains("jumps successfully"), "{said}");
+      // It goes to the browser, and a copy of the game keeps it.
+      assert!(serde_json::to_string(&entities).unwrap().contains("\"departed\""));
+      assert_eq!(entities.deep_copy().unwrap().departed, entities.departed);
+    }
+  }
+
   /// No astrogation, no jump -- and the engineer is told why.
   #[test]
   fn jump_needs_astrogation() {
@@ -7238,9 +7388,9 @@ mod tests {
     assert!(seeker.sensor_locks.is_empty(), "the lock should go with the contact");
   }
 
-  /// Going dark drops locks but keeps contacts. High Guard p. 77 keeps
-  /// detection "maintained under most circumstances", while a lock is
-  /// deliberate illumination that a quiet ship is not performing.
+  /// Going dark drops locks but keeps contacts, when the round runs. High
+  /// Guard p. 77 keeps detection "maintained under most circumstances", while
+  /// a lock is deliberate illumination that a quiet ship is not performing.
   #[test]
   fn going_dark_drops_locks_but_keeps_contacts() {
     let mut entities = Entities::default();
@@ -7249,36 +7399,61 @@ mod tests {
       entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     }
     entities.establish_initial_contacts();
-    let alpha = entities.ships.get("Alpha").unwrap();
-    alpha.write().unwrap().sensor_locks.push("Bravo".to_string());
+    entities.ships["Alpha"].write().unwrap().sensor_locks.push("Bravo".to_string());
 
-    let dropped = alpha.write().unwrap().set_emissions(Some(false), None);
+    let at_stake = entities.ships["Alpha"].write().unwrap().set_emissions(Some(false), None);
+    assert!(at_stake, "going dark with a lock held should say the lock is at stake");
+    assert_eq!(
+      entities.ships["Alpha"].read().unwrap().sensor_locks,
+      vec!["Bravo".to_string()],
+      "the lock holds until the round runs"
+    );
 
-    assert!(dropped, "going dark should report that locks were dropped");
-    let alpha = alpha.read().unwrap();
+    let effects = entities.drop_locks_of_dark_ships();
+    assert_eq!(effects.len(), 1, "one ship lost its locks: {effects:?}");
+    let alpha = entities.ships["Alpha"].read().unwrap();
     assert!(!alpha.active_sensors);
-    assert!(alpha.sensor_locks.is_empty(), "locks should not survive going dark");
+    assert!(alpha.sensor_locks.is_empty(), "locks should not survive a round run dark");
     assert_eq!(alpha.contacts, vec!["Bravo".to_string()], "contacts should survive going dark");
   }
 
-  /// Only the transition to dark drops locks; coming back up, or setting the
-  /// state it already had, leaves them alone.
+  /// Turning the sensors off and back on before the round runs costs nothing:
+  /// the locks are only dropped from a ship still dark when it does.
   #[test]
-  fn only_going_dark_drops_locks() {
+  fn changing_your_mind_before_the_round_keeps_the_locks() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for name in ["Alpha", "Bravo"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    entities.establish_initial_contacts();
+    {
+      let mut alpha = entities.ships["Alpha"].write().unwrap();
+      alpha.sensor_locks.push("Bravo".to_string());
+      alpha.set_emissions(Some(false), None);
+      assert!(!alpha.set_emissions(Some(true), None), "coming back up puts nothing at stake");
+    }
+
+    assert_eq!(entities.drop_locks_of_dark_ships().len(), 0, "nothing to drop");
+    assert_eq!(entities.ships["Alpha"].read().unwrap().sensor_locks, vec!["Bravo".to_string()]);
+  }
+
+  /// Only going dark puts locks at stake; coming back up, or setting the state
+  /// it already had, does not.
+  #[test]
+  fn only_going_dark_puts_locks_at_stake() {
     let design = Arc::new(ShipDesignTemplate::default());
     let mut ship = Ship::new("Alpha".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     ship.sensor_locks.push("Bravo".to_string());
 
     assert!(
       !ship.set_emissions(Some(true), None),
-      "already-lit sensors should not drop locks"
+      "already-lit sensors put no locks at stake"
     );
-    assert_eq!(ship.sensor_locks.len(), 1);
-
-    assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
-    assert!(ship.sensor_locks.is_empty(), "the lock should be gone: {:?}", ship.sensor_locks);
-    // Already dark: nothing left to drop, so no second report.
+    assert!(ship.set_emissions(Some(false), None), "going dark should");
+    // Already dark: nothing new to report.
     assert!(!ship.set_emissions(Some(false), None));
+    assert_eq!(ship.sensor_locks.len(), 1, "setting emissions never drops a lock itself");
   }
 
   /// A ship running dark cannot take a new lock, contact or no contact.

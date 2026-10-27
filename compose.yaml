@@ -20,6 +20,10 @@ services:
       - ./callisto/ship_templates:/ship_templates:ro
       # Every game played is recorded here, for learning from later.
       - ./game_logs:/game_logs
+      # The users file and the remembered sign-ins (sessions.json), kept on
+      # this machine, so a rebuilt container does not sign everyone out.
+      # Both files are git-ignored.
+      - ./callisto/config:/config
     secrets:
       - google_credentials
       - gcs_credentials

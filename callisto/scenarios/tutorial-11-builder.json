@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "name": "Tutorial 11: Building a scenario",
+    "owner": "dcsturman@gmail.com",
+    "description": "Lesson 11 of the tutorial: a planet to build a scenario around, in the Scenario Builder."
+  },
+  "planets": [
+    {
+      "name": "Haven",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!earth",
+      "radius": 6000000.0,
+      "mass": 6e+24
+    }
+  ],
+  "ships": []
+}

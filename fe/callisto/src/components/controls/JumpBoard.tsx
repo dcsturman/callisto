@@ -119,7 +119,7 @@ export function JumpBoard(args: {ship: Ship}) {
   const limited = ready && conditions.some((condition) => condition.warn);
 
   return (
-    <div className="jump-board">
+    <div className="jump-board" data-tutorial="jump-board">
       <div
         className={
           limited
@@ -130,7 +130,7 @@ export function JumpBoard(args: {ship: Ship}) {
         }>
         {limited ? `Ready — jump-${jumpAvailable} only` : ready ? "Ready to jump" : "Cannot jump"}
       </div>
-      <ul className="jump-conditions">
+      <ul className="jump-conditions" data-tutorial="jump-conditions">
         {conditions.map((condition) => (
           <li
             key={condition.label}

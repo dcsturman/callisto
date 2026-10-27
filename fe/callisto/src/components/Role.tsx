@@ -55,6 +55,7 @@ export const RoleChooser = () => {
     <>
       <select
         className="select-dropdown control-name-input control-input role-input"
+        data-tutorial="seat-menu"
         aria-label="Seat"
         value={seat}
         onChange={(e) => chooseSeat(e.target.value)}
@@ -75,6 +76,7 @@ export const RoleChooser = () => {
       </select>
       <select
         className="select-dropdown control-name-input control-input role-input"
+        data-tutorial="role-menu"
         // A fleet commander works every station of whichever team ship they
         // have open; there is no single station to pick.
         disabled={fleetTeam != null}

@@ -335,6 +335,8 @@ export interface Missile extends Entity {
   target_destroyed: boolean;
   target_out_of_range: boolean;
   fuse: number;
+  /** Rounds of thrust it has left; absent from an older server. */
+  burns?: number;
 }
 
 export const defaultMissile = () => {
@@ -443,6 +445,17 @@ export interface MetaData {
   /** How many rounds the scenario lasts, if it has a limit: a Hold side
    *  still at its post when they are up has won. */
   rounds?: number;
+  /** How many of an Escape side's ships must jump out safely for it to have
+   *  escaped; absent, more than two-thirds of them. */
+  escape_needed?: number;
+}
+
+/** A ship that has jumped out of the scenario: got away, or misjumped. */
+export interface Departure {
+  name: string;
+  team?: string;
+  /** A successful jump. A misjump also leaves, but is no escape. */
+  safe: boolean;
 }
 
 /** One side of a scenario template: its team (`Unaligned` for ships on
@@ -469,6 +482,8 @@ export interface EntityList {
   filename: string;
   /** The round now being played, counting from 1. Absent from an older server. */
   round?: number;
+  /** The ships that have jumped out, safely or not. Absent when none has. */
+  departed?: Departure[];
 }
 
 export const defaultEntityList = () => {

@@ -138,6 +138,12 @@ impl PlayerManager {
     }
   }
 
+  /// Whether this connection is a service (the AI service's crew), not a person.
+  #[must_use]
+  pub fn is_service(&self) -> bool {
+    self.service
+  }
+
   /// Who this connection's orders come from, for the game record: the AI
   /// service, the referee (who holds no ships and is not watching), or a crew.
   #[must_use]
@@ -541,7 +547,10 @@ impl PlayerManager {
     );
 
     if locks_dropped {
-      Ok(format!("{} went dark; its sensor locks were dropped.", request.ship_name))
+      Ok(format!(
+        "{} went dark; its sensor locks drop when the round runs, unless its sensors are back on by then.",
+        request.ship_name
+      ))
     } else {
       Ok("Set ship emissions executed".to_string())
     }
@@ -1145,6 +1154,11 @@ impl PlayerManager {
     // First emit the leadership-action effects so the FE knows the +1
     // assignments before any sensor/fire results land.
     let mut effects = leadership_effects;
+
+    // A ship still running dark as the round runs loses its locks, before any
+    // shot could use them. Not when the switch was thrown: a crew that turned
+    // their sensors off and back on before the round lose nothing.
+    effects.append(&mut entities.drop_locks_of_dark_ships());
 
     // First process the targeting/comms sensor actions (SensorLock,
     // BreakSensorLock, JamComms). These feed into fire to-hit modifiers and

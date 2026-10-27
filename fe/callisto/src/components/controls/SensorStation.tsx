@@ -64,7 +64,7 @@ export function SensorStation(args: {ship: Ship}) {
  */
 function EyesOnUs(args: {watchers: Watcher[]}) {
   return (
-    <div className="sensor-block">
+    <div className="sensor-block" data-tutorial="eyes-on-us">
       <SectionTag icon={<EyeIcon />}>Eyes on us</SectionTag>
       {args.watchers.length === 0 ? (
         <p className="sensor-empty">Nobody has found us.</p>
@@ -211,7 +211,7 @@ function ContactDetail(args: {
   }
 
   return (
-    <div className="sensor-block">
+    <div className="sensor-block" data-tutorial="contact-detail">
       <SectionTag>Contact detail</SectionTag>
       <ul className="contact-detail-list">
         {contacts.map((ship) => {
@@ -229,24 +229,25 @@ function ContactDetail(args: {
               <div className="contact-detail-line">
                 {/* Thrust is what a pilot asks about first: what they can do
                     now, and what the design is rated for. */}
-                <span className="contact-detail-label">thrust</span>
-                <span>
+                {/* Each label with its value, so the line wraps between stats
+                    rather than running off the card or splitting a pair. */}
+                <span className="contact-detail-stat">
+                  <span className="contact-detail-label">thrust</span>{" "}
                   {ship.current_maneuver}
                   {design != null && design.maneuver !== ship.current_maneuver && `(${design.maneuver})`}
                 </span>
-                <span className="contact-detail-label">sensors</span>
-                <span>{ship.current_sensors}</span>
+                <span className="contact-detail-stat">
+                  <span className="contact-detail-label">sensors</span> {ship.current_sensors}
+                </span>
                 {design?.stealth != null && (
-                  <>
-                    <span className="contact-detail-label">stealth</span>
-                    <span>{design.stealth}</span>
-                  </>
+                  <span className="contact-detail-stat">
+                    <span className="contact-detail-label">stealth</span> {design.stealth}
+                  </span>
                 )}
                 {design?.countermeasures != null && (
-                  <>
-                    <span className="contact-detail-label">CM</span>
-                    <span>{design.countermeasures}</span>
-                  </>
+                  <span className="contact-detail-stat">
+                    <span className="contact-detail-label">CM</span> {design.countermeasures}
+                  </span>
                 )}
               </div>
               {/* What we can see is wrong with her. Silent while she is

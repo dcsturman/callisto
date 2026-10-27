@@ -2486,3 +2486,14 @@ fn builder_sessions_are_not_games() {
   assert!(!is_scenario_builder("Thebus"));
   assert!(!is_scenario_builder("TUTORIAL-1234"));
 }
+
+/// The tutorial's builder sessions are builder sessions, and are told apart
+/// so their saves are not written.
+#[test]
+fn tutorial_builder_sessions_are_builder_sessions() {
+  use crate::processor::{is_scenario_builder, is_tutorial_builder};
+  assert!(is_tutorial_builder("SCENARIO-$TUTORIAL-amber-river-lamp"));
+  assert!(is_scenario_builder("SCENARIO-$TUTORIAL-amber-river-lamp"));
+  assert!(!is_tutorial_builder("SCENARIO-amber-river-lamp"));
+  assert!(!is_tutorial_builder("$TUTORIAL-amber-river-lamp"));
+}

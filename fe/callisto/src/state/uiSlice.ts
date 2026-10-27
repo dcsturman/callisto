@@ -52,6 +52,11 @@ export interface UISlice {
      * nothing there can be unsaved.
      */
     scenarioDirty: boolean;
+    /** How many saves have succeeded this session: for the tutorial to see one happen. */
+    scenarioSaves: number;
+    /** How many renames this player has asked for: for the tutorial, which
+     *  cannot tell a rename from names alone if it came before the step. */
+    renames: number;
 }
 
 const initialState: UISlice  = {
@@ -70,6 +75,8 @@ const initialState: UISlice  = {
     resultShips: [],
     resultCategories: [],
     scenarioDirty: false,
+    scenarioSaves: 0,
+    renames: 0,
 }
 
 export const uiSlice = createSlice({
@@ -79,6 +86,13 @@ export const uiSlice = createSlice({
   reducers: {
     setEntityToShow: (state, action: PayloadAction<Entity | null>) => {
         state.entityToShow = action.payload;
+    },
+    renamed: (state) => {
+        state.renames += 1;
+    },
+    scenarioSaved: (state) => {
+        state.scenarioDirty = false;
+        state.scenarioSaves += 1;
     },
     setScenarioDirty: (state, action: PayloadAction<boolean>) => {
         state.scenarioDirty = action.payload;
@@ -170,6 +184,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, scenarioSaved, renamed, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;
