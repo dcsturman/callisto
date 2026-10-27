@@ -61,7 +61,8 @@ body {
 
 /* Compact: smaller text, cards and controls. On by itself below 1600px wide
    (a laptop), unless the player has chosen Full; on anywhere if they chose
-   Compact (View panel, Size). Compact cards fit three columns from 1250px. */
+   Compact (View panel, Size). A laptop gets two console columns, leaving room
+   to see the battle; three wait for a screen 1600px wide. */
 @media (max-width: 1599px) {
     :root:not([data-size="full"]) {
         --font-xs: 7.5pt;
@@ -75,13 +76,7 @@ body {
     }
 }
 
-@media (max-width: 1599px) and (min-width: 1250px) {
-    :root:not([data-size="full"]) {
-        --console-columns: 3;
-    }
-}
-
-@media (max-width: 1249px) and (min-width: 972px) {
+@media (max-width: 1599px) and (min-width: 972px) {
     :root:not([data-size="full"]) {
         --console-columns: 2;
     }
