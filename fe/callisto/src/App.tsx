@@ -255,11 +255,17 @@ function Simulator() {
             when the first is full. Screen space is the scarce thing on a
             laptop, and the old layout reserved a column whether it had
             anything to put in it or not. */}
-        <div className="console" ref={consoleRef}>
-          {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
-          {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
-            <Stations ship={computerShip} />
-          )}
+        {/* The scroll box, and inside it the columns. Kept apart because a
+            multi-column box with a height limit sends what does not fit
+            into more columns off to the side instead of scrolling: a card
+            taller than the screen was cut off. */}
+        <div className="console">
+          <div className="console-columns" ref={consoleRef}>
+            {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
+            {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
+              <Stations ship={computerShip} />
+            )}
+          </div>
         </div>
         {/* The ship list and view options are for everyone at the table. They
             were limited to General, Pilot and Observer, which left an engineer

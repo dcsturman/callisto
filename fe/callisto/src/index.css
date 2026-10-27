@@ -152,27 +152,33 @@ input {
    the cards a second one beside it -- two reserved columns for what is often
    one column of content, on a screen where that space is the scarce thing. */
 .console {
-    /* Columns, by the room the screen has: 3, 2 or 1 (--console-columns,
-       set below), and no more than there are cards to fill them
-       (--console-cards, counted by App). The cards flow down each column in
-       turn, and the console scrolls down rather than sideways. */
-    --console-used: min(var(--console-columns), var(--console-cards, 1));
-    column-count: var(--console-used);
-    column-gap: 4px;
-    width: calc(var(--console-used) * var(--card-width) + (var(--console-used) - 1) * 4px);
-    /* Never under the right-hand column, whatever the screen. */
+    /* The scroll box: never taller than the screen, never under the
+       right-hand column, scrolling down when the columns are taller. */
     max-width: max(var(--card-width), calc(100vw - var(--right-column) - 8px));
     max-height: 100vh;
+    width: fit-content;
     overflow-x: hidden;
     overflow-y: auto;
     position: relative;
     z-index: 10;
 }
 
+.console-columns {
+    /* Columns, by the room the screen has: 3, 2 or 1 (--console-columns),
+       and no more than there are cards to fill them (--console-cards,
+       counted by App). No height limit here: the columns balance and grow,
+       and the box around them scrolls. */
+    --console-used: min(var(--console-columns), var(--console-cards, 1));
+    column-count: var(--console-used);
+    column-gap: 4px;
+    width: calc(var(--console-used) * var(--card-width) + (var(--console-used) - 1) * 4px);
+    max-width: 100%;
+}
+
 /* A card stays whole in its column, with the gap below it, and takes the
    column's width: a tight screen narrows the cards rather than overlapping
    them. */
-.console > * {
+.console-columns > * {
     break-inside: avoid;
     margin-bottom: 4px;
     width: auto !important;
