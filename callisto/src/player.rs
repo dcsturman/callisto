@@ -138,6 +138,12 @@ impl PlayerManager {
     }
   }
 
+  /// Whether this connection is a service (the AI service's crew), not a person.
+  #[must_use]
+  pub fn is_service(&self) -> bool {
+    self.service
+  }
+
   /// Who this connection's orders come from, for the game record: the AI
   /// service, the referee (who holds no ships and is not watching), or a crew.
   #[must_use]

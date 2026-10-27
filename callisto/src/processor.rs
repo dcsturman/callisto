@@ -263,6 +263,29 @@ impl Processor {
 
   /// Tell the AI service about any change to which ships in this scenario it
   /// should be crewing. Cheap when nothing changed: one pass over the ships.
+  /// A connection has gone. A person's seat waits for them to reconnect, but
+  /// a service's never does: the AI service does not come back for a crew it
+  /// has released. So a service leaves its game, and the game's other players
+  /// are sent the Users list without it, rather than seeing it there for good.
+  async fn leave_if_service(&mut self, leaving: &Connection, connections: &mut [Connection]) {
+    if !leaving.player.is_service() {
+      return;
+    }
+    let (Some(server), Some(session_key)) = (leaving.player.server.clone(), leaving.player.get_session_key()) else {
+      return;
+    };
+    self.members.remove(server.get_id(), &session_key);
+    let users = ResponseMsg::Users(self.members.get_user_context(server.get_id()));
+    let text: Utf8Bytes = serde_json::to_string(&users).expect("Failed to serialize users").into();
+    for connection in connections.iter_mut() {
+      if connection.player.server.as_ref() == Some(&server) {
+        connection.stream.send(Message::Text(text.clone())).await.unwrap_or_else(|e| {
+          error!("(leave_if_service) Failed to send users: {e:?}");
+        });
+      }
+    }
+  }
+
   fn reconcile_ai_crews(&mut self, server: Option<&Arc<Server>>) {
     let (Some(client), Some(server)) = (&self.ai_service, server) else {
       return;
@@ -561,7 +584,8 @@ impl Processor {
             }
           });
           // Mark this stream for deletion
-          connections.remove(index);
+          let leaving = connections.remove(index);
+          self.leave_if_service(&leaving, &mut connections).await;
           debug!("(processor) Removed connection.  Now {} connections.", connections.len());
         }
         ActiveProcessorEvent::Message(Some((index, Some(res)))) => {
@@ -569,7 +593,8 @@ impl Processor {
         }
         ActiveProcessorEvent::Message(Some((index, None))) => {
           info!("(processor) Connection {index} disconnected.  Removing.");
-          connections.remove(index);
+          let leaving = connections.remove(index);
+          self.leave_if_service(&leaving, &mut connections).await;
         }
         ActiveProcessorEvent::Message(None) => {
           warn!("(processor) Strange response from message stream.  Exiting.");

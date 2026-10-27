@@ -2510,6 +2510,60 @@ async fn integration_service_login() {
   send_quit(&mut stream).await;
 }
 
+/// An AI crew that is released drops its connection, and leaves the game:
+/// the people still in it are sent a Users list without it. A person whose
+/// connection drops keeps their seat, to come back to.
+#[test_log::test(tokio::test)]
+async fn integration_a_dropped_service_leaves_the_game() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+  let service_name = callisto::service_auth::SHARED_SECRET_IDENTITY
+    .split('@')
+    .next()
+    .unwrap()
+    .to_string();
+  let has_service = |users: &[callisto::payloads::UserData]| users.iter().any(|u| u.display_name == service_name);
+
+  let mut gm = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut gm).await.unwrap();
+  test_create_scenario(&mut gm).await.unwrap();
+
+  let mut service = open_socket(port).await.unwrap();
+  let accepted = rpc(
+    &mut service,
+    RequestMsg::ServiceLogin(callisto::payloads::ServiceLoginMsg {
+      token: TEST_SERVICE_TOKEN.to_string(),
+    }),
+  )
+  .await;
+  assert!(matches!(accepted, ResponseMsg::AuthResponse(_)), "got {accepted:?}");
+  drain_initialization_messages(&mut service).await;
+  test_join_scenario(&mut service).await.unwrap();
+
+  // The GM sees the service join...
+  let mut seen = false;
+  while !seen {
+    if let ResponseMsg::Users(users) = next_response_with_timeout(&mut gm, Duration::from_secs(5)).await {
+      seen = has_service(&users);
+    }
+  }
+  // ...and, once its connection drops, leave. Within a deadline: other
+  // messages keep arriving, so waiting on each one alone would never fail.
+  service.close(None).await.unwrap();
+  let gone = timeout(Duration::from_secs(10), async {
+    loop {
+      if let ResponseMsg::Users(users) = next_response_with_timeout(&mut gm, Duration::from_secs(5)).await {
+        if !has_service(&users) {
+          return;
+        }
+      }
+    }
+  })
+  .await;
+  assert!(gone.is_ok(), "the GM was never sent a Users list without the dropped service");
+  send_quit(&mut gm).await;
+}
+
 /// The next call a stand-in AI service received, or `None` after a wait.
 /// A stand-in AI service that records the path and body of every call: its
 /// URL, and the calls as they come.
