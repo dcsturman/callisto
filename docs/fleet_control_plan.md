@@ -96,6 +96,7 @@ network plays both sides, 200 games per variant, 40-round limit.
 | Fighters shown enemy fighters plus 8 threats | 77 | 74 |
 | The same with the cruiser on the cruiser | 82 | 70 |
 | Fighters shown everything, fire only on fighters plus 8 threats | 99 | 87 |
+| Two squadrons, each shown every enemy and every ally (allies' orders dropped) | 94 | 101 |
 
 - **Separate passes cost little:** about 5 wins out of 200. The share of hull kept drops from about
   21% to 15%.
@@ -104,5 +105,8 @@ network plays both sides, 200 games per variant, 40-round limit.
     enemy fighters 24% of the time, against 9%, and close in without seeing the cruiser.
   - Showing every enemy and restricting only fire costs nothing. In this scenario the restriction
     rarely binds, because the cruiser counts as a threat.
+- **Showing allies restores the coordination.** Squadrons that also see the rest of the side (as own
+  ships whose orders are dropped) win 195 in total, against 192 for one pass and 182 for squadrons
+  without allies. The hull kept rises from about 14% back to 18–20%.
 - **Conclusion:** show a squadron every enemy (up to 20, assigned ones first), and restrict what it
   may engage with masks. Do not hide enemies from the network.

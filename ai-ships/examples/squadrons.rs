@@ -12,7 +12,8 @@
 //! with `<shown>` (`*` for every enemy), and, with `+N`, up to N others,
 //! nearest first, that can hit one of the squadron where they are now.
 //! `<own>>><shown>` shows every enemy instead, and lets the squadron fire
-//! only on those.
+//! only on those. `<own>&` also shows the rest of the side, as own ships
+//! whose orders are dropped.
 
 use async_trait::async_trait;
 use callisto::entity::Entity;
@@ -28,6 +29,8 @@ struct Squadron {
   threats: usize,
   /// Show every enemy, and only fire on the assigned ones and the threats.
   allow_only: bool,
+  /// Show the rest of the side too, as own ships whose orders are dropped.
+  with_allies: bool,
   commander: Box<dyn Commander>,
 }
 
@@ -39,7 +42,9 @@ impl Squadron {
   /// The view this squadron's pass is given.
   fn view(&self, view: &Observation) -> Observation {
     let mut part = view.clone();
-    part.own.retain(|ship| ship.get_name().starts_with(&self.own));
+    if !self.with_allies {
+      part.own.retain(|ship| ship.get_name().starts_with(&self.own));
+    }
     if self.shown == "*" {
       return part;
     }
@@ -88,10 +93,11 @@ impl Commander for Split {
     let mut intents = Vec::new();
     for squadron in &mut self.squadrons {
       let part = squadron.view(view);
-      if part.own.is_empty() {
+      if !part.own.iter().any(|ship| ship.get_name().starts_with(&squadron.own)) {
         continue;
       }
       let mut decided = squadron.commander.decide(&part).await;
+      decided.retain(|(name, _)| name.starts_with(&squadron.own));
       if squadron.allow_only && squadron.shown != "*" {
         let allowed = squadron.allowed(view, &part);
         for (name, intent) in &mut decided {
@@ -125,6 +131,7 @@ fn split(spec: &str, seed: u64) -> Option<Box<dyn Commander>> {
     .split(';')
     .map(|part| {
       let (own, shown) = part.split_once('>')?;
+      let (with_allies, own) = own.strip_suffix('&').map_or((false, own), |own| (true, own));
       let (allow_only, shown) = shown.strip_prefix('>').map_or((false, shown), |rest| (true, rest));
       let (shown, threats) = shown
         .split_once('+')
@@ -134,6 +141,7 @@ fn split(spec: &str, seed: u64) -> Option<Box<dyn Commander>> {
         shown: shown.to_string(),
         threats,
         allow_only,
+        with_allies,
         commander: ai_ships::network::commander::named("network", seed)?,
       })
     })
