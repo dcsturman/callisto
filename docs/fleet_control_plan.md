@@ -129,3 +129,36 @@ decides for the whole side, after the guns:
 | Fighter Screen | New wins 126–68 as Blue, and 124–65 as Red | The cruiser stops firing into the other cruiser's point defence (6 a round can never beat ~21) and sends every missile at fighters |
 | Fighter Swarm | No change (106 and 103 wins for the missile side) | Fighters have no point defence, so both versions already sent missiles at them |
 | Missile Wall (an experiment: 3 pocket warships, 36 missiles a round, against 2 Kinunirs and 6 fighters) | Both win all 200 | New ends in 4.4 rounds rather than 4.7, with 31% fewer missiles fired |
+
+## Phase 2a: the squadron order executor (2026-10-27)
+
+`ai-ships/src/fleet.rs` plays a side as squadrons under a `Directive`, with no LLM yet:
+- **A script per squadron.** `*` covers every squadron without its own script.
+- **Each script is a list of steps.** A step can set:
+  - a goal, and a post;
+  - who the squadron may `engage`: designs, ships, tonnage;
+  - how many `threats` it may also engage;
+  - its `movement`: `network`, `burn` toward or away from a place, or `arrive` at a place or a range band of it by a round;
+  - `until`: a round, `within` a band of a place, `fired_on`, `losses`, or `any` of these.
+- **One network pass per squadron**, through `SideCommander::decide_pass`:
+  - the squadron's allies fill its own-ship slots, and their orders are dropped;
+  - enemies are shown assigned first, then threats, then nearest;
+  - targets outside the assignment are masked, and guns and missiles are shared out only among the allowed ones;
+  - movement is done by helm rewrites: `Station` with a thrust cap.
+- **Ships in no squadron** are grouped by name, at most 20 per group.
+- **In the harness:** `--side Blue=fleet:<directive.json>`.
+
+**Results.** Fighter Screen, Blue in two squadrons (Lance: 15 fighters; Flag: the cruiser), against the plain network, 100 games each:
+
+| Orders | Blue wins | Red wins |
+|---|---|---|
+| None (squadron passes only) | 48 | 50 |
+| Lance engages Light Fighters, plus 8 threats | 51 | 45 |
+| Everyone arrives at Medium of the enemy by round 4, then fights | 51 | 45 |
+| Everyone holds (Hold goal, starting point) | **61** | 33 |
+| Lance engages Light Fighters only, no threats | 35 | 59 |
+
+- **Orders bind:** under the strict assignment the fighters fire no shots at the cruiser.
+- **A bad order loses:** the strict assignment costs 25 wins.
+- **Holding still and dodging wins this scenario,** as the strategy notes predicted.
+- **The timed arrival flies the meeting point** until each squadron is fired on. Medium by round 4 needed about 12 G here, so the ships arrived late.

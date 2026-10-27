@@ -26,6 +26,7 @@ pub mod commander;
 pub mod crew;
 pub mod crews;
 pub mod decision;
+pub mod fleet;
 pub mod harness;
 pub mod llm;
 pub mod network;
