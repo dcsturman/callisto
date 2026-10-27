@@ -1,7 +1,5 @@
 import * as React from "react";
-import { findShipIn, Lesson, TutorialContext } from "lib/tutorial/lesson";
-
-const names = (c: TutorialContext) => [...c.entities.ships, ...c.entities.planets].map((e) => e.name);
+import { findShipIn, Lesson } from "lib/tutorial/lesson";
 
 export const builder: Lesson = {
   id: "builder",
@@ -132,8 +130,9 @@ export const builder: Lesson = {
         </p>
       ),
       task: "Rename something with its pencil, and press Enter.",
-      done: (now, start) =>
-        names(now).length === names(start).length && names(start).some((name) => !names(now).includes(name)),
+      // Any rename in this lesson: one made before the step, while the list
+      // was already showing, counts too.
+      done: (now) => now.ui.renames > 0,
     },
     {
       id: "goals",

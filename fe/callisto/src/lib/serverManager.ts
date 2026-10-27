@@ -32,6 +32,7 @@ import {
   setShowResults,
   setScenarioDirty,
   scenarioSaved,
+  renamed,
 } from "state/uiSlice";
 import { setEmail, setRoleShip, setFleetCommand, setJoinedScenario } from "state/userSlice";
 import { AppMode, setAppMode, setLesson } from "state/tutorialSlice";
@@ -493,6 +494,7 @@ export function removeEntity(target: string) {
 }
 
 export function renameEntity(current: string, newName: string) {
+  store.dispatch(renamed());
   socket.send(
     JSON.stringify({
       RenameEntity: { current, new_name: newName },
