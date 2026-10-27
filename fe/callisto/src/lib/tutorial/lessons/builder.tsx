@@ -21,8 +21,10 @@ export const builder: Lesson = {
             rounds. You place planets and ships, give them sides and crews, and save the result for people to play.
           </p>
           <p>
-            You have a planet, Haven, to start from. In the tutorial, <b>Save</b> checks your scenario but does not
-            keep it, so experiment freely.
+            You have a planet, Haven, to start from. One thing to know first: <b>in the tutorial, Save keeps
+            nothing.</b> It checks your scenario as a real save would, then throws it away, whatever name you give
+            it, so experiment freely. Outside the tutorial, in the Scenario Builder proper, Save really does save:
+            the scenario is written and appears in everyone&apos;s scenario list.
           </p>
         </>
       ),
@@ -149,10 +151,17 @@ export const builder: Lesson = {
       title: "Save",
       target: ["builder-save"],
       body: (
-        <p>
-          Saving asks for a file name, a <b>Display Name</b> (what players see in the scenario list) and a{" "}
-          <b>Description</b> (what they read before playing: say who is who, and what each side is for).
-        </p>
+        <>
+          <p>
+            Saving asks for a file name, a <b>Display Name</b> (what players see in the scenario list) and a{" "}
+            <b>Description</b> (what they read before playing: say who is who, and what each side is for).
+          </p>
+          <p>
+            Here in the tutorial, Save only checks: it says <b>Checked. This is the tutorial, so it was not
+            kept.</b> and nothing is written. In the Scenario Builder outside the tutorial, the same button saves
+            the scenario for real.
+          </p>
+        </>
       ),
       task: (
         <>
