@@ -442,6 +442,14 @@ fn cached<T>(
 /// Replace the file to change it; its layout must match this build's.
 pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 
+/// The per-side network compiled into the service, loaded once.
+#[must_use]
+pub fn built_in() -> Option<Arc<SideNet>> {
+  cached(&LOADED_SIDE, "network", |_| {
+    SideNet::from_bytes(BUILT_IN, "the built-in network")
+  })
+}
+
 /// A commander by name: `network`, the built-in per-side network
 /// (`network-legacy` with its missiles shared out the old way); a baseline
 /// (`close`, `hold`, ...); or a trained network from its exported file --

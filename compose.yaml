@@ -57,7 +57,9 @@ services:
       CALLISTO_BACKEND: ws://be:30000
       CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
       # Who decides: `network`, the trained network built into the service,
-      # which needs no model or credentials. `CALLISTO_AI_MODEL=gemini
+      # which needs no model or credentials. `CALLISTO_AI_MODEL=admiral:gemini`
+      # has Gemini write squadron scripts from the ships' orders and the
+      # network fight them. `CALLISTO_AI_MODEL=gemini
       # docker-compose up --build -d` plays with Gemini instead, through your
       # application-default credentials (`gcloud auth application-default
       # login` once if the service cannot get a token) and on this project's

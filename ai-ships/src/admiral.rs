@@ -540,9 +540,247 @@ pub fn schema() -> Value {
   })
 }
 
+/// A side commanded by a language model: it writes the squadrons' scripts,
+/// and the [`FleetCommander`](crate::fleet::FleetCommander) carries them
+/// out. The model is asked only when the orders the side's ships carry
+/// change, or something it asked to hear about happens (`call_me_when`);
+/// with no orders at all it is never asked, and the crews fight freely.
+pub struct Admiral {
+  fleet: crate::fleet::FleetCommander,
+  vertex: Arc<crate::provider::Vertex>,
+  spec: crate::provider::ModelSpec,
+  /// Each ship's orders when the model last answered, by ship.
+  answered_orders: Option<BTreeMap<String, String>>,
+  /// Each squadron's hull, and the enemies known, when it last answered.
+  hull_then: BTreeMap<String, u32>,
+  seen: Vec<String>,
+  answered: bool,
+  spent: f64,
+  /// Every call, as JSON lines, if kept.
+  call_log: Option<Box<dyn std::io::Write + Send>>,
+}
+
+impl Admiral {
+  #[must_use]
+  pub fn new(
+    net: Arc<crate::network::side_net::SideNet>, vertex: Arc<crate::provider::Vertex>, spec: crate::provider::ModelSpec,
+  ) -> Self {
+    Admiral {
+      fleet: crate::fleet::FleetCommander::new(net, Directive::default()),
+      vertex,
+      spec,
+      answered_orders: None,
+      hull_then: BTreeMap::new(),
+      seen: Vec::new(),
+      answered: true,
+      spent: 0.0,
+      call_log: None,
+    }
+  }
+
+  /// Keep every call -- situation, answer, cost -- as JSON lines.
+  #[must_use]
+  pub fn with_call_log(mut self, log: Box<dyn std::io::Write + Send>) -> Self {
+    self.call_log = Some(log);
+    self
+  }
+
+  /// What the model has spent so far, in US dollars.
+  #[must_use]
+  pub fn spent(&self) -> f64 {
+    self.spent
+  }
+
+  fn squadron_hulls(view: &Observation) -> BTreeMap<String, u32> {
+    squadrons(&view.own, &[])
+      .into_iter()
+      .map(|(name, members)| {
+        let hull = view
+          .own
+          .iter()
+          .filter(|ship| members.iter().any(|m| m == ship.get_name()))
+          .map(|ship| ship.current_hull)
+          .sum();
+        (name, hull)
+      })
+      .collect()
+  }
+
+  /// Each ship's orders, by ship: what a change of orders is judged by.
+  fn orders_by_ship(own: &[Ship]) -> BTreeMap<String, String> {
+    own
+      .iter()
+      .filter_map(|ship| {
+        let text = ship.orders.as_deref().map(str::trim).filter(|text| !text.is_empty())?;
+        Some((ship.get_name().to_string(), text.to_string()))
+      })
+      .collect()
+  }
+
+  /// Why the model should be asked now, if it should.
+  fn reason(&self, view: &Observation, orders: &Orders) -> Option<String> {
+    let now = Self::orders_by_ship(&view.own);
+    match &self.answered_orders {
+      // Never asked: only once there are orders to give.
+      None if !orders.is_empty() => return Some("new orders".to_string()),
+      None => {}
+      // A ship lost is not new orders; a living ship's orders changed are.
+      Some(then) => {
+        if let Some(changed) = view
+          .own
+          .iter()
+          .map(Entity::get_name)
+          .find(|ship| now.get(*ship) != then.get(*ship))
+        {
+          return Some(format!("new orders for {changed}"));
+        }
+      }
+    }
+    let hulls = Self::squadron_hulls(view);
+    for trigger in &self.fleet.directive().call_me_when {
+      if trigger.round.is_some_and(|round| view.round == round) {
+        return Some(format!("round {}", view.round));
+      }
+      if trigger.new_enemies {
+        if let Some(found) = view.enemies().iter().find(|c| !self.seen.contains(&c.name)) {
+          return Some(format!("{} found", found.name));
+        }
+      }
+      if let Some(share) = trigger.losses {
+        let lost = self.hull_then.iter().find(|(name, then)| {
+          trigger.squadron.as_ref().is_none_or(|wanted| wanted == *name) && {
+            let now = hulls.get(*name).copied().unwrap_or(0);
+            #[allow(clippy::cast_precision_loss)]
+            let fraction = (**then - now.min(**then)) as f32 / (**then).max(1) as f32;
+            fraction >= share
+          }
+        });
+        if let Some((name, _)) = lost {
+          return Some(format!("{name} has lost {:.0}% of its hull", share * 100.0));
+        }
+      }
+    }
+    None
+  }
+
+  async fn ask(&mut self, view: &Observation, orders: &Orders, reason: &str) {
+    let fleet = &self.fleet;
+    let situation = format!(
+      "Asked because: {reason}.\n\n{}",
+      situation(view, orders, fleet.directive(), &|group: &str| fleet.step_of(group))
+    );
+    let tool = crate::provider::Tool {
+      name: TOOL_NAME,
+      description: TOOL_DESCRIPTION,
+      schema: schema(),
+    };
+    let started = std::time::Instant::now();
+    let result = self.vertex.call(&self.spec, system(), &situation, &tool).await;
+    let seconds = started.elapsed().as_secs_f64();
+    let (record, directive) = match result {
+      Ok(call) => {
+        let cost = call.cost(&self.spec);
+        self.spent += cost.unwrap_or(0.0);
+        let directive: Result<Directive, _> = serde_json::from_value(call.args.clone());
+        let record = json!({
+          "round": view.round, "reason": reason, "situation": situation, "answer": call.args,
+          "input_tokens": call.input_tokens, "cached_tokens": call.cached_tokens,
+          "output_tokens": call.output_tokens, "cost_usd": cost, "seconds": seconds,
+          "error": directive.as_ref().err().map(ToString::to_string),
+        });
+        (record, directive.ok())
+      }
+      Err(e) => (
+        json!({"round": view.round, "reason": reason, "situation": situation, "error": e.to_string(), "seconds": seconds}),
+        None,
+      ),
+    };
+    if let Some(log) = self.call_log.as_mut() {
+      let _ = writeln!(log, "{record}");
+      let _ = log.flush();
+    }
+    if let Some(directive) = directive {
+      tracing::info!(
+        "(admiral) Round {}, {reason}: {}",
+        view.round,
+        directive.say.as_deref().unwrap_or("(nothing said)")
+      );
+      self.fleet.set_directive(directive);
+      self.answered_orders = Some(Self::orders_by_ship(&view.own));
+      self.hull_then = Self::squadron_hulls(view);
+      self.seen = view.enemies().iter().map(|c| c.name.clone()).collect();
+      self.answered = true;
+    } else {
+      // Asked again next round; the squadrons keep their scripts meanwhile.
+      tracing::warn!("(admiral) Round {}: no orders from the model: {}", view.round, record["error"]);
+      self.answered = false;
+    }
+  }
+}
+
+#[async_trait::async_trait]
+impl crate::commander::Commander for Admiral {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, tactics::Intent)> {
+    let orders = orders_of(&view.own);
+    if let Some(reason) = self.reason(view, &orders) {
+      self.ask(view, &orders, &reason).await;
+    }
+    self.fleet.decide(view).await
+  }
+
+  fn plan(&self) -> Option<&str> {
+    self.fleet.directive().say.as_deref()
+  }
+
+  fn answered(&self) -> bool {
+    self.answered
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  fn ship(name: &str, squadron: Option<&str>, orders: Option<&str>) -> Ship {
+    let mut ship = Ship::new(
+      name.to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &Arc::new(ShipDesignTemplate::default()),
+      None,
+      None,
+    );
+    ship.squadron = squadron.map(str::to_string);
+    ship.orders = orders.map(str::to_string);
+    ship
+  }
+
+  /// Orders read by scope: what every ship carries is the fleet's, what a
+  /// whole squadron carries apart from that is the squadron's, and the rest
+  /// are ships' own.
+  #[test]
+  fn orders_are_read_by_scope() {
+    let fleet = Some("Destroy them.");
+    let own = vec![
+      ship("Lance 1", Some("Lance"), Some("Fighters first.")),
+      ship("Lance 2", Some("Lance"), Some("Fighters first.")),
+      ship("Hesperus", Some("Flag"), fleet),
+      ship("Tender", Some("Flag"), Some("Stay back.")),
+    ];
+    let orders = orders_of(&own);
+    assert_eq!(orders.fleet, None, "not every ship carries one order");
+    assert_eq!(orders.squadrons, vec![("Lance".to_string(), "Fighters first.".to_string())]);
+    assert_eq!(
+      orders.ships,
+      vec![
+        ("Hesperus".to_string(), "Destroy them.".to_string()),
+        ("Tender".to_string(), "Stay back.".to_string())
+      ]
+    );
+    let all = vec![ship("A", None, fleet), ship("B", None, fleet)];
+    assert_eq!(orders_of(&all).fleet.as_deref(), fleet);
+    assert_eq!(orders_of(&all).ships, Vec::<(String, String)>::new());
+  }
 
   #[test]
   fn kilometres_are_grouped() {

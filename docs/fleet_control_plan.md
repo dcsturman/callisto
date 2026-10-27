@@ -198,3 +198,19 @@ It gives no coordinates. Measured sizes:
 | A made-up 100 against 100, five squadrons a side | ~790 tokens |
 
 A call is therefore about 3k cached tokens plus under 1k fresh, which is well under 1¢ on Gemini 3.8 Flash; most of the cost is the reply. `harness --show-admiral <side>` prints the lot for any scenario.
+
+## Phase 2c: the model in the loop (2026-10-27)
+
+**Provider.** `Vertex::call(spec, system, situation, &Tool)` calls any tool and returns its raw arguments and token counts. The old per-round decision is now a thin layer on top. A prompt that Gemini refuses to cache (explicit caching needs 4,096 tokens; ours is ~2,700) is remembered for a day, rather than asked for on every call.
+
+**`admiral:<model>`.** For example `admiral:gemini`, in the harness or as the service's `CALLISTO_AI_MODEL`. It is `ai_ships::admiral::Admiral`: a model writing scripts for the squadron executor. The model is asked only:
+- when a living ship's orders text differs from what it last answered (ships lost do not count);
+- when one of its own `call_me_when` triggers fires: a squadron's losses since then, a new enemy found, or a round.
+
+With no orders at all it is never asked. If an answer cannot be read, the squadrons keep their scripts and the model is asked again next round. Every call is logged as a JSON line: situation, answer, tokens, cost, seconds.
+
+**First game.** Fighter Screen, Blue `admiral:gemini` (Gemini 3.8 Flash) with the scenario's orders, against the network:
+- two calls in the game: the orders in round 1, and the enemy cruiser found in round 2;
+- 5–7 seconds a call;
+- $0.0074 for the game, about 0.3–0.5¢ a call;
+- the model gave the cruiser orders of her own, since hers differed from the fighters', and set triggers for new enemies and for her losses.

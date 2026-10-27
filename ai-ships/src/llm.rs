@@ -216,11 +216,25 @@ pub fn system_for(name: &str) -> Result<String, String> {
   }
 }
 
+/// The model a commander name calls, if it calls one: `gemini`,
+/// `claude:<model>`, or a fleet commander's `admiral:<model>`.
+#[must_use]
+pub fn model_of(name: &str) -> Option<ModelSpec> {
+  ModelSpec::parse(name.strip_prefix("admiral:").unwrap_or(name))
+}
+
 /// A commander by name: a model's (`gemini`, `claude:<model>`), given a
 /// Vertex connection, or any of [`crate::network::commander::named`]'s: the
 /// built-in network, a network from a file, or a baseline.
 #[must_use]
 pub fn named(name: &str, seed: u64, vertex: Option<&Arc<Vertex>>) -> Option<Box<dyn Commander>> {
+  // `admiral:<model>`: the model writes squadron scripts and the network
+  // fights them.
+  if let Some(model) = name.strip_prefix("admiral:") {
+    let spec = ModelSpec::parse(model)?;
+    let net = crate::network::commander::built_in()?;
+    return Some(Box::new(crate::admiral::Admiral::new(net, Arc::clone(vertex?), spec)));
+  }
   match (ModelSpec::parse(name), vertex) {
     (Some(spec), Some(vertex)) => {
       Some(Box::new(Llm::new(Arc::clone(vertex), spec).with_system(system_for(name).ok()?)))

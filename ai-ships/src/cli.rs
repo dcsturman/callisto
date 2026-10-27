@@ -104,20 +104,7 @@ pub async fn run(extra: &Extra<'_>) -> Result<(), Box<dyn std::error::Error>> {
   replace_ship_templates(load_ship_templates_from_dir(&args.designs).await?);
 
   if let Some(side) = &args.show_admiral {
-    let view = crate::harness::engaged_view(&args.scenario, side).await?;
-    let orders = crate::admiral::orders_of(&view.own);
-    let situation = crate::admiral::situation(&view, &orders, &crate::fleet::Directive::default(), &|_: &str| None);
-    let schema = crate::admiral::schema().to_string();
-    let system = crate::admiral::system();
-    println!("{system}\n\n---\n\n{situation}");
-    // About four characters to a token.
-    eprintln!(
-      "\nsystem prompt ~{} tokens, tool schema ~{}, situation ~{}",
-      system.len() / 4,
-      schema.len() / 4,
-      situation.len() / 4
-    );
-    return Ok(());
+    return show_admiral(&args.scenario, side).await;
   }
   if let Some(side) = &args.show_prompt {
     let view = opening_view(&args.scenario, side).await?;
@@ -137,7 +124,7 @@ pub async fn run(extra: &Extra<'_>) -> Result<(), Box<dyn std::error::Error>> {
   let needs_model = assigned
     .values()
     .chain(std::iter::once(&args.default))
-    .any(|name| ModelSpec::parse(name).is_some());
+    .any(|name| llm::model_of(name).is_some());
   let vertex = if needs_model {
     Some(Arc::new(Vertex::new(args.project.as_deref(), &args.region).await?))
   } else {
@@ -149,6 +136,16 @@ pub async fn run(extra: &Extra<'_>) -> Result<(), Box<dyn std::error::Error>> {
   let commanders = |side: &str, seed: u64| -> Option<(String, Box<dyn Commander>)> {
     let name = assigned.get(side).unwrap_or(&args.default).clone();
     let commander = match (ModelSpec::parse(&name), vertex.as_ref(), args.transcript.as_ref()) {
+      // A fleet commander's calls go to the transcript directory as JSON lines.
+      (None, Some(vertex), Some(dir)) if name.starts_with("admiral:") => {
+        let path = format!("{dir}/seed-{seed}-{}.jsonl", side.replace(':', "_"));
+        let file = File::create(&path).ok()?;
+        let spec = llm::model_of(&name)?;
+        let net = crate::network::commander::built_in()?;
+        Some(Box::new(
+          crate::admiral::Admiral::new(net, Arc::clone(vertex), spec).with_call_log(Box::new(BufWriter::new(file))),
+        ) as Box<dyn Commander>)
+      }
       (Some(spec), Some(vertex), Some(dir)) => {
         let path = format!("{dir}/seed-{seed}-{}.md", side.replace(':', "_"));
         let file = File::create(&path).ok()?;
@@ -232,4 +229,23 @@ pub fn summarise(outcomes: &[Outcome]) {
     );
   }
   println!("  draws {draws}");
+}
+
+/// Print what the fleet commander would be sent for `side` of `scenario`,
+/// with every ordinary ship already found, and how big each part is.
+async fn show_admiral(scenario: &str, side: &str) -> Result<(), Box<dyn std::error::Error>> {
+  let view = crate::harness::engaged_view(scenario, side).await?;
+  let orders = crate::admiral::orders_of(&view.own);
+  let situation = crate::admiral::situation(&view, &orders, &crate::fleet::Directive::default(), &|_: &str| None);
+  let schema = crate::admiral::schema().to_string();
+  let system = crate::admiral::system();
+  println!("{system}\n\n---\n\n{situation}");
+  // About four characters to a token.
+  eprintln!(
+    "\nsystem prompt ~{} tokens, tool schema ~{}, situation ~{}",
+    system.len() / 4,
+    schema.len() / 4,
+    situation.len() / 4
+  );
+  Ok(())
 }
