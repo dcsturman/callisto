@@ -2762,3 +2762,87 @@ async fn integration_no_ai_service_means_no_ai_crews() {
     "the handover is refused: {replies:?}"
   );
 }
+
+/// The entities sent after a request, skipping anything else on the way.
+async fn entities_after(stream: &mut MyWebSocket) -> Box<callisto::entity::Entities> {
+  loop {
+    if let ResponseMsg::EntityResponse(entities) = next_response_with_timeout(stream, Duration::from_secs(5)).await {
+      return entities;
+    }
+  }
+}
+
+/// Ships put in a squadron carry it on the wire, a squadron is capped and
+/// stays within its team, and a ship that changes team leaves her squadron.
+#[tokio::test]
+async fn integration_squadrons() {
+  callisto::ship::config_test_ship_templates().await;
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+  for name in ["Lance 1", "Lance 2"] {
+    let _ = rpc(
+      &mut stream,
+      RequestMsg::AddShip(AddShipMsg {
+        name: name.to_string(),
+        position: [0.0, 0.0, 0.0].into(),
+        velocity: [0.0, 0.0, 0.0].into(),
+        design: "Buccaneer".to_string(),
+        crew: None,
+        weapons: None,
+        active_sensors: None,
+        transmitting: None,
+        team: Some(callisto::ship::Team::Blue),
+        contacts: None,
+        features_on: None,
+        controller: None,
+        orders: None,
+        software: None,
+      }),
+    )
+    .await;
+    let _ = entities_after(&mut stream).await;
+  }
+
+  let reply = rpc(
+    &mut stream,
+    RequestMsg::SetSquadron(callisto::payloads::SetSquadron {
+      ships: vec!["Lance 1".to_string(), "Lance 2".to_string()],
+      squadron: Some("Lance".to_string()),
+    }),
+  )
+  .await;
+  assert!(matches!(reply, ResponseMsg::SimpleMsg(_)), "{reply:?}");
+  let entities = entities_after(&mut stream).await;
+  let squadron = |entities: &callisto::entity::Entities, ship: &str| {
+    entities.ships.get(ship).unwrap().read().unwrap().squadron.clone()
+  };
+  assert_eq!(squadron(&entities, "Lance 1").as_deref(), Some("Lance"));
+  assert_eq!(squadron(&entities, "Lance 2").as_deref(), Some("Lance"));
+
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetShipTeam(callisto::payloads::SetShipTeam {
+      ship_name: "Lance 2".to_string(),
+      team: Some(callisto::ship::Team::Red),
+    }),
+  )
+  .await;
+  let entities = entities_after(&mut stream).await;
+  assert_eq!(squadron(&entities, "Lance 2"), None, "she left her squadron with her team");
+  assert_eq!(squadron(&entities, "Lance 1").as_deref(), Some("Lance"));
+
+  // Across teams is refused.
+  let reply = rpc(
+    &mut stream,
+    RequestMsg::SetSquadron(callisto::payloads::SetSquadron {
+      ships: vec!["Lance 1".to_string(), "Lance 2".to_string()],
+      squadron: Some("Mixed".to_string()),
+    }),
+  )
+  .await;
+  assert!(matches!(reply, ResponseMsg::Error(_)), "{reply:?}");
+  send_quit(&mut stream).await;
+}

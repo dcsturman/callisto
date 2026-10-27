@@ -35,6 +35,8 @@ import { FaUsers, FaExclamationTriangle } from "react-icons/fa";
 import { ENGINEER_SKILLS } from "components/controls/CrewBuilder";
 import { nextRound, setReady, setShipTeam } from "lib/serverManager";
 import { Team, TEAMS, teamLabelColor } from "lib/teams";
+import { squadronShips } from "lib/squadrons";
+import { SquadronPicker } from "components/controls/SquadronPicker";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
@@ -60,8 +62,13 @@ function ShipList(args: {
 }) {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadron = useAppSelector((state) => state.user.squadron);
   const entities = useAppSelector(entitiesSelector);
   const dispatch = useAppDispatch();
+  const squadronOnly = useMemo(
+    () => (squadron == null ? null : squadronShips(entities.ships, squadron.team, squadron.name)),
+    [squadron, entities.ships],
+  );
 
   const computerShip = useMemo(() => {
     return findShip(entities, computerShipName);
@@ -85,8 +92,10 @@ function ShipList(args: {
         filter={filter}
         setChoice={choiceHandler}
         current={computerShip}
-        // Fleet Command picks from its own team only.
+        // Fleet Command picks from its own team only, Squadron Command from
+        // its squadron.
         onlyTeam={fleetTeam}
+        onlyShips={squadronOnly}
       />
       <GoButton moveCamera={args.moveCamera} />
     </div>
@@ -286,14 +295,20 @@ export function Controls() {
     }
   }, [shipName, dispatch]);
 
-  // Taking Fleet Command lets go of any ship that is not the team's.
+  // Taking Fleet Command lets go of any ship that is not the team's, and
+  // Squadron Command of any that is not the squadron's.
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadron = useAppSelector((state) => state.user.squadron);
   useEffect(() => {
     const open = findShip(entities, computerShipName);
-    if (fleetTeam != null && open != null && open.team !== fleetTeam) {
+    const outside =
+      open != null &&
+      ((fleetTeam != null && open.team !== fleetTeam) ||
+        (squadron != null && !squadronShips(entities.ships, squadron.team, squadron.name).includes(open.name)));
+    if (outside) {
       dispatch(setComputerShipName(null));
     }
-  }, [fleetTeam, computerShipName, entities, dispatch]);
+  }, [fleetTeam, squadron, computerShipName, entities, dispatch]);
 
   const [computerShip, computerShipDesign] = useMemo(() => {
     const computerShip = findShip(entities, computerShipName);
@@ -323,7 +338,9 @@ export function Controls() {
         </>
       )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true} tutorial="ship-dossier">
-        {shipName == null ? (
+        {/* A squadron's commander sits aboard her flagship but may open any
+            of the squadron's ships. */}
+        {shipName == null || squadron != null ? (
           <ShipList moveCamera={moveCameraToShip} />
         ) : (
           <GoButton
@@ -367,6 +384,10 @@ export function Controls() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Squadron</h2>
+                <SquadronPicker ship={computerShip} />
               </div>
               <div className="stats-bloc-entry">
                 <h2>Hull</h2>

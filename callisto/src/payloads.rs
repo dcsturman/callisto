@@ -171,6 +171,26 @@ pub struct SetShipTeam {
   pub team: Option<Team>,
 }
 
+/// Put ships in a squadron, or (`None`) take them out of theirs. All must be
+/// on one team, and the squadron may hold at most
+/// [`MAX_SQUADRON`](crate::ship::MAX_SQUADRON) ships afterwards. A new name
+/// makes a new squadron; taking every ship out of one dissolves it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetSquadron {
+  pub ships: Vec<String>,
+  pub squadron: Option<String>,
+}
+
+/// Rename a team's squadron.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RenameSquadron {
+  pub team: Option<Team>,
+  pub from: String,
+  pub to: String,
+}
+
 /// Hand a ship to the AI service, or take it back.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetShipController {
@@ -619,6 +639,10 @@ pub enum Role {
   /// cut down to that team. Holds those ships (`ChangeRole::ships`) and
   /// says Ready for them all.
   FleetCommand,
+  /// A squadron's commander: Fleet Command cut down to one squadron. Holds
+  /// its ships and says Ready for them, and may also be the captain of one
+  /// of them, the flagship (`ChangeRole::ship`), like an admiral aboard.
+  SquadronCommand,
 }
 
 /// Whether a player with these roles runs the table: holds no ship and is
@@ -627,7 +651,10 @@ pub enum Role {
 /// the referee. Matches `isReferee` on the client.
 #[must_use]
 pub fn is_referee(roles: &[Role], holds_ships: bool) -> bool {
-  !holds_ships && !roles.iter().any(|role| matches!(role, Role::Observer | Role::FleetCommand))
+  !holds_ships
+    && !roles
+      .iter()
+      .any(|role| matches!(role, Role::Observer | Role::FleetCommand | Role::SquadronCommand))
 }
 
 #[serde_as]
@@ -772,6 +799,8 @@ pub enum RequestMsg {
   SetShipEmissions(SetShipEmissions),
   SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
+  SetSquadron(SetSquadron),
+  RenameSquadron(RenameSquadron),
   SetShipController(SetShipController),
   SetOrders(SetOrders),
   SetAiReport(SetAiReport),

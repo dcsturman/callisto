@@ -50,10 +50,11 @@ export function FleetComms() {
   const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadronTeam = useAppSelector((state) => state.user.squadron?.team ?? null);
 
   const referee = isReferee(roles, shipName);
   // A fleet commander hears their own team, as a crew does.
-  const myTeam = fleetTeam ?? entities.ships.find((ship) => ship.name === shipName)?.team;
+  const myTeam = fleetTeam ?? squadronTeam ?? entities.ships.find((ship) => ship.name === shipName)?.team;
 
   const sides = useMemo(() => {
     const byKey = new Map<string, Side>();
