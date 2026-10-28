@@ -3,11 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { CornerPanel } from "lib/CornerPanel";
 import { Ship } from "lib/entities";
 import { isReferee } from "lib/view";
-import { OrdersScope, setOrders } from "lib/serverManager";
+import { OrdersScope, setOrders, setShipController } from "lib/serverManager";
 import { squadronShips, teamSquadrons } from "lib/squadrons";
 import { TEAMS, TEAM_CSS, Team } from "lib/teams";
 import { useAppSelector } from "state/hooks";
-import { entitiesSelector } from "state/serverSlice";
+import { aiCrewsSelector, entitiesSelector } from "state/serverSlice";
 
 /** One thing orders can be given to: the fleet, a squadron or a ship, and
  *  the ship the order is sent through. */
@@ -100,6 +100,7 @@ export function OrdersPanel() {
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
   const squadron = useAppSelector((state) => state.user.squadron);
   const referee = isReferee(roles, shipName);
+  const aiCrews = useAppSelector(aiCrewsSelector);
 
   const teams = useMemo(
     () => TEAMS.filter((team) => entities.ships.some((ship) => ship.team === team)),
@@ -138,6 +139,10 @@ export function OrdersPanel() {
   }
 
   const send = () => setOrders(target.through, draft, target.scope);
+  // Only an AI-crewed ship reads orders: say so when some here are crewed by
+  // people, and offer to hand them over.
+  const commanded = targets.filter((t) => t.scope === "Ship").map((t) => t.through);
+  const peopled = entities.ships.filter((ship) => commanded.includes(ship.name) && ship.controller !== "AI");
   const inForce = groupInForce(targets.filter((t) => t.current !== ""));
 
   return (
@@ -159,6 +164,22 @@ export function OrdersPanel() {
             </option>
           ))}
         </select>
+      )}
+      {peopled.length > 0 && (
+        <p className="orders-panel-unread">
+          {peopled.length === commanded.length
+            ? "These ships are crewed by people, so nothing reads these orders. "
+            : `${shipsLabel(peopled.map((ship) => ship.name))} ${peopled.length === 1 ? "is" : "are"} crewed by people and will not read them. `}
+          {aiCrews && (
+            <button
+              type="button"
+              className="squadrons-link"
+              onClick={() => peopled.forEach((ship) => setShipController(ship.name, "AI"))}
+            >
+              Hand {peopled.length === 1 ? "her" : "them"} to the AI
+            </button>
+          )}
+        </p>
       )}
       <div className="orders-panel-to">
         <span>To</span>

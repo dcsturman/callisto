@@ -10,6 +10,7 @@ import { Provider } from "react-redux";
 const sent = vi.hoisted(() => ({ orders: [] as [string, string, string][] }));
 vi.mock("lib/serverManager", () => ({
   setOrders: (ship: string, orders: string, scope = "Ship") => sent.orders.push([ship, orders, scope]),
+  setShipController: (ship: string, controller: string) => sent.orders.push([ship, controller, "controller"]),
 }));
 
 import { OrdersPanel } from "components/controls/OrdersPanel";
@@ -109,6 +110,14 @@ describe("OrdersPanel", () => {
       (Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Withdraw") as HTMLElement).click(),
     );
     expect(sent.orders).toHaveLength(4);
+  });
+
+  it("says when the ships are crewed by people, who will not read orders", () => {
+    store.dispatch(setFleetCommand("Blue"));
+    render();
+    expect(container.querySelector(".orders-panel-unread")?.textContent).toContain(
+      "These ships are crewed by people, so nothing reads these orders.",
+    );
   });
 
   it("offers a squadron commander only their squadron and its ships", () => {

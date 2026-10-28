@@ -3775,6 +3775,11 @@ h3.control-form {
     overflow-y: auto;
 }
 
+.orders-panel-unread {
+    margin: 4px 0;
+    color: #e0a050;
+}
+
 .orders-panel-to {
     display: flex;
     align-items: center;
