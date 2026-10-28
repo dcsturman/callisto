@@ -289,12 +289,13 @@ function Simulator() {
               <ResultsWindow />
             </Suspense>
           )}
+          {/* What the AI captains are saying: the referee hears every AI
+              side without opening each ship. Nothing when no ship is AI.
+              Above the orders, so what the fleet is doing stays in sight. */}
+          {joinedScenario && !scenarioBuilderMode && <FleetComms />}
           {/* Orders in words, for the referee and a fleet or squadron
               commander to give: an AI fleet commander reads them. */}
           {joinedScenario && !scenarioBuilderMode && <OrdersPanel />}
-          {/* What the AI captains are saying: the referee hears every AI
-              side without opening each ship. Nothing when no ship is AI. */}
-          {joinedScenario && !scenarioBuilderMode && <FleetComms />}
         </div>
         <div className="admin-button-window" ref={adminWindow} data-tutorial="session-panel">
           <h2>

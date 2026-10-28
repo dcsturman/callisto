@@ -3771,7 +3771,7 @@ h3.control-form {
     width: 30rem;
     max-width: 100%;
     box-sizing: border-box;
-    max-height: 40vh;
+    max-height: 30vh;
     overflow-y: auto;
 }
 
