@@ -210,6 +210,7 @@ mod tests {
     let request = RequestMsg::SetOrders(SetOrders {
       ship_name: "Invigilator".to_string(),
       orders: Some("Close and board.".to_string()),
+      scope: crate::payloads::OrdersScope::Ship,
     });
     let ships = ships_ordered(&request).unwrap();
     log.order(1, &ships, By::Ai, true, &serde_json::to_value(&request).unwrap());

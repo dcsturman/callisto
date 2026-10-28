@@ -147,6 +147,10 @@ export interface Ship extends Entity {
   controller?: Controller;
   /** Standing orders, in plain English. Absent means none. */
   orders?: string;
+  /** Her team's fleet orders, as every ship of the team carries them. */
+  fleet_orders?: string;
+  /** Her squadron's orders, as every ship of it carries them. */
+  squadron_orders?: string;
   /** What the ship's side is trying to do: the goal a trained commander is scored on. */
   goal?: "destroy" | "hold" | "raid" | "escape";
   /** Where a Hold ship holds: a body by name, or a point in metres. Absent:

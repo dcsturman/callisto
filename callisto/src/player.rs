@@ -405,6 +405,8 @@ impl PlayerManager {
           if added.team != ship.team {
             // A squadron belongs to its team.
             added.squadron = None;
+            added.squadron_orders = None;
+            added.fleet_orders = None;
           }
           added.team = ship.team;
         }
@@ -435,6 +437,11 @@ impl PlayerManager {
           }
         }
       }
+    }
+
+    // A ship joining a team takes up its fleet's orders.
+    if ship.team.is_some() {
+      entities.take_up_fleet_orders(&name);
     }
 
     Ok("Add ship action executed".to_string())
@@ -604,11 +611,17 @@ impl PlayerManager {
       .write()
       .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
-    if ship.team != request.team {
+    let changed = ship.team != request.team;
+    if changed {
       // A squadron belongs to its team.
       ship.squadron = None;
+      ship.squadron_orders = None;
     }
     ship.team = request.team;
+    drop(ship);
+    if changed {
+      entities.take_up_fleet_orders(&request.ship_name);
+    }
     info!(
       "(PlayerManager.set_ship_team) {} is now on team {:?}.",
       request.ship_name, request.team
@@ -706,22 +719,7 @@ impl PlayerManager {
       .unwrap()
       .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
-
-    let mut ship = entities
-      .ships
-      .get(&request.ship_name)
-      .ok_or_else(|| format!("Unable to find ship {} to give orders to.", request.ship_name))?
-      .write()
-      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
-
-    ship.orders = request
-      .orders
-      .as_deref()
-      .map(str::trim)
-      .filter(|orders| !orders.is_empty())
-      .map(ToString::to_string);
-    info!("(PlayerManager.set_orders) {} has orders {:?}.", request.ship_name, ship.orders);
-    Ok("Set orders executed".to_string())
+    entities.set_orders(&request.ship_name, request.scope, request.orders.as_deref())
   }
 
   /// Record what the AI crewing a ship reports. Only an AI-crewed ship has a

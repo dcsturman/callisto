@@ -174,7 +174,6 @@ function SoftwareEditor(args: {
 }
 
 import { addShip, setOrders, setShipController } from "lib/serverManager";
-import { shipsTakingTeamOrders, teamOrders } from "lib/teamOrders";
 import { useAppSelector } from "state/hooks";
 import { aiCrewsSelector, entitiesSelector } from "state/serverSlice";
 
@@ -713,10 +712,9 @@ function SideCosts(args: { ships: Ship[]; designs: ShipDesignTemplates }) {
  * one of them over, unticking takes them all back. Single ships are set in the
  * ship form.
  *
- * A ticked team gets one orders box: its squadron's orders. Orders live on
- * ships, so the box shows what most of the team's ships carry and writes to
- * every ship following it; a ship given orders of her own in the ship form
- * keeps them.
+ * A ticked team gets one orders box: its fleet's orders, which every ship
+ * of the team carries. A ship's own orders, set in the ship form, are kept
+ * alongside them.
  */
 function AiTeams(args: { ships: Ship[] }) {
   const teams = TEAMS.filter((team) => args.ships.some((ship) => ship.team === team));
@@ -752,23 +750,23 @@ function AiTeams(args: { ships: Ship[] }) {
   );
 }
 
-/** One AI-crewed team's orders, given to every ship following them. */
+/** One AI-crewed team's fleet orders, which every ship of the team carries. */
 function TeamOrdersBox(args: { team: Team; ships: Ship[] }) {
-  const current = teamOrders(args.ships);
-  const [draft, setDraft] = useState(current.orders);
-  // Someone changed a ship's orders: show the team's as they now stand.
-  useEffect(() => setDraft(current.orders), [current.orders]);
+  const current = args.ships.find((ship) => ship.fleet_orders)?.fleet_orders ?? "";
+  const [draft, setDraft] = useState(current);
+  // Someone changed the orders: show them as they now stand.
+  useEffect(() => setDraft(current), [current]);
 
   const commit = () => {
-    if (draft.trim() === current.orders) {
+    if (draft.trim() === current || args.ships.length === 0) {
       return;
     }
-    shipsTakingTeamOrders(args.ships).forEach((name) => setOrders(name, draft));
+    setOrders(args.ships[0].name, draft, "Fleet");
   };
 
   return (
     <label className="add-ship-orders team-orders" style={{ color: TEAM_CSS[args.team] }}>
-      {args.team} team&apos;s orders
+      {args.team} fleet&apos;s orders
       <textarea
         className="ship-command-orders-text"
         rows={2}
@@ -777,13 +775,6 @@ function TeamOrdersBox(args: { team: Team; ships: Ship[] }) {
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
       />
-      {current.own.length > 0 && (
-        <span className="team-orders-note">
-          {current.following.length} of {args.ships.length} ships follow these;{" "}
-          {current.own.join(", ")} {current.own.length === 1 ? "has her" : "have their"} own, set in the
-          ship form, and keep{current.own.length === 1 ? "s" : ""} them.
-        </span>
-      )}
     </label>
   );
 }

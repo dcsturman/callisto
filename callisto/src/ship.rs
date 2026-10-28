@@ -505,6 +505,17 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub orders: Option<String>,
+  /// The orders her team's fleet commander gave every ship of the team.
+  /// Each ship carries a copy, so they save and travel with the ships; a
+  /// ship joining the team takes them up.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub fleet_orders: Option<String>,
+  /// The orders her squadron was given, carried by each of its ships in the
+  /// same way.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub squadron_orders: Option<String>,
   /// What the ship's side is trying to do, from a small menu: what a trained
   /// commander is scored on, where a model reads `orders`. A side's goal is
   /// the one its ships share. `None` is [`Goal::Destroy`].
@@ -1753,6 +1764,8 @@ impl Ship {
       comms_jammed: false,
       team: None,
       squadron: None,
+      fleet_orders: None,
+      squadron_orders: None,
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
       damage_log: vec![],

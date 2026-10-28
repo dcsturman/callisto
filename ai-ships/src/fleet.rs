@@ -449,6 +449,94 @@ fn steer(
   }
 }
 
+/// A step in a few words, for the players: "engage Light Fighter; arrive at
+/// Medium of the enemy by round 6; until round 6 or fired on".
+#[must_use]
+pub fn describe(step: &Step) -> String {
+  let place = |place: &Place| {
+    place
+      .planet
+      .clone()
+      .or_else(|| place.ship.clone())
+      .or_else(|| place.squadron.clone())
+      .or_else(|| {
+        place
+          .enemies
+          .as_ref()
+          .map(|rule| match (rule.designs.first(), rule.ships.first()) {
+            (Some(design), _) => format!("the {design}s"),
+            (None, Some(ship)) => ship.clone(),
+            (None, None) => "the enemy".to_string(),
+          })
+      })
+      .unwrap_or_else(|| "a point".to_string())
+  };
+  let mut parts: Vec<String> = Vec::new();
+  if let Some(goal) = step.goal {
+    parts.push(format!("{goal:?}").to_lowercase());
+  }
+  if let Some(rule) = &step.engage {
+    let mut who: Vec<String> = rule.designs.iter().chain(&rule.ships).cloned().collect();
+    if let Some(tons) = rule.max_tons {
+      who.push(format!("up to {tons} t"));
+    }
+    if let Some(tons) = rule.min_tons {
+      who.push(format!("{tons} t and up"));
+    }
+    parts.push(format!(
+      "engage {}",
+      if who.is_empty() {
+        "anyone".to_string()
+      } else {
+        who.join(", ")
+      }
+    ));
+  }
+  match step.movement.mode {
+    Mode::Network => {}
+    Mode::Burn => parts.push(format!(
+      "burn {} {}",
+      if step.movement.away { "away from" } else { "toward" },
+      step.movement.toward.as_ref().map_or_else(|| "a point".to_string(), place)
+    )),
+    Mode::Arrive => parts.push(format!(
+      "arrive at {}{}{}",
+      step.movement.band.map(|band| format!("{band:?} of ")).unwrap_or_default(),
+      step.movement.at.as_ref().map_or_else(|| "a point".to_string(), place),
+      step
+        .movement
+        .round
+        .map(|round| format!(" by round {round}"))
+        .unwrap_or_default()
+    )),
+  }
+  if let Some(until) = &step.until {
+    let mut ends: Vec<String> = Vec::new();
+    if let Some(round) = until.round {
+      ends.push(format!("round {round}"));
+    }
+    if let Some(within) = &until.within {
+      ends.push(format!("within {:?} of {}", within.band, place(&within.of)));
+    }
+    if until.fired_on {
+      ends.push("fired on".to_string());
+    }
+    if let Some(share) = until.losses {
+      ends.push(format!("{:.0}% lost", share * 100.0));
+    }
+    parts.push(format!("until {}", ends.join(" or ")));
+  }
+  if parts.is_empty() {
+    "fight as the crews judge".to_string()
+  } else {
+    parts.join("; ")
+  }
+}
+
+fn progress_step(progress: &HashMap<String, Progress>, group: &str) -> usize {
+  progress.get(group).map_or(0, |progress| progress.step)
+}
+
 /// A side played by squadrons under a [`Directive`].
 pub struct FleetCommander {
   net: Arc<SideNet>,
@@ -564,6 +652,23 @@ impl Commander for FleetCommander {
         for (_, intent) in &mut decided {
           intent.helm = helm.clone();
           intent.max_thrust = cap.or(intent.max_thrust);
+        }
+      }
+      // Each ship's report says what her squadron is doing.
+      if !steps.is_empty() {
+        let doing = format!(
+          "{} (step {} of {}: {})",
+          name.trim_start_matches("ship:"),
+          (progress_step(&self.progress, name) + 1),
+          steps.len(),
+          describe(&step)
+        );
+        for (_, intent) in &mut decided {
+          intent.rationale = if intent.rationale.is_empty() {
+            doing.clone()
+          } else {
+            format!("{doing}. {}", intent.rationale)
+          };
         }
       }
       intents.extend(decided);

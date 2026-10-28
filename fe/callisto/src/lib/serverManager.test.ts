@@ -240,6 +240,22 @@ describe("setShipTeam", () => {
   });
 });
 
+describe("setOrders", () => {
+  it("gives a squadron's orders through one of its ships", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Lance 1", " Fighters first. ", "Squadron");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetOrders: { ship_name: "Lance 1", orders: "Fighters first.", scope: "Squadron" } }),
+    ]);
+  });
+
+  it("leaves the scope out for a ship's own orders, and the text out to clear them", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Lance 1", "  ");
+    expect(mockSocket.sent).toEqual([JSON.stringify({ SetOrders: { ship_name: "Lance 1" } })]);
+  });
+});
+
 describe("squadrons", () => {
   it("puts ships in a squadron", async () => {
     const sm = await import("lib/serverManager");

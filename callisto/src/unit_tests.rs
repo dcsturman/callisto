@@ -2378,6 +2378,7 @@ async fn test_set_controller_and_orders() {
     .set_orders(&SetOrders {
       ship_name: "Pirate".to_string(),
       orders: Some("  Hold here.  ".to_string()),
+      scope: crate::payloads::OrdersScope::Ship,
     })
     .unwrap();
   assert_eq!(read(&server), (Controller::Human, Some("Hold here.".to_string())));
@@ -2386,6 +2387,7 @@ async fn test_set_controller_and_orders() {
     .set_orders(&SetOrders {
       ship_name: "Pirate".to_string(),
       orders: Some("   ".to_string()),
+      scope: crate::payloads::OrdersScope::Ship,
     })
     .unwrap();
   assert_eq!(read(&server).1, None);

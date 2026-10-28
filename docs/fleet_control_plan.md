@@ -214,3 +214,24 @@ With no orders at all it is never asked. If an answer cannot be read, the squadr
 - 5–7 seconds a call;
 - $0.0074 for the game, about 0.3–0.5¢ a call;
 - the model gave the cruiser orders of her own, since hers differed from the fighters', and set triggers for new enemies and for her losses.
+
+## Phase 2d: orders in the game (2026-10-27)
+
+**Orders are stored by layer, on the ships.** Each ship carries her team's `fleet_orders`, her squadron's `squadron_orders`, and her own `orders`. They save with scenarios and reach the AI unchanged.
+- `SetOrders` takes a `scope` (`Ship`, `Squadron` or `Fleet`) and fans the text out to the right ships.
+- A ship joining a squadron or a team takes up its orders; leaving a squadron drops its orders.
+- The admiral reads the layers directly, and asks again when any living ship's layers change.
+
+**Orders panel** (`OrdersPanel.tsx`):
+- **Who can use it:** the referee for any team, a fleet commander for their own team, a squadron commander for their squadron and its ships.
+- **What it does:** pick Fleet, a squadron or a ship; write; Give orders (or Ctrl/⌘-Enter). The orders in force are listed, each with Withdraw.
+- **Other boxes:** the per-ship orders box (Ship Command) and Add Ship's are switched back on. The builder's team box now writes fleet orders.
+
+**Fleet Comms** shows the model's reply as the side's plan. Each ship's report now opens with her squadron's step, e.g. "Lance (step 1 of 2: engage Light Fighter; arrive at Medium of the Light Fighters by round 6; until round 6 or fired on)".
+
+**End to end.** Fighter Screen, with Blue given fleet orders ("Hold your ground and let them come to us.") and Lance squadron orders ("Keep their fighters off the cruiser."), playing as `admiral:gemini` against the network. The model made:
+- Lance: hold on Flag's position, engage Light Fighters only;
+- Flag: hold;
+- call me on new enemies, or 25% losses.
+
+Blue won.

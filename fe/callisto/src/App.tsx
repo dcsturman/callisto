@@ -6,6 +6,7 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { KernelSize } from "postprocessing";
 import { FlyControls } from "./lib/FlyControls";
 import { FleetComms } from "components/controls/FleetComms";
+import { OrdersPanel } from "components/controls/OrdersPanel";
 
 import { Authentication } from "components/scenarios/Authentication";
 
@@ -288,6 +289,9 @@ function Simulator() {
               <ResultsWindow />
             </Suspense>
           )}
+          {/* Orders in words, for the referee and a fleet or squadron
+              commander to give: an AI fleet commander reads them. */}
+          {joinedScenario && !scenarioBuilderMode && <OrdersPanel />}
           {/* What the AI captains are saying: the referee hears every AI
               side without opening each ship. Nothing when no ship is AI. */}
           {joinedScenario && !scenarioBuilderMode && <FleetComms />}

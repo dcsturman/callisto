@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, EngineerActionResult, MessageCategory};
+use crate::payloads::{EffectMsg, EngineerActionResult, MessageCategory, OrdersScope};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -1980,7 +1980,9 @@ impl Entities {
       .collect::<Result<Vec<_>, _>>()?;
     let Some(name) = squadron else {
       for ship in &found {
-        ship.write().unwrap().squadron = None;
+        let mut ship = ship.write().unwrap();
+        ship.squadron = None;
+        ship.squadron_orders = None;
       }
       return Ok(format!("{} ship(s) left their squadron.", found.len()));
     };
@@ -2005,8 +2007,20 @@ impl Entities {
         "A squadron holds at most {MAX_SQUADRON} ships; {name} would have {size}."
       ));
     }
+    // The squadron's orders, from a ship already in it, for those joining.
+    let orders = self
+      .ships
+      .iter()
+      .filter(|(ship_name, _)| !ships.contains(ship_name))
+      .map(|(_, ship)| ship.read().unwrap())
+      .find(|ship| ship.team == team && ship.squadron.as_deref() == Some(name))
+      .and_then(|ship| ship.squadron_orders.clone());
     for ship in &found {
-      ship.write().unwrap().squadron = Some(name.to_string());
+      let mut ship = ship.write().unwrap();
+      if ship.squadron.as_deref() != Some(name) {
+        ship.squadron_orders.clone_from(&orders);
+      }
+      ship.squadron = Some(name.to_string());
     }
     Ok(format!("{} ship(s) joined {name}.", found.len()))
   }
@@ -2043,6 +2057,80 @@ impl Entities {
       ship.write().unwrap().squadron = Some(to.to_string());
     }
     Ok(format!("{from} is now {to}."))
+  }
+
+  /// Give orders: `ship_name`'s own, her squadron's (to every ship in it), or
+  /// her team's fleet's (to every ship on the team). `None` or blank clears
+  /// them.
+  ///
+  /// # Errors
+  /// Returns an error if there is no such ship, or squadron orders are given
+  /// through a ship in no squadron.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn set_orders(&self, ship_name: &str, scope: OrdersScope, orders: Option<&str>) -> Result<String, String> {
+    let orders = orders.map(str::trim).filter(|text| !text.is_empty()).map(ToString::to_string);
+    let (team, squadron) = {
+      let ship = self
+        .ships
+        .get(ship_name)
+        .ok_or_else(|| format!("Unable to find ship {ship_name} to give orders to."))?
+        .read()
+        .unwrap();
+      (ship.team, ship.squadron.clone())
+    };
+    let given = match scope {
+      OrdersScope::Ship => {
+        self.ships[ship_name].write().unwrap().orders.clone_from(&orders);
+        1
+      }
+      OrdersScope::Squadron => {
+        let squadron = squadron.ok_or_else(|| format!("{ship_name} is in no squadron."))?;
+        let mut count = 0;
+        for ship in self.ships.values() {
+          let mut ship = ship.write().unwrap();
+          if ship.team == team && ship.squadron.as_deref() == Some(squadron.as_str()) {
+            ship.squadron_orders.clone_from(&orders);
+            count += 1;
+          }
+        }
+        count
+      }
+      OrdersScope::Fleet => {
+        let mut count = 0;
+        for ship in self.ships.values() {
+          let mut ship = ship.write().unwrap();
+          if ship.team == team {
+            ship.fleet_orders.clone_from(&orders);
+            count += 1;
+          }
+        }
+        count
+      }
+    };
+    info!("(Entities.set_orders) {scope:?} orders through {ship_name} to {given} ship(s): {orders:?}.");
+    Ok(format!("Orders given to {given} ship(s)."))
+  }
+
+  /// Give `ship_name` her team's fleet orders, from another ship of the
+  /// team: what a ship joining a team takes up.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn take_up_fleet_orders(&self, ship_name: &str) {
+    let Some(joining) = self.ships.get(ship_name) else {
+      return;
+    };
+    let team = joining.read().unwrap().team;
+    let orders = self
+      .ships
+      .iter()
+      .filter(|(name, _)| name.as_str() != ship_name)
+      .map(|(_, ship)| ship.read().unwrap())
+      .find(|ship| ship.team == team)
+      .and_then(|ship| ship.fleet_orders.clone());
+    joining.write().unwrap().fleet_orders = orders;
   }
 
   /// Give every ship a contact on every other ship that is not stealthed and is
@@ -5364,6 +5452,58 @@ mod tests {
     assert!(entities.rename_squadron(Some(Team::Blue), "Missing", "Other").is_err());
     entities.rename_squadron(Some(Team::Blue), "Lance", "Spear").unwrap();
     assert_eq!(squadron_of(&entities, "Blue 2").as_deref(), Some("Spear"));
+  }
+
+  fn orders_on(entities: &Entities, ship: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let ship = entities.ships.get(ship).unwrap().read().unwrap();
+    (ship.fleet_orders.clone(), ship.squadron_orders.clone(), ship.orders.clone())
+  }
+
+  #[test]
+  fn orders_go_to_their_scope() {
+    let entities = two_fleets(3, 1);
+    entities.set_squadron(&names("Blue", 1..=2), Some("Lance")).unwrap();
+    entities
+      .set_orders("Blue 3", OrdersScope::Fleet, Some("Hold the gate."))
+      .unwrap();
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some(" Fighters first. "))
+      .unwrap();
+    entities
+      .set_orders("Blue 2", OrdersScope::Ship, Some("Stay by the flagship."))
+      .unwrap();
+    let fleet = Some("Hold the gate.".to_string());
+    let lance = Some("Fighters first.".to_string());
+    assert_eq!(orders_on(&entities, "Blue 1"), (fleet.clone(), lance.clone(), None));
+    assert_eq!(
+      orders_on(&entities, "Blue 2"),
+      (fleet.clone(), lance, Some("Stay by the flagship.".to_string()))
+    );
+    assert_eq!(orders_on(&entities, "Blue 3"), (fleet, None, None));
+    assert_eq!(
+      orders_on(&entities, "Red 1"),
+      (None, None, None),
+      "another team's ships are untouched"
+    );
+    assert!(
+      entities.set_orders("Blue 3", OrdersScope::Squadron, Some("x")).is_err(),
+      "Blue 3 is in none"
+    );
+    entities.set_orders("Blue 3", OrdersScope::Fleet, Some("  ")).unwrap();
+    assert_eq!(orders_on(&entities, "Blue 1").0, None, "blank clears");
+  }
+
+  #[test]
+  fn a_ship_takes_up_her_squadrons_orders_and_leaves_them_behind() {
+    let entities = two_fleets(3, 0);
+    entities.set_squadron(&names("Blue", 1..=1), Some("Lance")).unwrap();
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Fighters first."))
+      .unwrap();
+    entities.set_squadron(&names("Blue", 2..=2), Some("Lance")).unwrap();
+    assert_eq!(orders_on(&entities, "Blue 2").1.as_deref(), Some("Fighters first."));
+    entities.set_squadron(&names("Blue", 2..=2), None).unwrap();
+    assert_eq!(orders_on(&entities, "Blue 2").1, None);
   }
 
   fn handoff_pair(picket_team: Option<crate::ship::Team>, mate_team: Option<crate::ship::Team>) -> Entities {

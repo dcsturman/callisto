@@ -3764,6 +3764,43 @@ h3.control-form {
 
 /* --- Fleet Comms --- */
 /* The AI captains' reports, beside the results and shaped like them. */
+/* Orders: to whom, the words, and the orders in force. */
+#orders-panel {
+    width: 30rem;
+    max-width: 100%;
+    box-sizing: border-box;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.orders-panel-to {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+}
+
+.orders-panel-text {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.orders-panel-buttons {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.orders-panel-list {
+    list-style: none;
+    margin: 6px 0 0 0;
+    padding: 0;
+}
+
+.orders-panel-list li {
+    margin: 2px 0;
+}
+
 #fleet-comms {
     width: 30rem;
     /* Never wider than the right-hand column it sits in: that column scrolls,

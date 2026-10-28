@@ -450,14 +450,22 @@ export function setShipController(shipName: string, controller: Controller) {
   );
 }
 
-/** Give a ship standing orders. An empty string clears them. */
-export function setOrders(shipName: string, orders: string) {
+/** Whose orders: the ship's own, her squadron's, or her team's fleet's. */
+export type OrdersScope = "Ship" | "Squadron" | "Fleet";
+
+/**
+ * Give standing orders through `shipName`: hers, her squadron's (every ship
+ * in it), or her team's fleet's (every ship on the team). An empty string
+ * clears them.
+ */
+export function setOrders(shipName: string, orders: string, scope: OrdersScope = "Ship") {
   const trimmed = orders.trim();
   socket.send(
     JSON.stringify({
       SetOrders: {
         ship_name: shipName,
         ...(trimmed === "" ? {} : { orders: trimmed }),
+        ...(scope === "Ship" ? {} : { scope }),
       },
     }),
   );

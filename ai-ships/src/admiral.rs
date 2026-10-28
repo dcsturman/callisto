@@ -54,45 +54,32 @@ impl Orders {
   }
 }
 
-/// Read `own`'s orders by scope.
+/// Read `own`'s orders by scope: the fleet's and each squadron's as their
+/// ships carry them, and each ship's own.
 #[must_use]
 pub fn orders_of(own: &[Ship]) -> Orders {
-  let text = |ship: &Ship| {
-    ship
-      .orders
-      .as_deref()
-      .map(str::trim)
-      .filter(|t| !t.is_empty())
-      .map(str::to_string)
-  };
-  let shared = |ships: &[&Ship]| {
-    let first = ships.first().and_then(|ship| text(ship))?;
-    ships.iter().all(|ship| text(ship).as_ref() == Some(&first)).then_some(first)
-  };
-  let all: Vec<&Ship> = own.iter().collect();
-  let fleet = if all.len() > 1 { shared(&all) } else { None };
-  let mut orders = Orders {
-    fleet: fleet.clone(),
-    ..Orders::default()
-  };
-  for (name, members) in squadrons(own, &[]) {
-    let ships: Vec<&Ship> = own.iter().filter(|ship| members.iter().any(|m| m == ship.get_name())).collect();
-    let squadron = if ships.len() > 1 && !name.starts_with('(') {
-      shared(&ships).filter(|text| Some(text) != fleet.as_ref())
-    } else {
-      None
-    };
-    if let Some(text) = &squadron {
-      orders.squadrons.push((name.clone(), text.clone()));
-    }
-    let above = squadron.or_else(|| fleet.clone());
-    for ship in ships {
-      if let Some(own) = text(ship).filter(|own| Some(own) != above.as_ref()) {
-        orders.ships.push((ship.get_name().to_string(), own));
-      }
-    }
+  let clean = |text: &Option<String>| text.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
+  let fleet = own.iter().find_map(|ship| clean(&ship.fleet_orders));
+  let squadrons = squadrons(own, &[])
+    .into_iter()
+    .filter(|(name, _)| !name.starts_with('('))
+    .filter_map(|(name, members)| {
+      let text = own
+        .iter()
+        .filter(|ship| members.iter().any(|m| m == ship.get_name()))
+        .find_map(|ship| clean(&ship.squadron_orders))?;
+      Some((name, text))
+    })
+    .collect();
+  let ships = own
+    .iter()
+    .filter_map(|ship| Some((ship.get_name().to_string(), clean(&ship.orders)?)))
+    .collect();
+  Orders {
+    fleet,
+    squadrons,
+    ships,
   }
-  orders
 }
 
 fn km(metres: f64) -> String {
@@ -610,9 +597,18 @@ impl Admiral {
   fn orders_by_ship(own: &[Ship]) -> BTreeMap<String, String> {
     own
       .iter()
-      .filter_map(|ship| {
-        let text = ship.orders.as_deref().map(str::trim).filter(|text| !text.is_empty())?;
-        Some((ship.get_name().to_string(), text.to_string()))
+      .filter(|ship| ship.orders.is_some() || ship.squadron_orders.is_some() || ship.fleet_orders.is_some())
+      .map(|ship| {
+        let text = |orders: &Option<String>| orders.as_deref().unwrap_or("").trim().to_string();
+        (
+          ship.get_name().to_string(),
+          [
+            text(&ship.fleet_orders),
+            text(&ship.squadron_orders),
+            text(&ship.orders),
+          ]
+          .join("\n"),
+        )
       })
       .collect()
   }
@@ -755,31 +751,25 @@ mod tests {
     ship
   }
 
-  /// Orders read by scope: what every ship carries is the fleet's, what a
-  /// whole squadron carries apart from that is the squadron's, and the rest
-  /// are ships' own.
+  /// Orders read by scope: the fleet's and each squadron's as their ships
+  /// carry them, and each ship's own.
   #[test]
   fn orders_are_read_by_scope() {
-    let fleet = Some("Destroy them.");
-    let own = vec![
-      ship("Lance 1", Some("Lance"), Some("Fighters first.")),
-      ship("Lance 2", Some("Lance"), Some("Fighters first.")),
-      ship("Hesperus", Some("Flag"), fleet),
-      ship("Tender", Some("Flag"), Some("Stay back.")),
+    let mut own = vec![
+      ship("Lance 1", Some("Lance"), None),
+      ship("Lance 2", Some("Lance"), Some("Stay by the flagship.")),
+      ship("Hesperus", Some("Flag"), None),
     ];
+    for ship in &mut own {
+      ship.fleet_orders = Some("Hold the gate.".to_string());
+      if ship.squadron.as_deref() == Some("Lance") {
+        ship.squadron_orders = Some("Fighters first.".to_string());
+      }
+    }
     let orders = orders_of(&own);
-    assert_eq!(orders.fleet, None, "not every ship carries one order");
+    assert_eq!(orders.fleet.as_deref(), Some("Hold the gate."));
     assert_eq!(orders.squadrons, vec![("Lance".to_string(), "Fighters first.".to_string())]);
-    assert_eq!(
-      orders.ships,
-      vec![
-        ("Hesperus".to_string(), "Destroy them.".to_string()),
-        ("Tender".to_string(), "Stay back.".to_string())
-      ]
-    );
-    let all = vec![ship("A", None, fleet), ship("B", None, fleet)];
-    assert_eq!(orders_of(&all).fleet.as_deref(), fleet);
-    assert_eq!(orders_of(&all).ships, Vec::<(String, String)>::new());
+    assert_eq!(orders.ships, vec![("Lance 2".to_string(), "Stay by the flagship.".to_string())]);
   }
 
   #[test]

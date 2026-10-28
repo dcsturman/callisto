@@ -207,13 +207,33 @@ pub struct SetAiReport {
   pub report: Option<AiReport>,
 }
 
-/// Give a ship standing orders. `None`, or an empty string, clears them.
+/// Give standing orders. `None`, or an empty string, clears them. `scope`
+/// says whose: this ship's own (the default), her squadron's, or her team's
+/// whole fleet's -- each ship of which carries a copy.
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetOrders {
   pub ship_name: String,
   #[serde(default)]
   pub orders: Option<String>,
+  #[serde(default, skip_serializing_if = "OrdersScope::is_ship")]
+  pub scope: OrdersScope,
+}
+
+/// Whose orders a [`SetOrders`] gives.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OrdersScope {
+  #[default]
+  Ship,
+  Squadron,
+  Fleet,
+}
+
+impl OrdersScope {
+  #[must_use]
+  pub fn is_ship(&self) -> bool {
+    *self == OrdersScope::Ship
+  }
 }
 
 /// Set a ship's emissions: whether it runs active sensors, and whether it is
