@@ -59,6 +59,31 @@ const targetsFor = (ships: Ship[], team: string | null, fleet: boolean): Target[
   return [...fleetTarget, ...squadrons, ...each];
 };
 
+/** Orders in force, ships given the same orders read as one line. */
+interface InForce {
+  label: string;
+  current: string;
+  targets: Target[];
+}
+
+/** "Spear 01", "Spear 01, Spear 02", or "Spear 01, Spear 02 and 13 more". */
+const shipsLabel = (names: string[]) =>
+  names.length <= 3 ? names.join(", ") : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
+
+const groupInForce = (targets: Target[]): InForce[] => {
+  const groups: InForce[] = [];
+  targets.forEach((t) => {
+    const same = t.scope === "Ship" && groups.find((g) => g.targets[0].scope === "Ship" && g.current === t.current);
+    if (same) {
+      same.targets.push(t);
+      same.label = shipsLabel(same.targets.map((member) => member.label));
+    } else {
+      groups.push({ label: t.label, current: t.current, targets: [t] });
+    }
+  });
+  return groups;
+};
+
 /**
  * Standing orders, for a commander to give their fleet, a squadron or a ship
  * in words. An AI fleet commander reads them -- the fleet's, each
@@ -113,7 +138,7 @@ export function OrdersPanel() {
   }
 
   const send = () => setOrders(target.through, draft, target.scope);
-  const inForce = targets.filter((t) => t.current !== "");
+  const inForce = groupInForce(targets.filter((t) => t.current !== ""));
 
   return (
     <CornerPanel id="orders-panel" title="Orders" className="computer-window" tutorial="orders-panel">
@@ -177,17 +202,17 @@ export function OrdersPanel() {
       </div>
       {inForce.length > 0 && (
         <ul className="orders-panel-list">
-          {inForce.map((t) => (
-            <li key={t.key}>
-              <button type="button" className="squadrons-link" onClick={() => setChosenKey(t.key)}>
-                {t.label}
+          {inForce.map((group) => (
+            <li key={group.targets[0].key} title={group.targets.map((t) => t.label).join(", ")}>
+              <button type="button" className="squadrons-link" onClick={() => setChosenKey(group.targets[0].key)}>
+                {group.label}
               </button>
-              : {t.current}{" "}
+              : {group.current}{" "}
               <button
                 type="button"
                 className="squadrons-link"
-                aria-label={`Withdraw the orders to ${t.label}`}
-                onClick={() => setOrders(t.through, "", t.scope)}
+                aria-label={`Withdraw the orders to ${group.label}`}
+                onClick={() => group.targets.forEach((t) => setOrders(t.through, "", t.scope))}
               >
                 Withdraw
               </button>

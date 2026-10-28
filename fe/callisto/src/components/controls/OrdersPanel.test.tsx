@@ -88,6 +88,29 @@ describe("OrdersPanel", () => {
     expect(sent.orders).toEqual([["Lance 1", "Destroy them.", "Fleet"]]);
   });
 
+  it("lists ships given the same orders as one line, withdrawn together", () => {
+    store.dispatch(
+      setEntities({
+        ships: ["Spear 01", "Spear 02", "Spear 03", "Spear 04"].map((name) =>
+          ship(name, "Red", undefined, { orders: "Fighter screen." }),
+        ),
+        missiles: [],
+        planets: [],
+        metadata: { name: "test", description: "" },
+        filename: "",
+      }),
+    );
+    store.dispatch(setFleetCommand("Red"));
+    render();
+    const items = Array.from(container.querySelectorAll(".orders-panel-list li"));
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toContain("Spear 01, Spear 02 and 2 more: Fighter screen.");
+    act(() =>
+      (Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Withdraw") as HTMLElement).click(),
+    );
+    expect(sent.orders).toHaveLength(4);
+  });
+
   it("offers a squadron commander only their squadron and its ships", () => {
     store.dispatch(setSquadronCommand({ squadron: { team: "Blue", name: "Lance" }, flagship: "Lance 1" }));
     render();

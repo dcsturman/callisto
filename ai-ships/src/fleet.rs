@@ -533,6 +533,13 @@ pub fn describe(step: &Step) -> String {
   }
 }
 
+fn capitalise(text: &str) -> String {
+  let mut chars = text.chars();
+  chars
+    .next()
+    .map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+}
+
 fn progress_step(progress: &HashMap<String, Progress>, group: &str) -> usize {
   progress.get(group).map_or(0, |progress| progress.step)
 }
@@ -654,15 +661,18 @@ impl Commander for FleetCommander {
           intent.max_thrust = cap.or(intent.max_thrust);
         }
       }
-      // Each ship's report says what her squadron is doing.
+      // Each ship's report says what her squadron is doing: "Lance, step 1
+      // of 2: ...", or just what it is doing for a ship in no squadron, a
+      // ship on her own, or a script of one step.
       if !steps.is_empty() {
-        let doing = format!(
-          "{} (step {} of {}: {})",
-          name.trim_start_matches("ship:"),
-          (progress_step(&self.progress, name) + 1),
-          steps.len(),
-          describe(&step)
-        );
+        let what = describe(&step);
+        let named = !name.starts_with('(') && !name.starts_with("ship:");
+        let doing = match (named, steps.len()) {
+          (true, 1) => format!("{name}: {what}"),
+          (true, n) => format!("{name}, step {} of {n}: {what}", progress_step(&self.progress, name) + 1),
+          (false, 1) => capitalise(&what),
+          (false, n) => format!("Step {} of {n}: {what}", progress_step(&self.progress, name) + 1),
+        };
         for (_, intent) in &mut decided {
           intent.rationale = if intent.rationale.is_empty() {
             doing.clone()
