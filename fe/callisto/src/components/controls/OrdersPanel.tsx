@@ -171,7 +171,7 @@ export function OrdersPanel() {
         }}
       />
       <div className="orders-panel-buttons">
-        <button type="button" className="control-input" disabled={draft.trim() === target.current} onClick={send}>
+        <button type="button" className="blue-button orders-panel-give" disabled={draft.trim() === target.current} onClick={send}>
           Give orders
         </button>
       </div>

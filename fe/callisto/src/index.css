@@ -3793,6 +3793,13 @@ h3.control-form {
     margin-top: 4px;
 }
 
+.orders-panel-give,
+.squadrons-move-button {
+    padding: 2px 12px;
+    font-size: var(--font-sm);
+    white-space: nowrap;
+}
+
 .orders-panel-list {
     list-style: none;
     margin: 6px 0 0 0;

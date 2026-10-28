@@ -224,7 +224,7 @@ export function SquadronsPanel(args: { onlyTeam?: string | null }) {
               onKeyDown={(e) => e.key === "Enter" && move()}
             />
           )}
-          <button type="button" className="control-input" disabled={ticked.length === 0} onClick={move}>
+          <button type="button" className="blue-button squadrons-move-button" disabled={ticked.length === 0} onClick={move}>
             Move
           </button>
         </div>
