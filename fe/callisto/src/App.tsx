@@ -275,8 +275,8 @@ function Simulator() {
         <div className="top-right-stack">
           {/* The tutorial's coach, first in the column, where it is read. */}
           {(tutorialMode || joinedScenario?.startsWith(TUTORIAL_BUILDER_PREFIX)) && <Coach />}
-          {/* View and Ships side by side across the top, so neither pushes
-              the other down; each folds to its header. */}
+          {/* View, then Ships, each the column's full width; each folds to
+              its header. */}
           <div className="top-right-row">
             <ViewControls />
             <ShipSummary />

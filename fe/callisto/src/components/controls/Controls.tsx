@@ -626,55 +626,59 @@ export function ViewControls() {
 
   return (
     <CornerPanel id="view-panel" title="View" className="view-controls-window" tutorial="view-panel">
-      <label style={{ display: "flex" }}>
-        {" "}
-        <input
-          type="checkbox"
-          checked={gravityWells}
-          onChange={() => dispatch(setGravityWells(!gravityWells))}
-        />{" "}
-        Gravity Well
-      </label>
-      <label style={{ display: "flex" }} data-tutorial="jump-limit-toggle">
-        {" "}
-        <input
-          type="checkbox"
-          checked={jumpDistance}
-          onChange={() => dispatch(setJumpDistance(!jumpDistance))}
-        />{" "}
-        100 Diameter Limit
-      </label>
-      <label className="screen-size" title="Auto is compact on a laptop-sized screen and full on a big one">
-        Size{" "}
-        <select
-          className="control-input"
-          value={screenSize}
-          onChange={(event) => {
-            const size = event.target.value as ScreenSize;
-            applyScreenSize(size);
-            setScreenSize(size);
-          }}>
-          <option value="auto">Auto</option>
-          <option value="compact">Compact</option>
-          <option value="full">Full</option>
-        </select>
-      </label>
-      <label className="screen-size" title="How many columns the console uses; Auto fits as many as the screen has room for">
-        Columns{" "}
-        <select
-          className="control-input"
-          value={columns}
-          onChange={(event) => {
-            const chosen = event.target.value as ConsoleColumns;
-            applyColumns(chosen);
-            setColumns(chosen);
-          }}>
-          <option value="auto">Auto</option>
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-        </select>
-      </label>
+      {/* Two columns: what the view draws on the left, how the console is
+          laid out on the right. */}
+      <div className="view-options">
+        <label className="view-option">
+          {" "}
+          <input
+            type="checkbox"
+            checked={gravityWells}
+            onChange={() => dispatch(setGravityWells(!gravityWells))}
+          />{" "}
+          Gravity Well
+        </label>
+        <label className="screen-size" title="Auto is compact on a laptop-sized screen and full on a big one">
+          Size{" "}
+          <select
+            className="control-input"
+            value={screenSize}
+            onChange={(event) => {
+              const size = event.target.value as ScreenSize;
+              applyScreenSize(size);
+              setScreenSize(size);
+            }}>
+            <option value="auto">Auto</option>
+            <option value="compact">Compact</option>
+            <option value="full">Full</option>
+          </select>
+        </label>
+        <label className="view-option" data-tutorial="jump-limit-toggle">
+          {" "}
+          <input
+            type="checkbox"
+            checked={jumpDistance}
+            onChange={() => dispatch(setJumpDistance(!jumpDistance))}
+          />{" "}
+          100 Diameter Limit
+        </label>
+        <label className="screen-size" title="How many columns the console uses; Auto fits as many as the screen has room for">
+          Columns{" "}
+          <select
+            className="control-input"
+            value={columns}
+            onChange={(event) => {
+              const chosen = event.target.value as ConsoleColumns;
+              applyColumns(chosen);
+              setColumns(chosen);
+            }}>
+            <option value="auto">Auto</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+      </div>
       <SideView />
       {/* Collapsed by default: this is reference material, not a control, and
           the top-right corner has no room to spare. It exists at all because

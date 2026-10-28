@@ -3937,9 +3937,10 @@ h3.control-form {
 /* View and Ships share the top of the right-hand column. */
 .top-right-row {
     display: flex;
-    flex-direction: row;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
     gap: 4px;
+    width: 100%;
 }
 
 /* A panel in the right-hand column: its header always shows, with the toggle
@@ -4158,9 +4159,22 @@ h3.control-form {
 
 .side-view-row {
     display: flex;
-    flex-wrap: wrap;
     gap: 4px;
     align-items: center;
+    margin-right: 4px;
+}
+
+/* The two ends side by side, sharing the row with Look. */
+.side-view-row > select {
+    flex: 1 1 0;
+    min-width: 0;
+    height: var(--control-height);
+}
+
+.side-view-row > button {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 10px;
 }
 
 /* Direction to, in the Pilot card. */
@@ -4177,9 +4191,9 @@ h3.control-form {
 }
 
 /* View and Ships share a row where they fit, and stack where they do not. */
-.top-right-row {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+.top-right-row > .corner-panel {
+    box-sizing: border-box;
+    width: 100%;
 }
 
 #ships-panel {
@@ -4292,4 +4306,27 @@ h3.control-form {
 
 .screen-size select {
     width: auto;
+}
+
+/* The View panel's options: what is drawn on the left, the console's layout
+   on the right. */
+.view-options {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: space-between;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 2px;
+    margin-right: 4px;
+}
+
+.view-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.view-options .screen-size {
+    justify-self: end;
+    margin-right: 0;
 }
