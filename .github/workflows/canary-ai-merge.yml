@@ -26,7 +26,7 @@ env:
   ALLOWED_CALLERS: 325308079155-compute@developer.gserviceaccount.com
   # The service's own identity: calls Vertex AI and logs in to the backend.
   SERVICE_ACCOUNT: callisto-ai@callisto-canary.iam.gserviceaccount.com
-  MODEL: network
+  MODEL: admiral:gemini
 
 jobs:
   deploy-canary-ai:

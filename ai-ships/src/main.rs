@@ -46,11 +46,12 @@ struct Args {
   #[arg(long, env = "CALLISTO_AI_ALLOWED_CALLERS", value_delimiter = ',')]
   allowed_callers: Vec<String>,
 
-  /// Who decides for the ships: `network`, the trained network built into
-  /// the service; a model (`gemini`, `gemini:<model>`, `claude`,
+  /// Who decides for the ships: `admiral:gemini` (the default), Gemini
+  /// writing squadron scripts from the orders and the network fighting them;
+  /// `network`, the trained network alone, which ignores orders; a model (`gemini`, `gemini:<model>`, `claude`,
   /// `claude:<model>`, `deepseek`, `maas:<publisher>/<model>`); or a
   /// baseline (`close`, `hold`, `idle`).
-  #[arg(long, env = "CALLISTO_AI_MODEL", default_value = "network")]
+  #[arg(long, env = "CALLISTO_AI_MODEL", default_value = "admiral:gemini")]
   model: String,
 
   /// The GCP project the model calls are billed to. Defaults to the
