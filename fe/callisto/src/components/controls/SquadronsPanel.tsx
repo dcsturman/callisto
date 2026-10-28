@@ -92,7 +92,13 @@ export function SquadronsPanel(args: { onlyTeam?: string | null }) {
   };
 
   return (
-    <Accordion id="squadrons" title="Squadrons" initialOpen={false} className="squadrons-panel">
+    <Accordion
+      id="squadrons"
+      // The count says, folded, that there is something inside.
+      title={`Squadrons (${groups.filter((group) => group.name != null).length})`}
+      initialOpen={false}
+      className="squadrons-panel"
+    >
       {args.onlyTeam == null && teams.length > 1 && (
         <select
           className="team-select squadrons-team"
