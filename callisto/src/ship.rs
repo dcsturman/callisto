@@ -462,11 +462,14 @@ pub struct Ship {
   /// Per-round scratch like `point_defense_list`, so it is not persisted.
   #[serde(skip)]
   pub point_defense_pool: u32,
-  /// Damage each of this ship's screens will absorb this round, index-aligned
-  /// with the design's `screens`.  Rolled once at the start of resolution and
-  /// spent as attacks arrive; per-round scratch, so not persisted.
+  /// What each of this ship's screens will take off the one attack it is
+  /// angled at this round, index-aligned with the design's `screens`.  Rolled
+  /// once at the start of resolution.  `None` is a screen nobody angles, or one
+  /// already angled this round; `Some(0)` is one whose Gunner (screen) check
+  /// failed, which is still angled at an attack and does nothing to it.
+  /// Per-round scratch, so not persisted.
   #[serde(skip)]
-  pub screen_pool: Vec<u32>,
+  pub screen_pool: Vec<Option<u32>>,
   /// Power currently suppressed by ion hits.
   ///
   /// Ion weapons deal no lasting harm -- the Power comes back when the effect
@@ -1385,6 +1388,16 @@ impl ScreenType {
       ScreenType::NuclearDamper => kind == WeaponType::Fusion,
     }
   }
+}
+
+/// The screens angled at one hit, and what they take off it between them.
+///
+/// `reduction` is their whole roll, which may be more than the hit had; the
+/// excess is lost, since a screen is angled at one attack only.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Screening {
+  pub reduction: u32,
+  pub screens: u32,
 }
 
 impl From<ScreenType> for String {
@@ -3460,45 +3473,58 @@ impl Ship {
     self.screen_pool.clear();
   }
 
-  pub fn set_screen_pool(&mut self, pool: Vec<u32>) {
+  pub fn set_screen_pool(&mut self, pool: Vec<Option<u32>>) {
     self.screen_pool = pool;
   }
 
-  /// Spend screens against `damage` from a weapon of `kind`, returning what is
-  /// left of it.
-  ///
-  /// Screens are spent whole and greedily: each one that defends against this
-  /// weapon is applied in turn until the damage reaches zero, and whatever it
-  /// does not need is lost with it.  The next attack starts from the next
-  /// unspent screen.  The book instead lets a gunner pick their moment and
-  /// concentrate every screen on one attack; we resolve attacks in sequence
-  /// with nobody to ask, so this is the closest approximation available.
-  pub fn apply_screens(&mut self, kind: WeaponType, damage: u32) -> u32 {
-    if damage == 0 || self.screen_pool.is_empty() {
-      return damage;
-    }
+  /// Whether any screen not yet angled this round defends against `kind`.
+  #[must_use]
+  pub fn has_screens_for(&self, kind: WeaponType) -> bool {
+    self
+      .design
+      .screens
+      .iter()
+      .zip(&self.screen_pool)
+      .any(|(screen, pool)| pool.is_some() && screen.defends_against(kind))
+  }
 
-    let screens = self.design.screens.clone();
-    let mut remaining = damage;
-    for (index, screen) in screens.iter().enumerate() {
-      if remaining == 0 {
-        break;
-      }
-      if !screen.defends_against(kind) {
-        continue;
-      }
-      let Some(absorbed) = self.screen_pool.get_mut(index) else {
+  /// Angle this round's unangled screens at `hits`, each hit a weapon and its
+  /// damage after armour and the Damage Multiple, and say what each hit loses.
+  ///
+  /// "A gunner may only angle screens against one attack per round" (High
+  /// Guard 2022 FAQ, p. 2), and every screen has its own gunner, so each
+  /// screen goes on exactly one hit and its whole reduction applies to that
+  /// hit alone; what the hit did not need is lost.  Screens are taken in
+  /// order, and each goes on the largest hit it defends against that no
+  /// screen is on yet; once every such hit has one, on whichever has the most
+  /// damage left.  So several screens can be on one hit, each its own
+  /// gunner's one attack.  A screen whose check failed is angled all the
+  /// same and takes nothing off.  A screen with nothing it defends against
+  /// stays unangled, for a later attack this round.
+  pub fn angle_screens(&mut self, hits: &[(WeaponType, u32)]) -> Vec<Screening> {
+    let mut screenings = vec![Screening::default(); hits.len()];
+    for (screen, pool) in self.design.screens.iter().zip(self.screen_pool.iter_mut()) {
+      let Some(reduction) = *pool else {
         continue;
       };
-      if *absorbed == 0 {
+      let target = hits
+        .iter()
+        .zip(&screenings)
+        .enumerate()
+        .filter(|(_, ((kind, damage), screening))| screen.defends_against(*kind) && *damage > screening.reduction)
+        .max_by_key(|(index, ((_, damage), screening))| {
+          // The earlier hit wins a tie, so the order is the resolution order.
+          (screening.screens == 0, damage - screening.reduction, std::cmp::Reverse(*index))
+        })
+        .map(|(index, _)| index);
+      let Some(target) = target else {
         continue;
-      }
-      remaining = remaining.saturating_sub(*absorbed);
-      // Spent whole: any excess beyond what this attack needed is wasted, as it
-      // would be in the book where a screen is used against one attack.
-      *absorbed = 0;
+      };
+      screenings[target].reduction += reduction;
+      screenings[target].screens += 1;
+      *pool = None;
     }
-    remaining
+    screenings
   }
 
   // Engineer action getters and setters

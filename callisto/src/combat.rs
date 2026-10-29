@@ -9,14 +9,14 @@ use rand::RngCore;
 use crate::action::{
   boost_for_assist_gunner, boost_for_evade, boost_for_fire, boost_for_point_defense, BoostMap, ShipAction,
 };
-use crate::entity::{no_contact_effect, Entity};
+use crate::entity::{no_contact_effect, Entity, Vec3};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
 use crate::rules_tables::{
   crew_crit_percent, damage_multiple, ignores_primary_critical, is_capital, profile_for, spinal_range_dm,
   spinal_size_dm, system_loss, CargoHit, ShortBand, SystemLoss, RANGE_BANDS, RANGE_MOD,
 };
 use crate::ship::{
-  spinal_name, spinal_uses_rounds, BridgeStation, Firing, Magazine, MountClass, Range, Salvo, Sensors, Ship,
+  spinal_name, spinal_uses_rounds, BridgeStation, Firing, Magazine, MountClass, Range, Salvo, Screening, Sensors, Ship,
   ShipSystem, SystemDamage, Weapon, WeaponMount, WeaponProfile, WeaponType,
 };
 use crate::software::SoftwareKind;
@@ -326,6 +326,32 @@ pub fn attack(
   effects
 }
 
+/// [`aim`] and [`land`] at once, with the defender's screens angled at this
+/// hit alone.
+#[allow(clippy::too_many_arguments)]
+fn resolve_attack(
+  hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
+  called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore, shot: &mut Shot,
+) -> Vec<EffectMsg> {
+  match aim(
+    hit,
+    damage_mod,
+    attacker,
+    defender,
+    firing,
+    called_shot_system,
+    boost_map,
+    rng,
+    shot,
+  ) {
+    Ok(landing) => {
+      let screening = defender.angle_screens(&[landing.incoming()]).pop().unwrap_or_default();
+      land(landing, screening, defender, rng, shot)
+    }
+    Err(effects) => effects,
+  }
+}
+
 /// What one attack came to, kept so a salvo or a battery can report all its
 /// shots in one line.
 #[derive(Debug, Default)]
@@ -366,26 +392,65 @@ const VOLLEY_ROLLS_LISTED: usize = 24;
 /// `damage_mods` is each shot's damage modifier in turn -- sand thrown at
 /// that shot -- and a shot past its end has none. `called` is the system
 /// every shot is aimed at, for a battery's called shot.
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[allow(clippy::too_many_arguments)]
 pub fn volley(
   hit: HitMods, damage_mods: &[i32], attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>, shots: u16,
   title: Option<&str>, called: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
-  let damage_mod = |shot: usize| damage_mods.get(shot).copied().unwrap_or(0);
-  let Some(title) = title else {
-    return (0..usize::from(shots.max(1)))
-      .flat_map(|shot| attack(hit, damage_mod(shot), attacker, defender, firing, called, boost_map, rng))
-      .collect();
-  };
+  let volley = fire_volley(
+    hit,
+    damage_mods,
+    attacker,
+    defender,
+    firing,
+    shots,
+    title,
+    called,
+    boost_map,
+    rng,
+  );
+  let screenings = defender.angle_screens(&volley.incoming());
+  volley.report(&screenings, defender, rng)
+}
 
-  let mut outcomes: Vec<Shot> = Vec::with_capacity(usize::from(shots));
-  // One explosion or beam for the whole volley: the plot shows where it
-  // landed, not how often.
-  let mut visual: Option<EffectMsg> = None;
-  let mut rest: Vec<EffectMsg> = Vec::new();
-  for index in 0..usize::from(shots) {
+/// One shot of a volley: what it came to, and what it said -- or, while it
+/// waits on the defender's screens, the hit itself.
+#[derive(Debug)]
+struct Fired {
+  shot: Shot,
+  said: Vec<EffectMsg>,
+  landing: Option<Landing>,
+}
+
+/// A volley fired, with any hits a screen could meet not yet landed.
+///
+/// Screens are angled once every hit a ship takes this round is known (see
+/// [`Ship::angle_screens`]), so a volley at a ship with screens is fired in
+/// the fire pass and reported in [`land_fire`].  A hit no screen of the
+/// defender's can meet lands as it is fired, so for everything else the
+/// order of the dice is as it was.
+#[derive(Debug)]
+pub(crate) struct Volley {
+  attacker: String,
+  defender: String,
+  weapon_name: String,
+  title: Option<String>,
+  shots: u16,
+  fired: Vec<Fired>,
+}
+
+/// Fire a [`volley`], landing every hit except those waiting on screens.
+#[allow(clippy::too_many_arguments)]
+fn fire_volley(
+  hit: HitMods, damage_mods: &[i32], attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>, shots: u16,
+  title: Option<&str>, called: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+) -> Volley {
+  let damage_mod = |shot: usize| damage_mods.get(shot).copied().unwrap_or(0);
+  let count = if title.is_some() { shots } else { shots.max(1) };
+  let mut fired = Vec::with_capacity(usize::from(count));
+  for index in 0..usize::from(count) {
     let mut shot = Shot::default();
-    let effects = resolve_attack(
+    let (said, landing) = match aim(
       hit,
       damage_mod(index),
       attacker,
@@ -395,109 +460,176 @@ pub fn volley(
       boost_map,
       rng,
       &mut shot,
-    );
-    if shot.rolled.is_none() {
-      // It never got to a roll -- out of range, or a weapon that cannot be
-      // fired from its mount -- and every other shot would say the same.
-      return effects;
-    }
-    // The first effect is the shot's own line, which the summary replaces.
-    for effect in effects.into_iter().skip(1) {
-      match effect {
-        EffectMsg::ShipImpact { .. } | EffectMsg::BeamHit { .. } => {
-          visual.get_or_insert(effect);
-        }
-        other => rest.push(other),
+    ) {
+      Ok(landing) if !defender.has_screens_for(landing.kind) => {
+        (land(landing, Screening::default(), defender, rng, &mut shot), None)
       }
+      Ok(landing) => (vec![], Some(landing)),
+      Err(said) => (said, None),
+    };
+    // A titled volley that never got to a roll -- out of range, or a weapon
+    // that cannot be fired from its mount -- says so once: every other shot
+    // would say the same.
+    let unrolled = title.is_some() && shot.rolled.is_none();
+    fired.push(Fired { shot, said, landing });
+    if unrolled {
+      break;
     }
-    outcomes.push(shot);
   }
-
-  let attacker_name = attacker.get_name();
-  let weapon_name = String::from(&firing.kind);
-  let hits = outcomes.iter().filter(|shot| shot.hit).count();
-  let damage: u64 = outcomes.iter().map(|shot| u64::from(shot.damage)).sum();
-  let criticals: u32 = outcomes.iter().map(|shot| shot.criticals).sum();
-
-  let mut line = format!("%s {title} -> %t: {hits} of {shots} hit");
-  if hits > 0 {
-    let _ = write!(line, ", {damage} damage");
+  Volley {
+    attacker: attacker.get_name().to_string(),
+    defender: defender.get_name().to_string(),
+    weapon_name: String::from(&firing.kind),
+    title: title.map(str::to_string),
+    shots,
+    fired,
   }
-  if criticals > 0 {
-    let _ = write!(line, ", {criticals} critical{}", if criticals == 1 { "" } else { "s" });
-  }
-  line.push('.');
-
-  // The arithmetic, for the hover: the DM as the first shot had it -- every
-  // shot's, unless the defender dodged some -- then every total rolled and
-  // the damage each hit did. A long volley's lists are cut short; the counts
-  // in the line are always complete.
-  let list = |values: Vec<String>| {
-    let more = values.len().saturating_sub(VOLLEY_ROLLS_LISTED);
-    let mut shown: Vec<String> = values.into_iter().take(VOLLEY_ROLLS_LISTED).collect();
-    if more > 0 {
-      shown.push(format!("and {more} more"));
-    }
-    shown.join(", ")
-  };
-  let first_dm = outcomes[0].rolled.map_or(0, |(_, dm)| dm);
-  let rolls = list(
-    outcomes
-      .iter()
-      .filter_map(|shot| shot.rolled.map(|(roll, dm)| (roll + dm).to_string()))
-      .collect(),
-  );
-  let mut arithmetic = format!(
-    "each 2D{first_dm:+}{} vs {STANDARD_ROLL_THRESHOLD}: {rolls}",
-    outcomes[0].breakdown
-  );
-  if hits > 0 {
-    let damages = list(
-      outcomes
-        .iter()
-        .filter(|shot| shot.hit)
-        .map(|shot| shot.damage.to_string())
-        .collect(),
-    );
-    let _ = write!(arithmetic, " · damage {damages}");
-  }
-
-  let category = if hits > 0 {
-    MessageCategory::Damage
-  } else {
-    MessageCategory::Attack
-  };
-  let mut effects = vec![EffectMsg::outcome(attacker_name, category, line, hits > 0)
-    .at(defender.get_name())
-    .rolled(arithmetic)];
-  effects.extend(visual);
-  effects.extend(rest);
-
-  // The defender hears of her dodging once for the volley, as the attacker's
-  // line is once for it.
-  let dodges = outcomes.iter().filter(|shot| shot.dodged.is_some()).count();
-  if dodges > 0 {
-    let decisive = outcomes.iter().filter(|shot| shot.dodge_made_it_miss).count();
-    effects.push(
-      EffectMsg::outcome(
-        defender.get_name(),
-        MessageCategory::Attack,
-        format!("%s dodges {dodges} of %t's {shots} {weapon_name}s: the dodge made {decisive} miss."),
-        decisive > 0,
-      )
-      .at(attacker_name),
-    );
-  }
-  effects
 }
 
-/// [`attack`], with what the shot came to -- and what the defender's dodge
-/// did to it, if she dodged -- left in `shot`.
+impl Volley {
+  /// The hits waiting on screens, in the order they were fired.
+  fn incoming(&self) -> Vec<(WeaponType, u32)> {
+    self
+      .fired
+      .iter()
+      .filter_map(|fired| fired.landing.as_ref().map(Landing::incoming))
+      .collect()
+  }
+
+  /// Land the waiting hits, `screenings` being the screens on each in turn,
+  /// and report the volley.
+  #[allow(clippy::too_many_lines)]
+  fn report(self, screenings: &[Screening], defender: &mut Ship, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let Volley {
+      attacker,
+      defender: _,
+      weapon_name,
+      title,
+      shots,
+      mut fired,
+    } = self;
+    let mut screenings = screenings.iter().copied();
+    for one in &mut fired {
+      if let Some(landing) = one.landing.take() {
+        one.said = land(landing, screenings.next().unwrap_or_default(), defender, rng, &mut one.shot);
+      }
+    }
+
+    let Some(title) = title else {
+      return fired
+        .into_iter()
+        .flat_map(|one| one.said.into_iter().chain(one.shot.dodged))
+        .collect();
+    };
+    if fired.last().is_some_and(|one| one.shot.rolled.is_none()) {
+      return fired.pop().map(|one| one.said).unwrap_or_default();
+    }
+
+    // One explosion or beam for the whole volley: the plot shows where it
+    // landed, not how often.
+    let mut visual: Option<EffectMsg> = None;
+    let mut rest: Vec<EffectMsg> = Vec::new();
+    let mut outcomes: Vec<Shot> = Vec::with_capacity(fired.len());
+    for one in fired {
+      // The first effect is the shot's own line, which the summary replaces.
+      for effect in one.said.into_iter().skip(1) {
+        match effect {
+          EffectMsg::ShipImpact { .. } | EffectMsg::BeamHit { .. } => {
+            visual.get_or_insert(effect);
+          }
+          other => rest.push(other),
+        }
+      }
+      outcomes.push(one.shot);
+    }
+
+    let attacker_name = attacker.as_str();
+    let hits = outcomes.iter().filter(|shot| shot.hit).count();
+    let damage: u64 = outcomes.iter().map(|shot| u64::from(shot.damage)).sum();
+    let criticals: u32 = outcomes.iter().map(|shot| shot.criticals).sum();
+
+    let mut line = format!("%s {title} -> %t: {hits} of {shots} hit");
+    if hits > 0 {
+      let _ = write!(line, ", {damage} damage");
+    }
+    if criticals > 0 {
+      let _ = write!(line, ", {criticals} critical{}", if criticals == 1 { "" } else { "s" });
+    }
+    line.push('.');
+
+    // The arithmetic, for the hover: the DM as the first shot had it -- every
+    // shot's, unless the defender dodged some -- then every total rolled and
+    // the damage each hit did. A long volley's lists are cut short; the counts
+    // in the line are always complete.
+    let list = |values: Vec<String>| {
+      let more = values.len().saturating_sub(VOLLEY_ROLLS_LISTED);
+      let mut shown: Vec<String> = values.into_iter().take(VOLLEY_ROLLS_LISTED).collect();
+      if more > 0 {
+        shown.push(format!("and {more} more"));
+      }
+      shown.join(", ")
+    };
+    let first_dm = outcomes[0].rolled.map_or(0, |(_, dm)| dm);
+    let rolls = list(
+      outcomes
+        .iter()
+        .filter_map(|shot| shot.rolled.map(|(roll, dm)| (roll + dm).to_string()))
+        .collect(),
+    );
+    let mut arithmetic = format!(
+      "each 2D{first_dm:+}{} vs {STANDARD_ROLL_THRESHOLD}: {rolls}",
+      outcomes[0].breakdown
+    );
+    if hits > 0 {
+      let damages = list(
+        outcomes
+          .iter()
+          .filter(|shot| shot.hit)
+          .map(|shot| shot.damage.to_string())
+          .collect(),
+      );
+      let _ = write!(arithmetic, " · damage {damages}");
+    }
+
+    let category = if hits > 0 {
+      MessageCategory::Damage
+    } else {
+      MessageCategory::Attack
+    };
+    let mut effects = vec![EffectMsg::outcome(attacker_name, category, line, hits > 0)
+      .at(defender.get_name())
+      .rolled(arithmetic)];
+    effects.extend(visual);
+    effects.extend(rest);
+
+    // The defender hears of her dodging once for the volley, as the attacker's
+    // line is once for it.
+    let dodges = outcomes.iter().filter(|shot| shot.dodged.is_some()).count();
+    if dodges > 0 {
+      let decisive = outcomes.iter().filter(|shot| shot.dodge_made_it_miss).count();
+      effects.push(
+        EffectMsg::outcome(
+          defender.get_name(),
+          MessageCategory::Attack,
+          format!("%s dodges {dodges} of %t's {shots} {weapon_name}s: the dodge made {decisive} miss."),
+          decisive > 0,
+        )
+        .at(attacker_name),
+      );
+    }
+    effects
+  }
+}
+
+/// Aim one attack and work out what it would do, up to the defender's
+/// screens: everything but landing it.  What the shot came to -- and what the
+/// defender's dodge did to it, if she dodged -- is left in `shot`.  `Err` is
+/// an attack that ends without a hit to land, with what it said.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
-fn resolve_attack(
+fn aim(
   hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
   called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore, shot: &mut Shot,
-) -> Vec<EffectMsg> {
+) -> Result<Landing, Vec<EffectMsg>> {
   let attacker_name = attacker.get_name();
 
   // Damage, range, hit modifier and armour penetration all depend on how the
@@ -510,14 +642,14 @@ fn resolve_attack(
       String::from(&firing.kind),
       String::from(&firing.kind)
     );
-    return vec![EffectMsg::about(
+    return Err(vec![EffectMsg::about(
       attacker_name,
       MessageCategory::Info,
       format!(
         "%s's {} is not a mount this weapon can be fired from.",
         String::from(&firing.kind)
       ),
-    )];
+    )]);
   };
 
   // This in theory could be lossy but that would require there to be more than 4.29x10^9m which is VERY far.  If we
@@ -600,12 +732,12 @@ fn resolve_attack(
       attacker.get_name(),
       String::from(&firing.kind)
     );
-    return vec![EffectMsg::about(
+    return Err(vec![EffectMsg::about(
       attacker.get_name(),
       MessageCategory::Info,
       format!("%t is out of range of %s's {}.", String::from(&firing.kind)),
     )
-    .at(defender.get_name())];
+    .at(defender.get_name())]);
   };
 
   info!(
@@ -701,11 +833,14 @@ fn resolve_attack(
       "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and misses.",
       attacker_name, roll, hit_roll
     );
-    return vec![
-      EffectMsg::outcome(attacker_name, MessageCategory::Attack, format!("{attack_line}: miss."), false)
-        .at(defender.get_name())
-        .rolled(attack_roll),
-    ];
+    return Err(vec![EffectMsg::outcome(
+      attacker_name,
+      MessageCategory::Attack,
+      format!("{attack_line}: miss."),
+      false,
+    )
+    .at(defender.get_name())
+    .rolled(attack_roll)]);
   }
 
   let effect: u32 = u32::try_from(hit_roll - STANDARD_ROLL_THRESHOLD).unwrap_or(0);
@@ -789,14 +924,14 @@ fn resolve_attack(
             defender.get_current_armor()
         );
 
-    return vec![EffectMsg::outcome(
+    return Err(vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
       format!("{attack_line}: hit, effect {effect}. Absorbed by armour."),
       true,
     )
     .at(defender.get_name())
-    .rolled(format!("{attack_roll} · damage {} = 0", terms.join(" ")))];
+    .rolled(format!("{attack_roll} · damage {} = 0", terms.join(" ")))]);
   };
 
   debug!(
@@ -808,58 +943,18 @@ fn resolve_attack(
         defender.get_current_armor()
     );
 
-  // Screens deflect "after armour has been accounted for" (High Guard p. 40).
-  // The order matters beyond arithmetic: applied before armour, a screen would
-  // be spent cancelling damage the armour was going to stop anyway.
-  let before_screens = damage;
-  damage = defender.apply_screens(firing.kind, damage);
-  let screened = before_screens - damage;
-  if screened > 0 {
-    debug!(
-      "(Combat.attack) {}'s screens absorb {screened} of {before_screens} damage.",
-      defender.get_name()
-    );
-  }
-  if screened > 0 {
-    terms.push(format!("-{screened} screens"));
-  }
-  if damage == 0 {
-    return vec![EffectMsg::outcome(
-      attacker_name,
-      MessageCategory::Damage,
-      format!("{attack_line}: hit, effect {effect}. Absorbed by screens."),
-      true,
-    )
-    .at(defender.get_name())
-    .rolled(format!("{attack_roll} · damage {} = 0", terms.join(" ")))];
-  }
-
-  // Calculate additional damage multipliers and effects for non-crits now.
-  // This runs on the impact of a single object for launched weapons, so a
-  // salvo resolves once per missile or torpedo rather than once per launcher.
-  let mut effects = if profile.salvo.is_some() {
-    // Create two effects: a message stating the damage and a ship impact on the defender.
-    vec![
-      EffectMsg::outcome(
-        attacker_name,
-        MessageCategory::Damage,
-        format!("{attack_line}: hit, effect {effect}. Damage {damage}."),
-        true,
-      )
-      .at(defender.get_name())
-      .rolled(format!("{attack_roll} · damage {} = {damage}", terms.join(" "))),
-      EffectMsg::ShipImpact {
-        target: defender.get_name().to_string(),
-        position: defender.get_position(),
-      },
-    ]
-  } else {
-    // Guns in a multi-weapon turret fire together, adding their dice to the
-    // one roll.  This is a bonus for filling the turret, not a Damage
-    // Multiple, so it applies before (and independently of) the multiple.
-    // "Each additional weapon adds +1 per damage dice" (Core Rulebook p. 166).
-    // Counted over guns of the firing type, so a mixed turret gets the bonus
-    // for the two lasers in it and not for the sandcaster beside them.
+  // Guns in a multi-weapon turret fire together, adding their dice to the
+  // one roll.  This is a bonus for filling the turret, not a Damage
+  // Multiple, so it applies before (and independently of) the multiple.
+  // "Each additional weapon adds +1 per damage dice" (Core Rulebook p. 166).
+  // Counted over guns of the firing type, so a mixed turret gets the bonus
+  // for the two lasers in it and not for the sandcaster beside them.
+  //
+  // Damage Multiples (High Guard p. 29).  Launchers skip both; their
+  // scaling is salvo size, which is why the two are mutually exclusive.
+  // A spinal's ×1,000 on 80D runs to hundreds of thousands, so the
+  // arithmetic is wide, and the armour percentage is taken in the same step.
+  if profile.salvo.is_none() {
     if matches!(*firing.mount, WeaponMount::Turret) {
       let turret_bonus = (u32::from(firing.count) - 1) * u32::from(profile.damage_dice);
       damage += turret_bonus;
@@ -868,10 +963,6 @@ fn resolve_attack(
       }
     }
 
-    // Damage Multiples (High Guard p. 29).  Launchers never reach here; their
-    // scaling is salvo size, which is why the two are mutually exclusive.
-    // A spinal's ×1,000 on 80D runs to hundreds of thousands, so the
-    // arithmetic is wide, and the armour percentage is taken in the same step.
     let multiple = if profile.use_multiple {
       damage_multiple(MountClass::from(firing.mount))
     } else {
@@ -881,22 +972,135 @@ fn resolve_attack(
     if multiple > 1 {
       terms.push(format!("x{multiple} mount"));
     }
+  }
 
-    vec![
-      EffectMsg::outcome(
+  Ok(Landing {
+    attacker: attacker_name.to_string(),
+    origin: attacker.get_position(),
+    kind: firing.kind,
+    mount: MountClass::from(firing.mount),
+    salvo: profile.salvo.is_some(),
+    ion: profile.ion,
+    radiation: profile.radiation,
+    called: called_shot_system.copied(),
+    effect,
+    hit_roll,
+    attack_line,
+    attack_roll,
+    terms,
+    damage,
+  })
+}
+
+/// A hit worked out as far as its damage, armour and the Damage Multiple
+/// taken, waiting only on the defender's screens before it lands.
+///
+/// Screens come last: "calculate the damage of the opposing weapon, subtract
+/// Armour, and apply the Damage Multiple", then angle them (High Guard 2022
+/// FAQ, p. 2).  Kept apart so every hit a ship takes in a round can be known
+/// before any screen is angled at one; see [`Ship::angle_screens`].
+#[derive(Debug)]
+pub(crate) struct Landing {
+  attacker: String,
+  origin: Vec3,
+  kind: WeaponType,
+  mount: MountClass,
+  salvo: bool,
+  ion: bool,
+  radiation: bool,
+  called: Option<ShipSystem>,
+  effect: u32,
+  hit_roll: i32,
+  attack_line: String,
+  attack_roll: String,
+  terms: Vec<String>,
+  damage: u32,
+}
+
+impl Landing {
+  /// What the screens see: the weapon, and the damage after the multiple.
+  fn incoming(&self) -> (WeaponType, u32) {
+    (self.kind, self.damage)
+  }
+}
+
+/// Land a hit on `defender`, after the screens angled at it: the hull it
+/// loses, the criticals, and the hit's own line.
+#[allow(clippy::too_many_lines)]
+fn land(
+  landing: Landing, screening: Screening, defender: &mut Ship, rng: &mut dyn RngCore, shot: &mut Shot,
+) -> Vec<EffectMsg> {
+  let Landing {
+    attacker,
+    origin,
+    kind,
+    mount,
+    salvo,
+    ion,
+    radiation,
+    called,
+    effect,
+    hit_roll,
+    attack_line,
+    attack_roll,
+    mut terms,
+    mut damage,
+  } = landing;
+  let attacker_name = attacker.as_str();
+  let spinal = mount == MountClass::Spinal;
+
+  // Each screen's reduction is spent on this hit alone, so whatever it did
+  // not need is lost.  The line shows the damage the screens met, then what
+  // they took off it.
+  if screening.screens > 0 {
+    let screened = screening.reduction.min(damage);
+    debug!(
+      "(Combat.attack) {} screen(s) on {} absorb {screened} of {damage} damage.",
+      screening.screens,
+      defender.get_name()
+    );
+    terms.push(format!(
+      "= {damage}, -{screened} screens ({} screen{})",
+      screening.screens,
+      if screening.screens == 1 { "" } else { "s" }
+    ));
+    damage -= screened;
+    if damage == 0 {
+      return vec![EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
-        format!("{attack_line}: hit, effect {effect}. Damage {damage}."),
+        format!("{attack_line}: hit, effect {effect}. Absorbed by screens."),
         true,
       )
       .at(defender.get_name())
-      .rolled(format!("{attack_roll} · damage {} = {damage}", terms.join(" "))),
-      EffectMsg::BeamHit {
-        origin: attacker.get_position(),
-        position: defender.get_position(),
-      },
-    ]
+      .rolled(format!("{attack_roll} · damage {} = 0", terms.join(" ")))];
+    }
+  }
+
+  // Create two effects: a message stating the damage and a ship impact on
+  // the defender for a missile, a beam for anything else.
+  let visual = if salvo {
+    EffectMsg::ShipImpact {
+      target: defender.get_name().to_string(),
+      position: defender.get_position(),
+    }
+  } else {
+    EffectMsg::BeamHit {
+      origin,
+      position: defender.get_position(),
+    }
   };
+  let mut effects = vec![
+    EffectMsg::outcome(
+      attacker_name,
+      MessageCategory::Damage,
+      format!("{attack_line}: hit, effect {effect}. Damage {damage}."),
+      true,
+    )
+    .at(defender.get_name())
+    .rolled(format!("{attack_roll} · damage {} = {damage}", terms.join(" "))),
+    visual,
+  ];
 
   debug!(
     "(Combat.attack) After modifiers {} does {} damage to {}.",
@@ -909,7 +1113,7 @@ fn resolve_attack(
   // is instead temporarily deducted from the target's Power" (High Guard p. 30),
   // so nothing is destroyed: no hull loss, no crits, and the Power returns when
   // the effect lapses.
-  if profile.ion {
+  if ion {
     // "This reduction in Power lasts until the target completes its next set of
     // actions... If the Effect of the attack roll is 6 or more, the reduction in
     // Power lasts for D3 rounds."
@@ -944,8 +1148,7 @@ fn resolve_attack(
   // target ignores criticals from turrets and barbettes, and larger hulls
   // ignore more, a spinal always excepted. Only the primary critical: the
   // tenths of hull below are suffered "as normal" at every size.
-  let spinal = matches!(firing.mount, WeaponMount::Spinal { .. });
-  let shrugged = ignores_primary_critical(defender.design.displacement, MountClass::from(firing.mount));
+  let shrugged = ignores_primary_critical(defender.design.displacement, mount);
   let primary_crit = spinal || (hit_roll - CRITICAL_THRESHOLD > 0 && !shrugged);
 
   // "If the attack is successful and scores a critical hit, the attacker may
@@ -958,7 +1161,7 @@ fn resolve_attack(
   // Restricting it to the Effect 6 critical, as this did, made a called shot
   // a DM-2 for nothing in the ordinary case: a hit that carried a ship past a
   // tenth of its hull put the critical somewhere random anyway.
-  let mut called = called_shot_system;
+  let mut called = called;
 
   if primary_crit {
     debug!(
@@ -978,7 +1181,7 @@ fn resolve_attack(
     effects.append(&mut do_critical(
       severity,
       defender,
-      called.take(),
+      called.take().as_ref(),
       &CritCause {
         attacker: attacker_name,
         why,
@@ -1011,7 +1214,7 @@ fn resolve_attack(
     effects.append(&mut do_critical(
       1,
       defender,
-      called.take(),
+      called.take().as_ref(),
       &CritCause {
         attacker: attacker_name,
         why: format!(
@@ -1027,8 +1230,8 @@ fn resolve_attack(
   shot.damage = damage;
   // Hull lost to a Radiation weapon wears the crew down (High Guard p. 31);
   // only hull the ship had counts, as for the criticals above.
-  if profile.radiation {
-    defender.take_radiation(damage.min(current_hull), firing.kind == WeaponType::Meson);
+  if radiation {
+    defender.take_radiation(damage.min(current_hull), kind == WeaponType::Meson);
   }
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
   effects
@@ -1706,13 +1909,38 @@ pub(crate) fn find_range_band(distance: u32) -> Range {
 /// # Panics
 /// Panics if the lock cannot be obtained to read a ship.
 /// Also, if we check that sand casters are available but then cannot pop an element from the `sand_counts` list.
-#[allow(clippy::too_many_lines)]
 pub fn do_fire_actions<S: BuildHasher>(
   attacker: &Ship, ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>,
   sand_counts: &mut HashMap<String, Vec<SandCloud>, S>, actions: &[ShipAction], boost_map: &BoostMap,
   rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
+  let (missiles, fire) = aim_fire_actions(attacker, ships, sand_counts, actions, boost_map, rng);
+  (missiles, land_fire(fire, ships, rng))
+}
+
+/// What one attacker's fire actions said, in order, and the volleys among
+/// them whose hits wait on the defenders' screens.
+#[derive(Debug)]
+pub(crate) enum Fire {
+  Said(Vec<EffectMsg>),
+  Volley(Volley),
+}
+
+/// [`do_fire_actions`], leaving every hit a screen could meet unlanded until
+/// [`land_fire`], so that a round's screens can be angled at the round's hits.
+///
+/// # Panics
+/// Panics if the lock cannot be obtained to read a ship.
+#[allow(clippy::too_many_lines)]
+pub(crate) fn aim_fire_actions<S: BuildHasher>(
+  attacker: &Ship, ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>,
+  sand_counts: &mut HashMap<String, Vec<SandCloud>, S>, actions: &[ShipAction], boost_map: &BoostMap,
+  rng: &mut dyn RngCore,
+) -> (Vec<LaunchMissileMsg>, Vec<Fire>) {
   let mut new_missiles = vec![];
+  // Volleys waiting on screens, each with the action that fired it. A volley
+  // is always the last thing its action says.
+  let mut volleys: Vec<(usize, Volley)> = vec![];
 
   // The pilot's Assist Gunner roll. Reported like every other check: it was
   // debug-only, so the +2 it fed into every shot this round had no visible
@@ -1771,9 +1999,10 @@ pub fn do_fire_actions<S: BuildHasher>(
   // they spend is taken off the live ship once every order is worked through.
   let mut rounds_left = attacker.magazine.rounds;
 
-  let mut effects: Vec<EffectMsg> = actions
+  let said: Vec<Vec<EffectMsg>> = actions
     .iter()
-    .flat_map(|action| {
+    .enumerate()
+    .map(|(action_index, action)| {
       let ShipAction::FireAction {
         weapon_id,
         target,
@@ -2169,7 +2398,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             sand_mods.push(sand_mod);
             sand_lines.extend(lines);
           }
-          let mut effects = if sand_lines.len() > 1 {
+          let effects = if sand_lines.len() > 1 {
             vec![sand_summary(&target, attacker.get_name(), &sand_mods, shots)]
           } else {
             sand_lines
@@ -2198,7 +2427,7 @@ pub fn do_fire_actions<S: BuildHasher>(
           };
 
           let sand: Vec<i32> = sand_mods.iter().map(|sand_mod| -sand_mod).collect();
-          effects.append(&mut volley(
+          let volley = fire_volley(
             hit,
             &sand,
             attacker,
@@ -2209,7 +2438,8 @@ pub fn do_fire_actions<S: BuildHasher>(
             called_shot_system.as_ref(),
             boost_map,
             rng,
-          ));
+          );
+          volleys.push((action_index, volley));
           effects
         }
         _ => {
@@ -2242,7 +2472,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             fire_control: fire_control_points,
           };
 
-          volley(
+          let volley = fire_volley(
             hit,
             &[],
             attacker,
@@ -2253,15 +2483,22 @@ pub fn do_fire_actions<S: BuildHasher>(
             called_shot_system.as_ref(),
             boost_map,
             rng,
-          )
+          );
+          volleys.push((action_index, volley));
+          vec![]
         }
       }
     })
     .collect();
 
   // The assist roll came first and applied to every shot, so it reads first.
-  if let Some(assist) = assist_effect {
-    effects.insert(0, assist);
+  let mut fire: Vec<Fire> = assist_effect.map(|assist| Fire::Said(vec![assist])).into_iter().collect();
+  let mut volleys = volleys.into_iter().peekable();
+  for (action_index, effects) in said.into_iter().enumerate() {
+    fire.push(Fire::Said(effects));
+    while let Some((_, volley)) = volleys.next_if(|(index, _)| *index == action_index) {
+      fire.push(Fire::Volley(volley));
+    }
   }
 
   let rounds_spent = attacker.magazine.rounds - rounds_left;
@@ -2272,7 +2509,60 @@ pub fn do_fire_actions<S: BuildHasher>(
     }
   }
 
-  (new_missiles, effects)
+  (new_missiles, fire)
+}
+
+/// Angle every defender's screens at the hits waiting on them, then land
+/// those hits and say everything the fire actions said, in order.
+///
+/// Every hit a ship takes in the round is known here, so each screen goes on
+/// the largest one it can still help with (see [`Ship::angle_screens`]).
+///
+/// # Panics
+/// Panics if the lock cannot be obtained to write a ship.
+pub(crate) fn land_fire<S: BuildHasher>(
+  fire: Vec<Fire>, ships: &HashMap<String, Arc<RwLock<Ship>>, S>, rng: &mut dyn RngCore,
+) -> Vec<EffectMsg> {
+  // Each defender's waiting hits, by volley, in the order they were fired.
+  let mut by_defender: HashMap<&str, Vec<usize>> = HashMap::new();
+  for (index, one) in fire.iter().enumerate() {
+    if let Fire::Volley(volley) = one {
+      by_defender.entry(volley.defender.as_str()).or_default().push(index);
+    }
+  }
+  let mut screenings: HashMap<usize, Vec<Screening>> = HashMap::new();
+  for (defender, indices) in by_defender {
+    let Some(ship) = ships.get(defender) else {
+      continue;
+    };
+    let incoming: Vec<Vec<(WeaponType, u32)>> = indices
+      .iter()
+      .map(|index| match &fire[*index] {
+        Fire::Volley(volley) => volley.incoming(),
+        Fire::Said(_) => vec![],
+      })
+      .collect();
+    let mut angled = ship.write().unwrap().angle_screens(&incoming.concat()).into_iter();
+    for (index, hits) in indices.iter().zip(&incoming) {
+      screenings.insert(*index, angled.by_ref().take(hits.len()).collect());
+    }
+  }
+
+  fire
+    .into_iter()
+    .enumerate()
+    .flat_map(|(index, one)| match one {
+      Fire::Said(effects) => effects,
+      Fire::Volley(volley) => {
+        let Some(ship) = ships.get(&volley.defender) else {
+          warn!("(Combat.land_fire) Cannot find {} to land hits on.", volley.defender);
+          return vec![];
+        };
+        let screens = screenings.remove(&index).unwrap_or_default();
+        volley.report(&screens, &mut ship.write().unwrap(), rng)
+      }
+    })
+    .collect()
 }
 
 /// What a mount firing is called in an attack line: its gun, "meson gun",
@@ -2450,18 +2740,18 @@ fn roll_repulsor(weapon: &Weapon, skill: u8, rng: &mut dyn RngCore) -> u32 {
   u32::from(roll_dice(1, rng)) * effect * multiplier
 }
 
-/// Roll each of this ship's screens, giving the damage each will absorb.
+/// Roll each of this ship's screens, giving the damage each will take off the
+/// one attack it is angled at, or `None` for a screen nobody angles.
 ///
-/// Every screen makes its own Gunner (screen) check.  The book has one gunner
-/// concentrate every screen on a single attack, but we spread them across
-/// attacks -- which is several gunners each taking their own Angle Screens
-/// reaction, and several reactions cannot share one roll.
-///
-/// A screen reduces damage "by the number of dice rolled by the screen ...
-/// multiplied by the Effect of the gunner's check" (High Guard p. 40).  Effect
-/// floors at 1 because it multiplies here; see FAQ.md.
+/// "Make a Gunner (screen) check for each screen. Every successful check
+/// reduces the damage of the attack by the amount indicated in the Damage
+/// Reduction column of the Screens table multiplied by the Effect of the
+/// check" (High Guard 2022 FAQ, p. 2).  Each screen has its own gunner and
+/// so its own check, and is angled at one attack a round.  Effect floors at
+/// 1 because it multiplies here; see FAQ.md.  Which attack each screen meets
+/// is [`Ship::angle_screens`], once the round's hits are known.
 #[must_use]
-pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
+pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<Option<u32>> {
   ship
     .design
     .screens
@@ -2482,18 +2772,17 @@ pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
         ship.get_crew().has_screen_gunner(index) || ship.running_level(SoftwareKind::ScreenOptimiser).is_some();
       let skill = ship.get_crew().get_screen_gunnery(index);
       let effect = i32::from(roll_dice(2, rng)) + i32::from(skill) - STANDARD_ROLL_THRESHOLD;
-      if effect < 0 {
-        return 0;
-      }
-      #[allow(clippy::cast_sign_loss)]
-      let effect = (effect as u32).max(1);
-      let (dice, factor) = screen.reduction_dice();
-      let absorbed = u32::from(roll_dice(dice, rng)) * factor * effect;
-      if angled {
-        absorbed
-      } else {
+      // A failed check is still a screen angled at an attack; it takes
+      // nothing off it.
+      let absorbed = if effect < 0 {
         0
-      }
+      } else {
+        #[allow(clippy::cast_sign_loss)]
+        let effect = (effect as u32).max(1);
+        let (dice, factor) = screen.reduction_dice();
+        u32::from(roll_dice(dice, rng)) * factor * effect
+      };
+      angled.then_some(absorbed)
     })
     .collect()
 }
@@ -2838,7 +3127,7 @@ mod battery_tests {
   use crate::entity::Vec3;
   use crate::rules_tables::weapon_profile;
   use crate::ship::ShipDesignTemplate;
-  use crate::ship::{Gun, MountClass, ScreenType, WeaponModifier};
+  use crate::ship::{BaySize, Gun, MountClass, ScreenType, WeaponModifier};
   use cgmath::Zero;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
@@ -3227,7 +3516,7 @@ mod battery_tests {
   fn ship_with_screens(screens: Vec<ScreenType>, skills: &[u8]) -> Ship {
     let design = Arc::new(ShipDesignTemplate {
       name: "Screened".to_string(),
-      displacement: 5_000,
+      displacement: 50_000,
       hull: 1_000_000,
       screens,
       ..Default::default()
@@ -3267,72 +3556,281 @@ mod battery_tests {
       let pool = roll_screen_pool(&ship, &mut rng);
       assert_eq!(pool.len(), 1);
       // Either the check failed (0), or 2D x 10 x at least 1.
-      assert!(pool[0] == 0 || (20..=12 * 10 * 7).contains(&pool[0]), "got {}", pool[0]);
+      let rolled = pool[0].expect("a crewed screen is angled");
+      assert!(rolled == 0 || (20..=12 * 10 * 7).contains(&rolled), "got {rolled}");
     }
   }
 
-  /// A screen absorbs damage from the weapon it defends against, and is then
-  /// spent -- excess and all.
+  /// A screen nobody is on is not angled at anything.
+  #[test]
+  fn an_unmanned_screen_is_not_angled() {
+    let ship = ship_with_screens(vec![ScreenType::Meson, ScreenType::Meson], &[2]);
+    let pool = roll_screen_pool(&ship, &mut SmallRng::seed_from_u64(1));
+    assert!(pool[0].is_some());
+    assert_eq!(pool[1], None);
+  }
+
+  fn screening(reduction: u32, screens: u32) -> Screening {
+    Screening { reduction, screens }
+  }
+
+  /// "A gunner may only angle screens against one attack per round" (HG 2022
+  /// FAQ p. 2): each screen meets one hit, the largest no screen is on yet.
+  #[test]
+  fn each_screen_meets_one_attack_the_largest_first() {
+    let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper, ScreenType::NuclearDamper], &[0, 0]);
+    ship.set_screen_pool(vec![Some(10), Some(12)]);
+    let hits = [
+      (WeaponType::Fusion, 20),
+      (WeaponType::Fusion, 30),
+      (WeaponType::Fusion, 5),
+    ];
+    assert_eq!(
+      ship.angle_screens(&hits),
+      vec![screening(12, 1), screening(10, 1), Screening::default()],
+      "the first screen to the 30, the second to the 20, none left for the 5"
+    );
+    // Both are spent for the round.
+    assert_eq!(ship.angle_screens(&[(WeaponType::Fusion, 30)]), vec![Screening::default()]);
+  }
+
+  /// Once every hit has a screen, a spare goes on whichever has the most left.
+  #[test]
+  fn spare_screens_go_where_the_most_damage_is_left() {
+    let mut ship = ship_with_screens(vec![ScreenType::Meson; 3], &[0, 0, 0]);
+    ship.set_screen_pool(vec![Some(10), Some(10), Some(10)]);
+    let hits = [(WeaponType::Meson, 100), (WeaponType::Meson, 15)];
+    assert_eq!(ship.angle_screens(&hits), vec![screening(20, 2), screening(10, 1)]);
+  }
+
+  /// A screen's reduction is spent on its one hit; the excess is lost.
   #[test]
   fn a_screen_is_spent_whole() {
     let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper], &[0]);
-    ship.set_screen_pool(vec![50]);
-
-    // A 20-damage fusion hit is fully absorbed...
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 20), 0);
-    // ...and the remaining 30 is gone with it, so the next hit lands in full.
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 20), 20);
+    ship.set_screen_pool(vec![Some(50)]);
+    assert_eq!(ship.angle_screens(&[(WeaponType::Fusion, 20)]), vec![screening(50, 1)]);
+    assert_eq!(
+      ship.angle_screens(&[(WeaponType::Fusion, 20)]),
+      vec![Screening::default()],
+      "the 30 the first hit did not need is gone"
+    );
   }
 
-  /// Screens carry to the next attack once the current one is stopped.
+  /// A failed check is a screen angled all the same, taking nothing off.
   #[test]
-  fn screens_spread_across_attacks() {
+  fn a_failed_check_is_still_angled() {
     let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper, ScreenType::NuclearDamper], &[0, 0]);
-    ship.set_screen_pool(vec![10, 10]);
-
-    // First attack takes the first screen only, since 10 zeroes it.
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 0);
-    // Second attack gets the second screen, still unspent.
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 0);
-    // Third has nothing left.
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 10);
+    ship.set_screen_pool(vec![Some(0), Some(10)]);
+    let hits = [(WeaponType::Fusion, 30), (WeaponType::Fusion, 20)];
+    assert_eq!(ship.angle_screens(&hits), vec![screening(0, 1), screening(10, 1)]);
   }
 
-  /// Several screens stack on one attack when one is not enough.
-  #[test]
-  fn screens_stack_until_the_damage_is_gone() {
-    let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper, ScreenType::NuclearDamper], &[0, 0]);
-    ship.set_screen_pool(vec![10, 10]);
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 25), 5, "both screens should be spent");
-    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 10, "and nothing is left");
-  }
-
-  /// A screen is never spent on a weapon it does not defend against.
+  /// A screen nobody angles, or one with nothing it defends against, stays
+  /// out of it.
   #[test]
   fn screens_ignore_the_wrong_weapon() {
-    let mut ship = ship_with_screens(vec![ScreenType::Meson], &[0]);
-    ship.set_screen_pool(vec![500]);
+    let mut ship = ship_with_screens(vec![ScreenType::Meson, ScreenType::NuclearDamper], &[0, 0]);
+    ship.set_screen_pool(vec![Some(500), None]);
     assert_eq!(
-      ship.apply_screens(WeaponType::Fusion, 40),
-      40,
-      "a meson screen must not stop a fusion gun"
+      ship.angle_screens(&[(WeaponType::Fusion, 40)]),
+      vec![Screening::default()],
+      "a meson screen must not stop a fusion gun, and the damper has nobody on it"
     );
-    // Still available for what it is for.
-    assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 0);
+    // Still there for what it is for.
+    assert!(ship.has_screens_for(WeaponType::Meson));
+    assert_eq!(ship.angle_screens(&[(WeaponType::Meson, 40)]), vec![screening(500, 1)]);
+    assert!(!ship.has_screens_for(WeaponType::Meson));
   }
 
   /// Screens are per-round scratch and must not survive the round.
   #[test]
   fn clearing_point_defense_clears_screens() {
     let mut ship = ship_with_screens(vec![ScreenType::Meson], &[0]);
-    ship.set_screen_pool(vec![100]);
+    ship.set_screen_pool(vec![Some(100)]);
     ship.clear_point_defense();
-    assert!(
-      ship.screen_pool.is_empty(),
-      "screens should all have been spent: {:?}",
-      ship.screen_pool
+    assert!(ship.screen_pool.is_empty(), "{:?}", ship.screen_pool);
+    assert_eq!(ship.angle_screens(&[(WeaponType::Meson, 40)]), vec![Screening::default()]);
+  }
+
+  /// The line and its hover for `weapon` shooting at `defender` until it
+  /// hits.
+  fn hit_with(weapon: &Weapon, defender: &mut Ship, pool: &[Option<u32>]) -> (String, String) {
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Gunship".to_string(),
+      displacement: 50_000,
+      hull: 1_000_000,
+      power: 1_000_000,
+      weapons: vec![weapon.clone()],
+      ..Default::default()
+    });
+    let attacker = Ship::new(
+      "Gunship".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &attacker_design,
+      None,
+      None,
     );
-    assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 40);
+    for seed in 0..100 {
+      defender.set_screen_pool(pool.to_vec());
+      let effects = attack(
+        HitMods::gunner(6),
+        0,
+        &attacker,
+        defender,
+        &weapon.firing_default().unwrap(),
+        None,
+        &BoostMap::default(),
+        &mut SmallRng::seed_from_u64(seed),
+      );
+      if let Some(EffectMsg::Message { roll: Some(roll), .. }) = effects.first() {
+        let line = effects[0].rendered();
+        if line.contains(": hit") {
+          return (line, roll.clone());
+        }
+      }
+    }
+    panic!("no hit in 100 tries");
+  }
+
+  /// The hover's numbers: the damage the screens met, what they took, and
+  /// the final damage.
+  fn screened_numbers(hover: &str) -> (u32, u32, u32) {
+    let (_, tail) = hover.rsplit_once(" mount = ").expect(hover);
+    let (met, tail) = tail.split_once(", -").expect(hover);
+    let (screened, tail) = tail.split_once(" screens (").expect(hover);
+    let (_, fin) = tail.rsplit_once(" = ").expect(hover);
+    (met.parse().unwrap(), screened.parse().unwrap(), fin.parse().unwrap())
+  }
+
+  /// Screens come after the Damage Multiple (HG 2022 FAQ p. 2): a damper's
+  /// 15 comes off a fusion bay's ×10 damage once, not ten times.
+  #[test]
+  fn a_damper_meets_a_fusion_bay_after_its_multiple() {
+    let bay = Weapon::single(WeaponType::Fusion, WeaponMount::Bay(BaySize::Small));
+    let mut defender = ship_with_screens(vec![ScreenType::NuclearDamper], &[0]);
+    let (line, hover) = hit_with(&bay, &mut defender, &[Some(15)]);
+    assert!(hover.contains("x10 mount = "), "{hover}");
+    assert!(hover.contains("screens (1 screen)"), "{hover}");
+    let (met, screened, fin) = screened_numbers(&hover);
+    assert_eq!(met % 10, 0, "the screens met the whole ×10: {hover}");
+    assert_eq!((screened, fin), (15, met - 15), "{hover}");
+    assert!(line.ends_with(&format!("Damage {fin}.")), "{line}");
+  }
+
+  /// A failed screen check is shown, and takes nothing off.
+  #[test]
+  fn a_failed_screen_check_reduces_nothing() {
+    let bay = Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Medium));
+    let mut defender = ship_with_screens(vec![ScreenType::Meson], &[0]);
+    let (_, hover) = hit_with(&bay, &mut defender, &[Some(0)]);
+    let (met, screened, fin) = screened_numbers(&hover);
+    assert_eq!((screened, fin), (0, met), "{hover}");
+  }
+
+  /// Nine meson screens barely dent a meson spinal: they meet its ×1,000
+  /// damage, not the dice before it.
+  #[test]
+  fn a_spinal_goes_through_nine_meson_screens() {
+    let spinal = Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 3, tl: None });
+    let mut defender = ship_with_screens(vec![ScreenType::Meson; 9], &[2; 9]);
+    // Every screen at a good roll: 2D 7 × 10 × Effect 4.
+    let (line, hover) = hit_with(&spinal, &mut defender, &[Some(280); 9]);
+    assert!(hover.contains("x1000 mount = "), "{hover}");
+    assert!(hover.contains("screens (9 screens)"), "{hover}");
+    let (met, screened, fin) = screened_numbers(&hover);
+    assert_eq!(screened, 9 * 280);
+    assert!(met >= 18_000, "{hover}");
+    assert_eq!(fin, met - screened);
+    assert!(fin * 100 >= met * 85, "most of the spinal's damage lands: {hover}");
+    assert!(line.contains(&format!("Damage {fin}.")), "{line}");
+  }
+
+  /// A screen meets one attack a round: the second hit gets nothing.
+  #[test]
+  fn a_screen_meets_one_attack_a_round() {
+    let bay = Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Small));
+    let mut defender = ship_with_screens(vec![ScreenType::Meson], &[0]);
+    let (_, first) = hit_with(&bay, &mut defender, &[Some(30)]);
+    assert!(first.contains("screens (1 screen)"), "{first}");
+    // Shoot again in the same round, without re-rolling the pool.
+    defender.set_screen_pool(vec![None]);
+    let (_, second) = hit_with(&bay, &mut defender, &[None]);
+    assert!(!second.contains("screens"), "{second}");
+  }
+
+  /// Fired in the round, the screen goes on the bigger hit even when it was
+  /// fired second: every hit is known before any screen is angled.
+  #[test]
+  fn a_round_angles_its_screens_at_the_largest_hit() {
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Gunship".to_string(),
+      displacement: 50_000,
+      hull: 1_000_000,
+      power: 1_000_000,
+      weapons: vec![
+        Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Small)),
+        Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Large)),
+      ],
+      ..Default::default()
+    });
+    let mut crew = crate::crew::Crew::new();
+    crew.add_gunnery(8);
+    crew.add_gunnery(8);
+    let mut attacker = Ship::new(
+      "Gunship".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &attacker_design,
+      Some(crew),
+      None,
+    );
+    attacker.contacts.push("Screened".to_string());
+    let fire = |weapon_id| ShipAction::FireAction {
+      weapon_id,
+      target: "Screened".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    };
+    let actions = [fire(0), fire(1)];
+    for seed in 0..50 {
+      let mut defender = ship_with_screens(vec![ScreenType::Meson], &[0]);
+      defender.set_screen_pool(vec![Some(50)]);
+      let mut ships = HashMap::new();
+      ships.insert("Screened".to_string(), Arc::new(RwLock::new(defender)));
+      let (_, effects) = do_fire_actions(
+        &attacker,
+        &mut ships,
+        &mut HashMap::new(),
+        &actions,
+        &BoostMap::default(),
+        &mut SmallRng::seed_from_u64(seed),
+      );
+      let hovers: Vec<(String, String)> = effects
+        .iter()
+        .filter_map(|effect| match effect {
+          EffectMsg::Message { roll: Some(roll), .. } if effect.rendered().contains(": hit") => {
+            Some((effect.rendered(), roll.clone()))
+          }
+          _ => None,
+        })
+        .collect();
+      if hovers.len() < 2 {
+        continue;
+      }
+      assert!(hovers[0].0.contains("meson"), "{hovers:?}");
+      assert!(!hovers[0].1.contains("screens"), "the small bay fired first: {hovers:?}");
+      assert!(hovers[1].1.contains("x100 mount = "), "{hovers:?}");
+      assert!(
+        hovers[1].1.contains("screens (1 screen)"),
+        "the large bay is the bigger hit: {hovers:?}"
+      );
+      return;
+    }
+    panic!("never hit with both bays");
   }
 
   fn profile_with(kind: WeaponType, mount: MountClass, mods: &[WeaponModifier]) -> WeaponProfile {

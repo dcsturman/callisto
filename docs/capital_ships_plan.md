@@ -33,7 +33,7 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
   - The Wind-class strike carrier has 361 mounts. The Tigress has more than 900, including 430 small missile bays.
   - The only grouping there is lives in the frontend (`groupWeapons` in `lib/hardpoints.ts`).
 - **Mounts:** `WeaponMount::{Turret, Barbette, Bay(Small|Medium|Large), FixedMount, Battery(type)}`. `Battery` is only the point-defence laser battery. There is no spinal mount. **Done** (step 5): `WeaponMount::Spinal { multiple, tl }`.
-- **Damage multiples** are Barbette ×3 and bays ×10/×20/×100 (`rules_tables::damage_multiple`). They are applied after armour and screens.
+- **Damage multiples** are Barbette ×3 and bays ×10/×20/×100 (`rules_tables::damage_multiple`). Armour comes off before them and screens after them (HG 2022 FAQ p. 2; screens came before the multiple until 2026-10-29).
 - **Small-target DMs** for bays and torpedoes are already enforced (HG p. 32, p. 39; the FAQ cites p. 31, one page early).
 - **Criticals** follow the CRB:
   - a primary critical on Effect 6+;
@@ -76,7 +76,7 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
   - **Many dice may be rolled the short way:** a 60D shot can be rolled as 6D×10 (HG p. 35).
   - **Particle spinals:** "damage … is reduced by 3% per point of armour … before applying the Damage Multiple" (HG p. 36).
   - **Railgun spinals:** 2% per point, and they carry 5 rounds, each extra round 20 t (HG p. 36).
-  - **Meson spinals** ignore all armour and radiation shielding (HG p. 35). Meson screens apply as normal (HG p. 35).
+  - **Meson spinals** ignore all armour and radiation shielding (HG p. 35). Meson screens apply as normal (HG p. 35), after the ×1,000 (HG 2022 FAQ p. 2).
   - **Mass driver ammunition** is 50 t and Cr500,000 per attack (HG p. 35).
 - **Target size** (HG p. 34):
   - DM−4 against 10,000 t or less;
@@ -639,7 +639,7 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
 
 | Rule | Book | Callisto | Plan |
 |---|---|---|---|
-| **Meson screens, nuclear dampers** | HG p. 41, HG FAQ p. 2 | Implemented | Fix the FAQ's opening section and the two stale doc headers (step 1) |
+| **Meson screens, nuclear dampers** | HG p. 41, HG FAQ p. 2 | Implemented, to the errata (2026-10-29): after the Damage Multiple, each screen against one attack a round | Fix the FAQ's opening section and the two stale doc headers (step 1). **Done** |
 | **Black globe generators** | HG pp. 41–42 | Missing | Omission. A referee's artefact, not something that can be bought |
 | **Repulsor as tractor beam** | HG p. 34 | Point-defence half only | Omission. It needs a "held" state on a ship |
 | **Missile salvo grouping** | CRB p. 169; HG p. 33 bays | One entity per salvo, each missile rolling to hit | **Done** (step 3) |
@@ -987,7 +987,7 @@ On `epic-fleet-control`.
 
 **Firing** (`combat.rs`).
 - `attack_terms` holds every DM, so combat and the AI agree: the size DMs under "small target"; "spinal range", the close-range table by the attacker's size and the CRB's sub-bands (`ShortBand`); "bombardment", DM-12. It returns `None` for a target under 2,000 tons that did not hold still, and `do_fire_actions` says so before any dodge or sand is spent. `AttackSituation.distance` carries the metres.
-- Damage: dice + Effect, then armour by subtraction or by percentage, screens, then ×1,000 with the percentage, in `u64`.
+- Damage: dice + Effect, then armour by subtraction or by percentage, then ×1,000 with the percentage, in `u64`, then screens. (As first built, screens came before the ×1,000; corrected to the HG 2022 FAQ order on 2026-10-29, see `docs/screens_design.md`.)
 - A spinal hit that does damage always scores a primary critical, at severity max(1, Effect − 5).
 - `Ship::held_still` is set as each round is flown: no Thrust spent, and no dodge thrust held. Written to the wire only when true.
 - `Magazine.rounds`: five per railgun spinal, plus stated rounds; mass drivers only stated. A spinal fires from stores and is debited on the live ship.
@@ -1100,7 +1100,7 @@ Nothing is broken. Two things stand out:
 - **The 2.94 MB results round** (close vs close, round 11) is 12,470 lines of "%s has lost sensor contact with %t: out of range" out of 13,837: the fleets passed through each other and every pair beyond Distant got its own line. One line per observer listing its lost contacts would cut it to a few hundred.
 - **Observation** climbs from 0.5 ms to 50–150 ms once ships hold contacts. The Scale Test's 200 ships do the same today (16–95 ms in rounds 4–12), so it is not the capitals; Phase 3's 0.8–1.0 ms was measured with idle sides.
 
-**Play.** Red won both 30-round runs. The *Cleon* took no damage in either: armour 30 stops everything but mesons, and her nine meson screens each absorb a meson hit a round (2D×10, applied before the ×1,000, against a 3× spinal's 18D + Effect). Every Blue meson spinal hit on her, five in all, was absorbed by screens. The Valiants, which have nuclear dampers but no meson screens, died to Red's spinals. This is the screens and spinal rules as built in steps 5 and 6, not anything new here; it is for the user to judge before Keelhaven is balanced.
+**Play.** Red won both 30-round runs. The *Cleon* took no damage in either: armour 30 stops everything but mesons, and her nine meson screens each absorb a meson hit a round (2D×10, applied before the ×1,000, against a 3× spinal's 18D + Effect). Every Blue meson spinal hit on her, five in all, was absorbed by screens. (That was the screens order as first built, not the HG 2022 FAQ's; see the re-run below.) The Valiants, which have nuclear dampers but no meson screens, died to Red's spinals. This is the screens and spinal rules as built in steps 5 and 6, not anything new here; it is for the user to judge before Keelhaven is balanced.
 
 **Tests:** `ship::capital_design_tests` (each design loads, spinal legal and of the printed tonnage, the printed hull passes the formula, batteries formed within the limit with every mount, every mount full and the book's storage left); `entity::tests::keelhaven_opens_at_distant` (sides, designs, goals and post, every attacker beyond Distant of every defender, squadrons of 20 or fewer, round limit); `ai-ships` `keelhaven_plays_its_opening_rounds` (twelve rounds with the heuristic on both sides, both lose hull); the hull-formula and battery tests over every shipped design; `every_bundled_scenario_loads`. The side network's fingerprints gained the four designs' 60 lines; the existing 1,245 are unchanged.
 

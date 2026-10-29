@@ -21,8 +21,10 @@ rest of High Guard's capitals, and carriers' embarked craft, are still to come:
   (Not to be confused with *point defence laser batteries*, a specific 20-ton installation, also supported.)
 
 Defensive **screens** are in for meson screens and nuclear dampers (`ScreenType`, angled by a screen
-gunner each round); black globe generators are not, being a referee's artefact rather than something a
-design buys.  The design record is `docs/screens_design.md`.
+gunner each round), played to the High Guard 2022 FAQ errata: after armour and the Damage Multiple,
+each screen against one attack a round.  See *Screens* below.  Black globe generators are not in,
+being a referee's artefact rather than something a design buys.  The design record is
+`docs/screens_design.md`.
 
 ### The capital designs
 
@@ -465,6 +467,30 @@ torpedo costing two points. Jam Missiles likewise destroys its Effect's worth of
 missiles chosen from everything inbound at the ship, across salvoes. A salvo
 that loses some missiles flies on with the rest.
 
+#### Rule enforced — screens come after the Damage Multiple
+The High Guard 2022 FAQ (p. 2) replaces the screens text on HG p. 40: "First, calculate the damage of
+the opposing weapon, subtract Armour, and apply the Damage Multiple. Make a Gunner (screen) check for
+each screen. Every successful check reduces the damage of the attack by the amount indicated in the
+Damage Reduction column of the Screens table multiplied by the Effect of the check. A gunner may only
+angle screens against one attack per round." It deletes the p. 41 Angle Screens box and the meson
+screen's one-check-for-a-battery sentence. A meson screen takes 2D × 10 × Effect off a meson weapon's
+damage after its ×10, ×20, ×100 or ×1,000; a nuclear damper 2D × Effect off a fusion weapon's after its
+×3 or ×10. The spinal text says the same (HG p. 35): after the ×1,000, "apply damage reduction from any
+meson screens as normal". So screens matter against meson and fusion bays and barely dent a spinal:
+nine meson screens take about 1,300 off a 3× meson spinal's 65,000.
+
+Every screen has its own gunner and makes its own check; a failed check takes nothing off. The
+results hover shows the order: "x1000 mount = 64000, -1260 screens (9 screens) = 62740".
+
+#### Decision — each screen meets one attack: the largest not yet screened
+"A gunner may only angle screens against one attack per round", and each screen is its gunner's, so a
+screen is angled at exactly one hit a round and its whole reduction goes on that hit; what the hit did
+not need is lost. Nobody is asked which hit: every attack in the round is rolled first, then each ship's
+screens are taken in order, each going on the largest hit it can meet that no screen is on yet. When
+every such hit has one, a further screen goes on whichever hit has the most damage left, so several
+screens can be on one attack, each its own gunner's one. A screen whose check failed is angled all the
+same. Hits a ship's screens cannot meet land as they are rolled, as they always have.
+
 #### Addition — weapon batteries
 A design may give a weapon entry a `count`: `{"kind":"Beam","mount":{"Turret":3},"count":200}` is 200
 triple beam turrets. They are split into batteries no bigger than the hull allows -- 4 mounts up to 999
@@ -547,7 +573,8 @@ Close to 10 km, Short beyond. Only spinal fire looks at these.
 "The damage dealt by a particle spinal mount is reduced by 3% per point of armour ... before applying the
 Damage Multiple" (HG p. 36), and a railgun's by 2%. Taken with the ×1,000 in one step, so nothing is
 rounded away first. Armour 34 stops a particle spinal entirely. A meson spinal ignores all armour (HG
-p. 35); meson screens work against it as normal.
+p. 35); meson screens work against it as normal, after the ×1,000 (see *Screens come after the
+Damage Multiple*).
 - **Interpretation — a railgun spinal has AP 20 and the 2% rule.** The table gives it AP 20 and the text
   2% a point, without saying how they combine. The AP comes off the armour first, and what is left costs
   2% a point: against armour 20 or less a railgun spinal loses nothing, which is what AP 20 means

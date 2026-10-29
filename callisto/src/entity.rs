@@ -15,9 +15,9 @@ use crate::action::{
   ShipAction, ShipActionList,
 };
 use crate::combat::{
-  apply_crit, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
-  point_defense_messages, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, volley, HitMods,
-  STANDARD_ROLL_THRESHOLD,
+  aim_fire_actions, apply_crit, build_point_defense_tallies, create_sand_counts, find_range_band, interception_cost,
+  land_fire, point_defense_messages, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, volley,
+  Fire, HitMods, STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -1155,7 +1155,9 @@ impl Entities {
       }
     }
 
-    let effects = fire_actions
+    // Every attacker fires before any hit a screen could meet lands, so each
+    // defender's screens can be angled at the round's hits (`land_fire`).
+    let fire = fire_actions
       .iter()
       .flat_map(|(attacker, actions)| {
         let Some(attack_ship) = ship_snapshot.get(attacker) else {
@@ -1163,8 +1165,8 @@ impl Entities {
           return vec![];
         };
 
-        let (missiles, effects) =
-          do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
+        let (missiles, fire) =
+          aim_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
         // Debit the mount for what actually left the rails. The snapshot
         // the fire actions worked from capped the salvo; this is where the
         // live ship pays for it.
@@ -1186,10 +1188,10 @@ impl Entities {
             warn!("Could not launch missile: {}", msg);
           }
         }
-        effects
+        fire
       })
-      .collect::<Vec<EffectMsg>>();
-    battery_effects.extend(effects);
+      .collect::<Vec<Fire>>();
+    battery_effects.extend(land_fire(fire, &self.ships, rng));
     battery_effects
   }
 
