@@ -12,7 +12,8 @@ use crate::action::{
 use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
 use crate::rules_tables::{
-  damage_multiple, profile_for, spinal_range_dm, spinal_size_dm, ShortBand, RANGE_BANDS, RANGE_MOD,
+  crew_crit_percent, damage_multiple, ignores_primary_critical, is_capital, profile_for, spinal_range_dm,
+  spinal_size_dm, system_loss, CargoHit, ShortBand, SystemLoss, RANGE_BANDS, RANGE_MOD,
 };
 use crate::ship::{
   spinal_name, spinal_uses_rounds, BridgeStation, Firing, Magazine, MountClass, Range, Salvo, Sensors, Ship,
@@ -148,7 +149,7 @@ pub(crate) struct AttackSituation<'a> {
 /// because spending it is a side effect of really being shot at.
 pub(crate) fn attack_terms(
   situation: &AttackSituation<'_>, evade_mod: i32, captain_mod: i32,
-) -> Option<[(&'static str, i32); 18]> {
+) -> Option<[(&'static str, i32); 20]> {
   let AttackSituation {
     hit,
     attacker,
@@ -247,6 +248,13 @@ pub(crate) fn attack_terms(
     0
   };
 
+  // What the attacker's own damage does to her gunnery: the DM-1 of a
+  // Sensors or Weapon critical at severity 1 (CRB p. 170), and what her crew
+  // carries into every check -- crew lost to criticals (High Guard p. 27)
+  // and radiation (p. 31).
+  let damage_mod = attacker.attack_dm;
+  let crew_mod = i32::from(attacker.crew_dm());
+
   let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
   Some([
     gunner,
@@ -254,6 +262,8 @@ pub(crate) fn attack_terms(
     captain_assist,
     captain_fire,
     smart,
+    ("damage", damage_mod),
+    ("crew", crew_mod),
     ("weapon", profile.hit_mod),
     ("range", range_mod),
     ("called shot", called_mod),
@@ -929,8 +939,14 @@ fn resolve_attack(
   // "Spinal mount weapons can always (and will!) cause critical hits" (High
   // Guard p. 27): every spinal hit that does damage scores one, at the
   // usual severity but never less than 1.
+  //
+  // Big ships shrug off small guns (High Guard p. 27): over 2,000 tons the
+  // target ignores criticals from turrets and barbettes, and larger hulls
+  // ignore more, a spinal always excepted. Only the primary critical: the
+  // tenths of hull below are suffered "as normal" at every size.
   let spinal = matches!(firing.mount, WeaponMount::Spinal { .. });
-  let primary_crit = spinal || hit_roll - CRITICAL_THRESHOLD > 0;
+  let shrugged = ignores_primary_critical(defender.design.displacement, MountClass::from(firing.mount));
+  let primary_crit = spinal || (hit_roll - CRITICAL_THRESHOLD > 0 && !shrugged);
 
   // "If the attack is successful and scores a critical hit, the attacker may
   // choose which location is hit" (CRB p. 169) -- which critical is not said,
@@ -1009,6 +1025,11 @@ fn resolve_attack(
 
   shot.criticals += u32::try_from(secondary_crit).unwrap_or(u32::MAX);
   shot.damage = damage;
+  // Hull lost to a Radiation weapon wears the crew down (High Guard p. 31);
+  // only hull the ship had counts, as for the criticals above.
+  if profile.radiation {
+    defender.take_radiation(damage.min(current_hull), firing.kind == WeaponType::Meson);
+  }
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
   effects
 }
@@ -1111,6 +1132,14 @@ pub(crate) fn apply_crit(
     );
 
     defender.crit_level[location as usize] = level;
+
+    // A target over 5,000 tons takes Weapons, Crew and Cargo criticals from
+    // High Guard p. 27's large-ship tables instead of the CRB's rows.
+    if is_capital(defender.design.displacement) {
+      if let Some(effects) = apply_large_ship_crit(level, location, defender, rng) {
+        return effects;
+      }
+    }
 
     match (location, level) {
       // I take some liberties with interpreting Sensors impact to make it a bit structured
@@ -1517,6 +1546,138 @@ pub(crate) fn apply_crit(
   }
 }
 
+/// The large-ship critical tables (High Guard p. 27), for a target over
+/// 5,000 tons: a Weapons critical of severity 2 or more takes a share of one
+/// battery, bay or spinal; a Crew critical takes a percentage of the
+/// complement; a Cargo critical lands on the D6 table of what a big ship
+/// carries. `None` for any other system, or a severity-1 Weapons critical,
+/// which stays the CRB's DM-1: `apply_crit` goes on with its own rows.
+///
+/// `crit_level` is already set when this runs.
+#[allow(clippy::too_many_lines)]
+fn apply_large_ship_crit(
+  level: u8, location: ShipSystem, defender: &mut Ship, rng: &mut dyn RngCore,
+) -> Option<Vec<EffectMsg>> {
+  let crit_ship = defender.get_name().to_string();
+  match location {
+    ShipSystem::Weapon if level >= 2 => {
+      // "Choose randomly between the weapon systems on the ship", and when
+      // the one chosen is several mounts, the Cargo and Weapons table says
+      // what share of them is lost. Chosen by entry, so a lone spinal is as
+      // likely a pick as a battery of thirty-two -- and, being one mount,
+      // goes out at any share.
+      let live: Vec<usize> = (0..defender.weapons().len())
+        .filter(|index| defender.live_mounts(*index) > 0)
+        .collect();
+      let Some(&weapon_id) = live.get(usize::try_from(rng.next_u32()).unwrap_or(0) % live.len().max(1)) else {
+        return Some(vec![EffectMsg::about(
+          &crit_ship,
+          MessageCategory::Critical,
+          format!("%s's weapon critical hit (level {level}) but all weapons already disabled."),
+        )]);
+      };
+      let loss = system_loss(level, || roll(rng));
+      let remaining = defender.live_mounts(weapon_id);
+      let (destroyed, hull) = match loss {
+        SystemLoss::Disabled(_) => (false, false),
+        SystemLoss::Destroyed(_) => (true, false),
+        SystemLoss::AllDestroyed { hull } => (true, hull),
+      };
+      let lost = defender.lose_mounts(weapon_id, loss.of(remaining), level, destroyed);
+      let name = String::from(&defender.weapons()[weapon_id]);
+      let what = if remaining == 1 {
+        if destroyed { "destroyed" } else { "disabled" }.to_string()
+      } else {
+        format!(
+          "{lost} of {remaining} mount{} {}",
+          if remaining == 1 { "" } else { "s" },
+          if destroyed { "destroyed" } else { "disabled" }
+        )
+      };
+      let mut effects = vec![EffectMsg::about(
+        &crit_ship,
+        MessageCategory::Critical,
+        format!("%s's weapon critical hit (level {level}): {name} {what}."),
+      )];
+      if hull {
+        effects.append(&mut apply_crit(1, ShipSystem::Hull, defender, rng));
+      }
+      Some(effects)
+    }
+    ShipSystem::Crew => {
+      // Crew Critical Hit Severity: a percentage of the complement killed
+      // or disabled, with the same life-support failures the CRB's rows
+      // report. The DMs the losses carry are read off the crew that is left
+      // (`Ship::crew_dm`), so reviving the frozen watch lifts them.
+      let percent = crew_crit_percent(level);
+      let complement = defender.design.crew;
+      let lost = u32::try_from((u64::from(complement) * u64::from(percent)).div_ceil(100))
+        .unwrap_or(u32::MAX)
+        .max(u32::from(complement > 0))
+        .min(defender.current_crew);
+      defender.current_crew -= lost;
+      let left = defender.crew_percent();
+      let dm = defender.crew_dm_terms()[0].1;
+      let life_support = match level {
+        2 => format!("; life support fails within {} hours", roll(rng)),
+        4 => format!("; life support fails in {} rounds", roll(rng)),
+        6 => "; life support fails".to_string(),
+        _ => String::new(),
+      };
+      let checks = if dm < 0 {
+        format!("; DM{dm} to every check")
+      } else {
+        String::new()
+      };
+      let mut effects = vec![EffectMsg::about(
+        &crit_ship,
+        MessageCategory::Critical,
+        format!(
+          "%s's crew critical hit (level {level}): {percent}% of the crew killed or disabled, {lost} of {complement}; crew at {left}%{life_support}{checks}."
+        ),
+      )];
+      if level > 6 {
+        effects.append(&mut apply_crit(1, ShipSystem::Hull, defender, rng));
+      }
+      Some(effects)
+    }
+    ShipSystem::Cargo => {
+      // The D6 table HG p. 27 gives for a large carrier: fighters, other
+      // small craft, the frozen watch, cargo. Nothing is embarked yet, so
+      // the craft rows are cargo until carried craft exist (plan step 9):
+      // that is where a hit on `CargoHit::Fighters` or `SmallCraft` will
+      // take craft from the hangar instead.
+      let row = CargoHit::of(roll(rng));
+      let loss = system_loss(level, || roll(rng));
+      let (share, hull) = match loss {
+        SystemLoss::Disabled(percent) | SystemLoss::Destroyed(percent) => (format!("{percent}%"), false),
+        SystemLoss::AllDestroyed { hull } => ("all".to_string(), hull),
+      };
+      let line = match row {
+        CargoHit::FrozenWatch if defender.frozen_watch > 0 => {
+          let before = defender.frozen_watch;
+          let lost = u32::from(loss.of(u16::try_from(before).unwrap_or(u16::MAX)));
+          defender.frozen_watch = before.saturating_sub(lost);
+          format!(
+            "%s's cargo critical hit (level {level}): the frozen watch hit, {lost} of {before} lost in their berths."
+          )
+        }
+        CargoHit::Fighters | CargoHit::SmallCraft | CargoHit::FrozenWatch | CargoHit::Cargo => {
+          format!("%s's cargo critical hit (level {level}) and {share} of cargo destroyed.")
+        }
+      };
+      let mut effects = if hull {
+        apply_crit(1, ShipSystem::Hull, defender, rng)
+      } else {
+        vec![]
+      };
+      effects.push(EffectMsg::about(&crit_ship, MessageCategory::Critical, line));
+      Some(effects)
+    }
+    _ => None,
+  }
+}
+
 /// The range band a distance in metres falls into.
 ///
 /// Beyond the last band (50,000 km) everything is `Distant`, which High Guard
@@ -1559,7 +1720,9 @@ pub fn do_fire_actions<S: BuildHasher>(
   let (assist_bonus, assist_effect) = if attacker.get_assist_gunners() {
     let roll = i32::from(roll_dice(2, rng));
     let pilot = i32::from(attacker.get_crew().get_pilot());
-    let effect = roll - STANDARD_ROLL_THRESHOLD + pilot;
+    // A check like any other, so the crew's DM is on it.
+    let crew = i32::from(attacker.crew_dm());
+    let effect = roll - STANDARD_ROLL_THRESHOLD + pilot + crew;
     let impact = task_chain_impact(effect);
     debug!(
       "(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so task chain impact is {}.",
@@ -1576,7 +1739,11 @@ pub fn do_fire_actions<S: BuildHasher>(
           MessageCategory::Attack,
           format!("%s pilot assists gunners: DM {impact:+} to this round's shots."),
         )
-        .rolled(format!("roll {roll} skill {pilot:+} = effect {effect}")),
+        .rolled(if crew == 0 {
+          format!("roll {roll} skill {pilot:+} = effect {effect}")
+        } else {
+          format!("roll {roll} skill {pilot:+} crew {crew:+} = effect {effect}")
+        }),
       ),
     )
   } else {
@@ -1851,8 +2018,8 @@ pub fn do_fire_actions<S: BuildHasher>(
           Salvo::Fixed(n) => n,
         };
         // A missile battery's launchers throw one salvo together: 32 small
-        // bays are 384 missiles at one target.
-        let full_salvo = per_mount.saturating_mul(weapon.mounts());
+        // bays are 384 missiles at one target -- from the mounts still up.
+        let full_salvo = per_mount.saturating_mul(attacker.live_mounts(*weapon_id));
         // Firing fewer is a choice; firing more is not on offer, and asking
         // for none would be an order to do nothing, so one is the floor.
         let count = firing.salvo_limit.map_or(full_salvo, |limit| limit.clamp(1, full_salvo));
@@ -1919,9 +2086,10 @@ pub fn do_fire_actions<S: BuildHasher>(
             target.get_name()
           );
 
-          // A battery is a shot per mount, and each can draw the defender's
-          // sand as a lone mount's shot would, while she has any to throw.
-          let shots = weapon.mounts();
+          // A battery is a shot per mount still up, and each can draw the
+          // defender's sand as a lone mount's shot would, while she has any
+          // to throw.
+          let shots = attacker.live_mounts(*weapon_id);
           let mut sand_mods: Vec<i32> = Vec::new();
           let mut sand_lines: Vec<EffectMsg> = Vec::new();
           for _ in 0..shots {
@@ -2080,7 +2248,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             attacker,
             &mut target,
             &firing,
-            weapon.mounts(),
+            attacker.live_mounts(*weapon_id),
             battery_title(weapon).as_deref(),
             called_shot_system.as_ref(),
             boost_map,
@@ -2226,7 +2394,7 @@ pub fn create_sand_counts<S: BuildHasher, T: BuildHasher>(
             } else {
               None
             }
-            .map(|modifier| (SandCloud { modifier, mount: index }, weapon.mounts().min(u16::try_from(canisters).unwrap_or(u16::MAX))))
+            .map(|modifier| (SandCloud { modifier, mount: index }, ship.live_mounts(index).min(u16::try_from(canisters).unwrap_or(u16::MAX))))
           })
           // A sandcaster battery throws a cloud from every mount, as a
           // point-defence battery adds every mount to the pool, while it has
@@ -2350,8 +2518,8 @@ pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
       // Batteries intercept automatically and roll no check; repulsors deflect
       // on a Gunner (capital) check.  Both are once-per-round and neither costs
       // the crew an action, so both belong in this pass.
-      // Every mount of an entry of several rolls its own.
-      (0..weapon.mounts())
+      // Every mount of an entry of several rolls its own, while it is up.
+      (0..ship.live_mounts(index))
         .map(|_| match battery_intercept_dice(weapon) {
           Some(dice) => u32::from(roll_dice(dice, rng)),
           None => roll_repulsor(weapon, ship.get_crew().get_gunnery(index), rng),
@@ -2415,7 +2583,10 @@ pub fn build_point_defense_tallies(
           0
         } else {
           let skill = virtual_gunner.unwrap_or_else(|| ship.get_crew().get_gunnery(index));
-          point_defense_score(weapon) + u16::from(skill)
+          // The gunner's check carries the crew's DM; the mount's own score
+          // does not, and a score of 0 still means "cannot".
+          let skill = u16::try_from(i16::from(skill) + ship.crew_dm()).unwrap_or(0);
+          point_defense_score(weapon) + skill
         }
       } else {
         0
@@ -2446,8 +2617,9 @@ pub fn build_point_defense_tallies(
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let leadership_boost = boost_for_point_defense(boost_map, ship_name, *weapon_id).max(0) as u16;
     // A laser battery on point defence defends as a unit: every mount in it
-    // makes its check, at its gunner's skill, and they all add to the pool.
-    let mounts = ship.weapons()[*weapon_id].mounts();
+    // still up makes its check, at its gunner's skill, and they all add to
+    // the pool.
+    let mounts = ship.live_mounts(*weapon_id);
     for _ in 0..mounts {
       point_defense_list.push((*weapon_id, weapon_scores[*weapon_id].saturating_sub(1) + leadership_boost));
     }
@@ -6407,5 +6579,399 @@ mod spinal_tests {
       assert_eq!(said.contains("out of rounds"), round == 5, "round {round}: {said}");
     }
     assert_eq!(ships["A"].read().unwrap().magazine.rounds, 0);
+  }
+}
+
+/// High Guard p. 27 on big ships: which guns can crit them, and the
+/// large-ship tables for Weapons, Crew and Cargo; p. 31's radiation.
+#[cfg(test)]
+mod large_ship_tests {
+  use super::*;
+  use crate::entity::Vec3;
+  use crate::ship::{BaySize, ShipDesignTemplate, Weapon};
+  use cgmath::Zero;
+  use rand::rngs::StdRng;
+  use rand::SeedableRng;
+  use std::sync::Arc;
+
+  fn design(tons: u32, hull: u32, crew: u32, weapons: Vec<Weapon>) -> Arc<ShipDesignTemplate> {
+    Arc::new(ShipDesignTemplate {
+      name: format!("{tons}-ton"),
+      displacement: tons,
+      hull,
+      crew,
+      armor: 0,
+      maneuver: 2,
+      power: 1_000_000,
+      tl: 15,
+      weapons,
+      ..ShipDesignTemplate::default()
+    })
+  }
+
+  fn ship(name: &str, design: &Arc<ShipDesignTemplate>, x: f64) -> Ship {
+    Ship::new(name.to_string(), Vec3::new(x, 0.0, 0.0), Vec3::zero(), design, None, None)
+  }
+
+  fn criticals(effects: &[EffectMsg]) -> usize {
+    effects
+      .iter()
+      .filter(|e| {
+        matches!(
+          e,
+          EffectMsg::Message {
+            category: MessageCategory::Critical,
+            ..
+          }
+        )
+      })
+      .count()
+  }
+
+  /// One shot from `weapon` at a target of `target_tons` with a gunner good
+  /// enough that every hit is Effect 6 or more: how many criticals it
+  /// caused, over seeds that hit.
+  fn crits_from(weapon: &Weapon, target_tons: u32, target_hull: u32) -> Vec<usize> {
+    let attacker = ship("A", &design(200_000, 1_000_000, 10, vec![weapon.clone()]), 0.0);
+    let target = design(target_tons, target_hull, 10, vec![]);
+    (0..12)
+      .filter_map(|seed| {
+        let mut defender = ship("D", &target, 2.0e6);
+        // So a spinal can lay on the small ones (High Guard p. 34).
+        defender.held_still = true;
+        let mut rng = StdRng::seed_from_u64(seed);
+        let effects = attack(
+          HitMods::gunner(20),
+          0,
+          &attacker,
+          &mut defender,
+          &weapon.firing_default().unwrap(),
+          None,
+          &BoostMap::default(),
+          &mut rng,
+        );
+        (defender.get_current_hull_points() < target_hull).then(|| criticals(&effects))
+      })
+      .collect()
+  }
+
+  /// Over 2,000 tons a turret's Effect 6 is no critical; exactly 2,000 is
+  /// not over; a spinal crits anything; sustained damage crits at any size.
+  #[test]
+  fn big_ships_shrug_off_small_guns() {
+    let turret = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 3);
+    let barbette = Weapon::single(WeaponType::Particle, WeaponMount::Barbette);
+    let small_bay = Weapon::single(WeaponType::Fusion, WeaponMount::Bay(BaySize::Small));
+    let medium_bay = Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Medium));
+    let large_bay = Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Large));
+    let spinal = Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 1, tl: None });
+    let big = 1_000_000;
+    let always = |crits: Vec<usize>| !crits.is_empty() && crits.iter().all(|n| *n >= 1);
+    let never = |crits: Vec<usize>| !crits.is_empty() && crits.iter().all(|n| *n == 0);
+
+    assert!(always(crits_from(&turret, 2_000, big)), "exactly 2,000 tons is not over 2,000");
+    assert!(never(crits_from(&turret, 2_001, big)));
+    assert!(never(crits_from(&barbette, 3_000, big)));
+    assert!(always(crits_from(&small_bay, 10_000, big)));
+    assert!(never(crits_from(&small_bay, 10_001, big)));
+    assert!(always(crits_from(&medium_bay, 100_000, big)));
+    assert!(never(crits_from(&medium_bay, 100_001, big)));
+    assert!(always(crits_from(&large_bay, 1_000_000, big)));
+    for tons in [400, 2_000, 2_001, 10_001, 100_001, 1_000_000] {
+      assert!(always(crits_from(&spinal, tons, big)), "a spinal crits a {tons}-ton hull");
+    }
+    // Sustained damage: a hull of 10 loses a tenth to any hit.
+    assert!(always(crits_from(&turret, 3_000, 10)));
+  }
+
+  /// A Weapons critical of severity 2 or more on a ship over 5,000 tons
+  /// takes a share of one battery by the Cargo and Weapons table: D3 x 10%
+  /// disabled at 2, 1D x 10% destroyed at 3, all at 4 and up. A repair
+  /// brings back the disabled mounts and not the destroyed ones.
+  #[test]
+  fn a_weapons_critical_takes_a_share_of_a_battery() {
+    let battery = Weapon::single(WeaponType::Particle, WeaponMount::Barbette).times(8);
+    let design = design(6_000, 2_400, 100, vec![battery]);
+    let mut rng = StdRng::seed_from_u64(3);
+
+    let mut ship = ship("Big", &design, 0.0);
+    let effects = apply_crit(2, ShipSystem::Weapon, &mut ship, &mut rng);
+    let disabled = ship.mounts_down[0];
+    assert!((1..=3).contains(&disabled), "10-30% of 8, at least one: {disabled}");
+    assert_eq!(ship.live_mounts(0), 8 - disabled);
+    assert!(ship.active_weapons[0]);
+    assert!(effects[0].rendered().contains("disabled"), "{}", effects[0].rendered());
+    assert!(effects[0].rendered().contains("×8 (battery)"), "{}", effects[0].rendered());
+
+    let effects = apply_crit(3, ShipSystem::Weapon, &mut ship, &mut rng);
+    let destroyed = ship.mounts_down[0] - disabled;
+    assert!((1..=5).contains(&destroyed), "10-60% of what was left: {destroyed}");
+    assert!(effects[0].rendered().contains("destroyed"), "{}", effects[0].rendered());
+
+    // Repairing it brings the disabled mounts back and no more.
+    let restored = ship.undo_damage(ShipSystem::Weapon, 0);
+    assert_eq!(ship.mounts_down[0], destroyed);
+    assert!(restored.iter().any(|line| line.contains("back online")), "{restored:?}");
+
+    // Severity 4 takes everything left, and the weapon is off for good.
+    let mut ship = self::ship("Big", &design, 0.0);
+    let hull_before = ship.get_current_hull_points();
+    apply_crit(4, ShipSystem::Weapon, &mut ship, &mut rng);
+    assert_eq!(ship.live_mounts(0), 0);
+    assert!(!ship.active_weapons[0]);
+    assert_eq!(ship.get_current_hull_points(), hull_before, "no hull severity at 4");
+    ship.undo_damage(ShipSystem::Weapon, 0);
+    assert_eq!(ship.live_mounts(0), 0, "destroyed mounts are not repaired");
+
+    // Severity 5 adds a Hull critical.
+    let mut ship = self::ship("Big", &design, 0.0);
+    let effects = apply_crit(5, ShipSystem::Weapon, &mut ship, &mut rng);
+    assert_eq!(ship.crit_level[ShipSystem::Hull as usize], 1);
+    assert_eq!(criticals(&effects), 2);
+
+    // A spinal is one mount, so any share puts it out.
+    let spinal = Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 2, tl: None });
+    let mut ship = self::ship("Big", &self::design(20_000, 8_000, 100, vec![spinal]), 0.0);
+    apply_crit(2, ShipSystem::Weapon, &mut ship, &mut rng);
+    assert!(!ship.active_weapons[0]);
+    assert_eq!(ship.live_mounts(0), 0);
+
+    // Severity 1 stays the CRB's DM-1, and a 5,000-ton ship stays on the
+    // CRB table altogether.
+    let mut ship = self::ship("Big", &design, 0.0);
+    apply_crit(1, ShipSystem::Weapon, &mut ship, &mut rng);
+    assert_eq!(ship.attack_dm, -1);
+    assert_eq!(ship.mounts_down[0], 0);
+    let crb = self::design(
+      5_000,
+      2_000,
+      100,
+      vec![Weapon::single(WeaponType::Particle, WeaponMount::Barbette).times(8)],
+    );
+    let mut ship = self::ship("Sloan", &crb, 0.0);
+    apply_crit(2, ShipSystem::Weapon, &mut ship, &mut rng);
+    assert!(!ship.active_weapons[0], "the CRB switches the whole weapon off");
+    assert_eq!(ship.mounts_down[0], 0);
+  }
+
+  /// A battery with mounts down fires, defends and draws Power for the
+  /// mounts it has left.
+  #[test]
+  fn a_damaged_battery_fires_fewer_shots() {
+    let battery = Weapon::single(WeaponType::Pulse, WeaponMount::Barbette).times(8);
+    let design = design(6_000, 2_400, 100, vec![battery]);
+    let whole = ship("Big", &design, 0.0);
+    let mut hurt = ship("Big", &design, 0.0);
+    hurt.lose_mounts(0, 3, 2, false);
+    assert_eq!(hurt.live_mounts(0), 5);
+
+    let whole_draw = whole
+      .power_lines()
+      .iter()
+      .find(|l| l.system == crate::ship::PowerSystem::Weapon(0))
+      .unwrap()
+      .draw;
+    let hurt_draw = hurt
+      .power_lines()
+      .iter()
+      .find(|l| l.system == crate::ship::PowerSystem::Weapon(0))
+      .unwrap()
+      .draw;
+    assert_eq!(hurt_draw * 8, whole_draw * 5);
+
+    let target = self::design(6_000, 2_400, 100, vec![]);
+    let mut defender = ship("D", &target, 2.0e6);
+    let mut rng = StdRng::seed_from_u64(1);
+    let effects = volley(
+      HitMods::gunner(2),
+      &[],
+      &hurt,
+      &mut defender,
+      &hurt.weapons()[0].firing_default().unwrap(),
+      hurt.live_mounts(0),
+      Some("pulse laser barbette ×8 (battery)"),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(effects[0].rendered().contains(" of 5 hit"), "{}", effects[0].rendered());
+  }
+
+  /// Crew criticals on a big ship take a percentage of the complement, and
+  /// the crew that is left carries a DM on every check: DM-1 at 90% and
+  /// below, DM-2 at 70%, DM-4 at 25%.
+  #[test]
+  fn crew_criticals_are_percentages_on_big_ships() {
+    let design = design(6_000, 2_400, 1_000, vec![]);
+    let mut rng = StdRng::seed_from_u64(7);
+    let mut ship = ship("Big", &design, 0.0);
+    let effects = apply_crit(3, ShipSystem::Crew, &mut ship, &mut rng);
+    assert_eq!(ship.current_crew, 900);
+    assert_eq!(ship.crew_percent(), 90);
+    assert_eq!(ship.crew_dm(), -1);
+    assert!(effects[0].rendered().contains("10% of the crew"), "{}", effects[0].rendered());
+    assert!(effects[0].rendered().contains("DM-1"), "{}", effects[0].rendered());
+
+    let effects = apply_crit(4, ShipSystem::Crew, &mut ship, &mut rng);
+    assert_eq!(ship.current_crew, 750);
+    assert_eq!(ship.crew_dm(), -1);
+    assert!(
+      effects[0].rendered().contains("life support fails in"),
+      "{}",
+      effects[0].rendered()
+    );
+
+    apply_crit(5, ShipSystem::Crew, &mut ship, &mut rng);
+    assert_eq!(ship.current_crew, 550);
+    assert_eq!(ship.crew_dm(), -2);
+    apply_crit(6, ShipSystem::Crew, &mut ship, &mut rng);
+    assert_eq!(ship.current_crew, 300);
+    assert_eq!(ship.crew_dm(), -2);
+    ship.current_crew = 250;
+    assert_eq!(ship.crew_dm(), -4);
+
+    // The DM is on the attack terms, named.
+    let gun = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 1);
+    let armed = self::design(6_000, 2_400, 1_000, vec![gun.clone()]);
+    let mut attacker = self::ship("Big", &armed, 0.0);
+    attacker.current_crew = 500;
+    attacker.attack_dm = -1;
+    let defender = self::ship("D", &design, 1.0e6);
+    let firing = gun.firing_default().unwrap();
+    let profile = profile_for(firing.kind, firing.mount).unwrap();
+    let terms: HashMap<&str, i32> = attack_terms(
+      &AttackSituation {
+        hit: HitMods::default(),
+        attacker: &attacker,
+        defender: &defender,
+        firing: &firing,
+        profile: &profile,
+        range_band: Range::Short,
+        distance: None,
+        called_shot: false,
+      },
+      0,
+      0,
+    )
+    .unwrap()
+    .into_iter()
+    .collect();
+    assert_eq!(terms["crew"], -2);
+    assert_eq!(terms["damage"], -1);
+
+    // A small ship's crew critical is the CRB's, and costs no crew.
+    let small = self::design(5_000, 2_000, 100, vec![]);
+    let mut ship = self::ship("Sloan", &small, 0.0);
+    apply_crit(3, ShipSystem::Crew, &mut ship, &mut rng);
+    assert_eq!(ship.current_crew, 100);
+    assert_eq!(ship.crew_dm(), 0);
+  }
+
+  /// A Cargo critical on a big ship rolls the carrier's D6 table: the
+  /// frozen watch row loses a share of the berths, every other row is
+  /// cargo until craft are carried.
+  #[test]
+  fn cargo_criticals_on_big_ships_can_hit_the_frozen_watch() {
+    let design = Arc::new(ShipDesignTemplate {
+      frozen_watch: 40,
+      ..(*design(6_000, 2_400, 400, vec![])).clone()
+    });
+    let mut watch_hit = 0;
+    let mut cargo_hit = 0;
+    for seed in 0..40 {
+      let mut rng = StdRng::seed_from_u64(seed);
+      let mut ship = ship("Big", &design, 0.0);
+      assert_eq!(ship.frozen_watch, 40);
+      let effects = apply_crit(2, ShipSystem::Cargo, &mut ship, &mut rng);
+      let line = effects.last().unwrap().rendered();
+      if line.contains("frozen watch") {
+        watch_hit += 1;
+        assert!((4..=12).contains(&(40 - ship.frozen_watch)), "D3 x 10% of 40: {line}");
+      } else {
+        cargo_hit += 1;
+        assert_eq!(ship.frozen_watch, 40);
+        assert!(line.contains("% of cargo destroyed"), "{line}");
+      }
+    }
+    assert!(watch_hit > 0 && cargo_hit > 0, "{watch_hit} / {cargo_hit}");
+
+    // Severity 5 takes everything and adds a Hull critical.
+    let mut rng = StdRng::seed_from_u64(1);
+    let mut ship = ship("Big", &design, 0.0);
+    let effects = apply_crit(5, ShipSystem::Cargo, &mut ship, &mut rng);
+    assert_eq!(ship.crit_level[ShipSystem::Hull as usize], 1);
+    assert_eq!(criticals(&effects), 2);
+  }
+
+  /// The frozen watch replaces lost crew, no more than were lost and no
+  /// more than are in the berths, and the DM lifts as it does.
+  #[test]
+  fn reviving_the_watch_restores_the_crew() {
+    let design = Arc::new(ShipDesignTemplate {
+      frozen_watch: 50,
+      ..(*design(6_000, 2_400, 1_000, vec![])).clone()
+    });
+    let mut ship = ship("Big", &design, 0.0);
+    ship.current_crew = 880;
+    assert_eq!(ship.crew_dm(), -1);
+    assert_eq!(ship.revive_watch(30), 30);
+    assert_eq!((ship.current_crew, ship.frozen_watch), (910, 20));
+    assert_eq!(ship.crew_dm(), 0);
+    assert_eq!(ship.revive_watch(100), 20, "only what is in the berths");
+    assert_eq!(ship.revive_watch(5), 0);
+    let mut whole = self::ship("Big", &design, 0.0);
+    assert_eq!(whole.revive_watch(10), 0, "nobody to replace");
+    assert_eq!(whole.frozen_watch, 50);
+  }
+
+  /// Hull lost to a Radiation weapon is counted, mesons apart, and wears
+  /// the crew down by High Guard p. 31.
+  #[test]
+  fn radiation_wears_the_crew_down() {
+    let particle = Weapon::single(WeaponType::Particle, WeaponMount::Bay(BaySize::Large));
+    let meson = Weapon::single(WeaponType::Meson, WeaponMount::Bay(BaySize::Large));
+    let pulse = Weapon::single(WeaponType::Pulse, WeaponMount::Barbette);
+    let attacker = ship(
+      "A",
+      &design(100_000, 1_000_000, 10, vec![particle.clone(), meson.clone(), pulse.clone()]),
+      0.0,
+    );
+    let shielded = Arc::new(ShipDesignTemplate {
+      radiation_shielding: true,
+      ..(*design(100_000, 100_000, 1_000, vec![])).clone()
+    });
+    let mut defender = ship("D", &shielded, 2.0e6);
+    let mut rng = StdRng::seed_from_u64(2);
+    let mut lost = 0;
+    for weapon in [&particle, &meson, &pulse] {
+      let before = defender.get_current_hull_points();
+      attack(
+        HitMods::gunner(20),
+        0,
+        &attacker,
+        &mut defender,
+        &weapon.firing_default().unwrap(),
+        None,
+        &BoostMap::default(),
+        &mut rng,
+      );
+      lost += before - defender.get_current_hull_points();
+    }
+    assert!(defender.radiation_hull_lost > 0 && defender.meson_hull_lost > 0);
+    assert!(
+      defender.radiation_hull_lost + defender.meson_hull_lost < lost,
+      "the pulse laser's hull is not radiation"
+    );
+    // Shielded: a step per 40% from the particle beam, per 10% from the meson.
+    defender.radiation_hull_lost = 40_000;
+    defender.meson_hull_lost = 10_000;
+    assert_eq!(defender.crew_dm_terms()[1], ("radiation", -2));
+    defender.radiation_hull_lost = 39_999;
+    defender.meson_hull_lost = 9_999;
+    assert_eq!(defender.crew_dm(), 0);
+    let mut bare = ship("D", &design(100_000, 100_000, 1_000, vec![]), 2.0e6);
+    bare.radiation_hull_lost = 25_000;
+    bare.meson_hull_lost = 5_000;
+    assert_eq!(bare.crew_dm(), -3);
   }
 }

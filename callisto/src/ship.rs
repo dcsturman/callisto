@@ -506,6 +506,24 @@ pub struct Ship {
   /// [`Ship::weapons`]. A battery's entry holds all its mounts' loads.
   #[serde(default)]
   pub loaded: Vec<Magazine>,
+  /// Mounts of each weapon entry knocked out by a large-ship Weapons
+  /// critical (High Guard p. 27), index-aligned with [`Ship::weapons`]: a
+  /// battery of twelve with three down fires, defends and draws Power for
+  /// nine. Disabled mounts come back with a repair of the Weapon system;
+  /// destroyed ones do not. Omitted from the wire while every mount is up.
+  #[serde(default, skip_serializing_if = "no_mounts_down")]
+  pub mounts_down: Vec<u16>,
+  /// Spare crew still in low berths, from the design's frozen watch, less
+  /// those revived or lost to a Cargo critical. Omitted when none.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub frozen_watch: u32,
+  /// Hull lost to Radiation weapons that shielding protects against, and
+  /// to meson weapons, which it does not (High Guard p. 31). Each 10% of
+  /// the hull (40% with shielding) is a DM-1 on everything the crew does.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub radiation_hull_lost: u32,
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub meson_hull_lost: u32,
   /// Who is giving this ship its orders: the people at its consoles, or the
   /// AI service.
   ///
@@ -596,6 +614,11 @@ fn is_true(value: &bool) -> bool {
 /// A helper function to avoid serializing when zero.  It makes
 /// the use of a reference a bit funny, but necessary.
 #[allow(clippy::trivially_copy_pass_by_ref)]
+fn no_mounts_down(mounts_down: &[u16]) -> bool {
+  mounts_down.iter().all(|down| *down == 0)
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u32(value: &u32) -> bool {
   *value == 0
 }
@@ -675,6 +698,15 @@ pub struct ShipDesignTemplate {
   /// Hardened against electromagnetic attack: immune to ion weapons.
   #[serde(default, skip_serializing_if = "std::ops::Not::not")]
   pub computer_fib: bool,
+  /// Radiation shielding (High Guard p. 31): the crew's radiation DM grows
+  /// a step for every 40% of hull lost to Radiation weapons rather than
+  /// every 10%. Meson weapons ignore it.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub radiation_shielding: bool,
+  /// The frozen watch: spare crew held in low berths, who can be revived to
+  /// replace crew lost to criticals (High Guard p. 27).
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub frozen_watch: u32,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -2122,6 +2154,8 @@ pub enum SystemDamage {
   AttackDm(i32),
   /// Weapon mounts switched off, by index.
   WeaponsOff(Vec<usize>),
+  /// Mounts of one battery disabled by a large-ship Weapons critical.
+  MountsOff { weapon: usize, mounts: u16 },
   /// A bridge station knocked out for a round or two.
   Disabled(BridgeStation),
   /// A bridge station destroyed, and what it was before, so undoing it cannot
@@ -2217,6 +2251,10 @@ impl Ship {
       ion_rounds: 0,
       magazine: Magazine::default(),
       loaded: vec![],
+      mounts_down: vec![0; num_weapons],
+      frozen_watch: design.frozen_watch,
+      radiation_hull_lost: 0,
+      meson_hull_lost: 0,
       controller: Controller::Human,
       ai_report: None,
       orders: None,
@@ -2313,6 +2351,10 @@ impl Ship {
     self.stock(self.full_stock());
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
+    self.mounts_down = vec![0; self.weapons().len()];
+    self.frozen_watch = self.design.frozen_watch;
+    self.radiation_hull_lost = 0;
+    self.meson_hull_lost = 0;
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
     self.damage_log.clear();
@@ -2363,6 +2405,11 @@ impl Ship {
     }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
+    // Damage is not carried in: a ship arrives whole, as its criticals do.
+    self.mounts_down = vec![0; self.weapons().len()];
+    self.frozen_watch = u32::max(self.frozen_watch, self.design.frozen_watch);
+    self.radiation_hull_lost = 0;
+    self.meson_hull_lost = 0;
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
     self.damage_log.clear();
@@ -2643,6 +2690,21 @@ impl Ship {
           }
           restored.push("weapons back online".to_string());
         }
+        // A battery whose last mounts were disabled was switched off with
+        // them, so bringing any back brings it back.
+        SystemDamage::MountsOff { weapon, mounts } => {
+          if let Some(down) = self.mounts_down.get_mut(weapon) {
+            *down = down.saturating_sub(mounts);
+            if let Some(active) = self.active_weapons.get_mut(weapon) {
+              *active = true;
+            }
+          }
+          restored.push(format!(
+            "{mounts} mount{} of {} back online",
+            if mounts == 1 { "" } else { "s" },
+            self.weapons().get(weapon).map_or_else(|| "a weapon".to_string(), String::from)
+          ));
+        }
         SystemDamage::Disabled(station) => {
           if matches!(self.station_status(station), StationStatus::Disabled(_)) {
             self.bridge_stations[station as usize] = StationStatus::Working;
@@ -2722,6 +2784,108 @@ impl Ship {
   #[must_use]
   pub fn total_crit_severity(&self) -> u16 {
     self.crit_level.iter().map(|level| u16::from(*level)).sum()
+  }
+
+  /// The mounts of weapon `weapon_id` still able to fire, defend and draw
+  /// Power: its count, less any a large-ship Weapons critical took, and none
+  /// while the weapon is switched off.
+  #[must_use]
+  pub fn live_mounts(&self, weapon_id: usize) -> u16 {
+    if !self.active_weapons.get(weapon_id).copied().unwrap_or(false) {
+      return 0;
+    }
+    let mounts = self.weapons().get(weapon_id).map_or(0, Weapon::mounts);
+    mounts.saturating_sub(self.mounts_down.get(weapon_id).copied().unwrap_or(0))
+  }
+
+  /// Knock `mounts` of weapon `weapon_id` out: disabled ones are recorded
+  /// against the Weapon system at `level` so a repair brings them back,
+  /// destroyed ones are gone. A weapon with no mount left is switched off.
+  /// Returns how many were taken.
+  pub fn lose_mounts(&mut self, weapon_id: usize, mounts: u16, level: u8, destroyed: bool) -> u16 {
+    let lost = mounts.min(self.live_mounts(weapon_id));
+    if lost == 0 {
+      return 0;
+    }
+    if self.mounts_down.len() < self.weapons().len() {
+      self.mounts_down.resize(self.weapons().len(), 0);
+    }
+    self.mounts_down[weapon_id] += lost;
+    if !destroyed {
+      self.record_damage(
+        ShipSystem::Weapon,
+        level,
+        SystemDamage::MountsOff {
+          weapon: weapon_id,
+          mounts: lost,
+        },
+      );
+    }
+    if self.live_mounts(weapon_id) == 0 {
+      self.active_weapons[weapon_id] = false;
+    }
+    lost
+  }
+
+  /// The ship's crew as hundredths of its complement, 100 when whole. A
+  /// design with no crew counts as whole.
+  #[must_use]
+  pub fn crew_percent(&self) -> u32 {
+    if self.design.crew == 0 {
+      100
+    } else {
+      u32::try_from(u64::from(self.current_crew) * 100 / u64::from(self.design.crew)).unwrap_or(u32::MAX)
+    }
+  }
+
+  /// The DM every check this crew makes carries, with its reasons: crew
+  /// lost to criticals (High Guard p. 27) and radiation (p. 31). Zero
+  /// entries are kept so a log can name both terms.
+  #[must_use]
+  pub fn crew_dm_terms(&self) -> [(&'static str, i16); 2] {
+    [
+      (
+        "crew losses",
+        crate::rules_tables::crew_loss_dm(self.current_crew, self.design.crew),
+      ),
+      (
+        "radiation",
+        crate::rules_tables::radiation_dm(
+          self.design.hull,
+          self.radiation_hull_lost,
+          self.meson_hull_lost,
+          self.design.radiation_shielding,
+        ),
+      ),
+    ]
+  }
+
+  /// The DM every check this crew makes carries: the sum of
+  /// [`crew_dm_terms`](Self::crew_dm_terms).
+  #[must_use]
+  pub fn crew_dm(&self) -> i16 {
+    self.crew_dm_terms().iter().map(|(_, dm)| dm).sum()
+  }
+
+  /// Hull lost to a Radiation weapon: `damage` of it, from a meson or not,
+  /// which decides whether shielding counts (High Guard p. 31).
+  pub fn take_radiation(&mut self, damage: u32, meson: bool) {
+    if meson {
+      self.meson_hull_lost = self.meson_hull_lost.saturating_add(damage);
+    } else {
+      self.radiation_hull_lost = self.radiation_hull_lost.saturating_add(damage);
+    }
+  }
+
+  /// Revive up to `count` of the frozen watch, who replace crew lost to
+  /// criticals (High Guard p. 27). Returns how many came out of the berths:
+  /// no more than are in them, and no more than the complement is short.
+  pub fn revive_watch(&mut self, count: u32) -> u32 {
+    let short = self.design.crew.saturating_sub(self.current_crew);
+    let revived = count.min(self.frozen_watch).min(short);
+    self.frozen_watch -= revived;
+    self.current_crew += revived;
+    revived
   }
 
   /// Turn sensor hand-off on or off.
@@ -2901,7 +3065,8 @@ impl Ship {
       },
     ];
     for (index, weapon) in self.weapons().iter().enumerate() {
-      let draw = weapon_mount_power(weapon);
+      // A battery draws for the mounts it has left, not the ones it lost.
+      let draw = weapon_mount_power(weapon) / u32::from(weapon.mounts()) * u32::from(self.live_mounts(index).max(1));
       if draw == 0 {
         continue;
       }
@@ -3685,6 +3850,12 @@ pub async fn load_ship_templates_from_dir(
           Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
             Ok(mut template) => {
               template.weapons = form_batteries(&template.weapons, template.displacement);
+              // A hull the formula does not give is loaded as stated -- a
+              // published figure is the design's -- but said, so a typo in a
+              // new design is seen.
+              if let Some(note) = crate::rules_tables::hull_points_note(template.displacement, template.hull) {
+                warn!("(load_ship_templates_from_dir) {path}: {note}");
+              }
               // A spinal the book would not build is refused with the design,
               // rather than fired at a size it cannot be.
               match template.spinal_problems().first() {
@@ -4400,6 +4571,8 @@ impl Default for ShipDesignTemplate {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 15,
       role: None,
       source: None,
@@ -4619,6 +4792,8 @@ mod tests {
       power: 260,
       computer: 20,
       computer_fib: true,
+      radiation_shielding: false,
+      frozen_watch: 0,
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Bastion".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
@@ -5286,6 +5461,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 10,
       role: None,
       source: None,
@@ -5942,6 +6119,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 12,
       role: None,
       source: None,
@@ -6085,6 +6264,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 12,
       role: None,
       source: None,

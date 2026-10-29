@@ -199,7 +199,9 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       Barbette => P::gun(11, 4, Range::VeryLong).rad(),
       SmallBay => P::gun(11, 6, Range::VeryLong).rad(),
       MediumBay => P::gun(12, 8, Range::VeryLong).rad(),
-      LargeBay => P::gun(13, 10, Range::Distant).rad(),
+      // Distant in the book; the HG FAQ (p. 1, "Large Bay Weapons Table")
+      // changes it to Very Long.
+      LargeBay => P::gun(13, 10, Range::VeryLong).rad(),
       Battery | Spinal => return None,
     },
     WeaponType::Fusion => match mount {
@@ -627,6 +629,200 @@ pub fn countermeasures_mod(countermeasures: Option<CounterMeasures>) -> i16 {
   }
 }
 
+// --- Large ships ----------------------------------------------------------
+
+/// A capital ship, as High Guard p. 5 defines one: over 5,000 tons. The
+/// large-ship critical tables (HG p. 27) apply to a target this size.
+#[must_use]
+pub const fn is_capital(tons: u32) -> bool {
+  tons > 5_000
+}
+
+/// Whether a hull of `target_tons` shrugs off a primary critical from a
+/// weapon in `mount` (High Guard p. 27): over 2,000 tons criticals from
+/// turrets and barbettes are ignored; over 10,000, all but medium and large
+/// bays and spinals; over 100,000, all but large bays and spinals. "Spinal
+/// mount weapons can always (and will!) cause critical hits", and exactly
+/// 2,000 tons is not larger than 2,000. Sustained damage never comes here.
+#[must_use]
+pub const fn ignores_primary_critical(target_tons: u32, mount: MountClass) -> bool {
+  match mount {
+    MountClass::Spinal | MountClass::LargeBay => false,
+    MountClass::MediumBay => target_tons > 100_000,
+    MountClass::Turret | MountClass::Barbette => target_tons > 2_000,
+    MountClass::Fixed | MountClass::SmallBay | MountClass::Battery => target_tons > 10_000,
+  }
+}
+
+/// The Hull points High Guard p. 10 gives a hull of `tons` before any
+/// configuration or reinforcement: one per 2.5 tons, per 2 from 25,000 and
+/// per 1.5 from 100,000, rounded down.
+#[must_use]
+pub const fn base_hull_points(tons: u32) -> u32 {
+  match tons {
+    0..25_000 => tons * 2 / 5,
+    25_000..100_000 => tons / 2,
+    _ => tons * 2 / 3,
+  }
+}
+
+/// The Hull figures High Guard would print for a hull of `tons`: the base
+/// (p. 10) under each legal combination of configuration (p. 11: dispersed
+/// -10%, buffered planetoid +50%) and reinforced or light (p. 12: +10%,
+/// -10%), rounded down. A design states no configuration, so a stated hull
+/// is checked against every one of them.
+#[must_use]
+pub fn hull_points_options(tons: u32) -> Vec<u32> {
+  let base = u64::from(base_hull_points(tons));
+  // Configuration times reinforcement, in percent.
+  [100, 110, 90, 99, 81, 150, 165, 135]
+    .into_iter()
+    .map(|percent| u32::try_from(base * percent / 100).unwrap_or(u32::MAX))
+    .collect()
+}
+
+/// Why a design's stated `hull` is not one High Guard's formula gives a
+/// hull of `tons`, or `None` when it is one of them.
+#[must_use]
+pub fn hull_points_note(tons: u32, hull: u32) -> Option<String> {
+  let options = hull_points_options(tons);
+  (!options.contains(&hull)).then(|| {
+    format!(
+      "hull {hull} is not High Guard's figure for {tons} tons: {} base, {} to {} with configuration and reinforcement",
+      base_hull_points(tons),
+      options.iter().min().copied().unwrap_or(0),
+      options.iter().max().copied().unwrap_or(0)
+    )
+  })
+}
+
+/// How many sensor operators a ship of `tons` has on duty for Electronic
+/// Warfare: "one on-duty sensor operator for every full 7,500 tons" (High
+/// Guard p. 34), and never fewer than one.
+#[must_use]
+pub fn jam_operators(tons: u32) -> u16 {
+  u16::try_from(tons / 7_500).unwrap_or(u16::MAX).max(1)
+}
+
+/// The percentage of crew a Crew critical kills or disables on a large ship
+/// (Crew Critical Hit Severity, High Guard p. 27), by severity 1-6.
+#[must_use]
+pub const fn crew_crit_percent(severity: u8) -> u8 {
+  match severity {
+    0 | 1 => 1,
+    2 => 5,
+    3 => 10,
+    4 => 15,
+    5 => 20,
+    _ => 25,
+  }
+}
+
+/// The DM a large ship's crew losses put on every check it makes (High Guard
+/// p. 27): DM-1 "unless crew restored above 90%" of the complement, DM-2
+/// unless above 70% and DM-4 unless above 25%. Read as the book words it,
+/// so a severity-3 hit's 10% leaves the crew at 90% and under its DM-1;
+/// the worst that applies, not a sum.
+#[must_use]
+pub const fn crew_loss_dm(current: u32, complement: u32) -> i16 {
+  if complement == 0 {
+    return 0;
+  }
+  let (current, complement) = (current as u64 * 100, complement as u64);
+  if current <= 25 * complement {
+    -4
+  } else if current <= 70 * complement {
+    -2
+  } else if current <= 90 * complement {
+    -1
+  } else {
+    0
+  }
+}
+
+/// The DM radiation puts on everything a ship does (High Guard p. 31): DM-1
+/// for every 10% of Hull lost to Radiation weapons, or every 40% with
+/// radiation shielding -- which meson weapons ignore. `other` is the hull
+/// lost to the radiation weapons shielding would stop, `meson` to mesons.
+#[must_use]
+pub fn radiation_dm(max_hull: u32, other: u32, meson: u32, shielded: bool) -> i16 {
+  if max_hull == 0 {
+    return 0;
+  }
+  let (max_hull, other, meson) = (u64::from(max_hull), u64::from(other), u64::from(meson));
+  let steps = if shielded {
+    other * 10 / (4 * max_hull) + meson * 10 / max_hull
+  } else {
+    (other + meson) * 10 / max_hull
+  };
+  i16::try_from(steps).map_or(i16::MIN, |steps| -steps)
+}
+
+/// A row of the Cargo and Weapons Critical Hit Severity table (High Guard
+/// p. 27): what fraction of the system is lost, and whether for good.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemLoss {
+  /// This percentage disabled, repairable.
+  Disabled(u8),
+  /// This percentage destroyed.
+  Destroyed(u8),
+  /// Everything left destroyed; `hull` is whether the Hull's severity also
+  /// rises by one.
+  AllDestroyed { hull: bool },
+}
+
+impl SystemLoss {
+  /// How many of `remaining` this takes, never fewer than one while any are
+  /// left: a critical that landed did something.
+  #[must_use]
+  pub fn of(self, remaining: u16) -> u16 {
+    let percent = match self {
+      SystemLoss::Disabled(percent) | SystemLoss::Destroyed(percent) => u32::from(percent),
+      SystemLoss::AllDestroyed { .. } => 100,
+    };
+    let lost = u16::try_from((u32::from(remaining) * percent).div_ceil(100)).unwrap_or(u16::MAX);
+    lost.max(1).min(remaining)
+  }
+}
+
+/// Roll the Cargo and Weapons Critical Hit Severity table (High Guard
+/// p. 27) at `severity`: 2D% disabled, D3 x 10% disabled, 1D x 10%
+/// destroyed, all destroyed, and all destroyed with Hull severity +1 at 5
+/// and 6. `d6` rolls one die.
+pub fn system_loss(severity: u8, mut d6: impl FnMut() -> u8) -> SystemLoss {
+  match severity {
+    0 | 1 => SystemLoss::Disabled(d6() + d6()),
+    2 => SystemLoss::Disabled(10 * d6().div_ceil(2)),
+    3 => SystemLoss::Destroyed(10 * d6()),
+    4 => SystemLoss::AllDestroyed { hull: false },
+    _ => SystemLoss::AllDestroyed { hull: true },
+  }
+}
+
+/// What a Cargo critical on a ship over 5,000 tons lands on, from the D6
+/// table High Guard p. 27 gives as its example for a large military carrier:
+/// 1-2 fighters, 3 other small craft, 4 the frozen watch, 5-6 cargo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CargoHit {
+  Fighters,
+  SmallCraft,
+  FrozenWatch,
+  Cargo,
+}
+
+impl CargoHit {
+  /// The row a roll of `d6` lands on.
+  #[must_use]
+  pub const fn of(d6: u8) -> Self {
+    match d6 {
+      0..=2 => CargoHit::Fighters,
+      3 => CargoHit::SmallCraft,
+      4 => CargoHit::FrozenWatch,
+      _ => CargoHit::Cargo,
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -725,10 +921,11 @@ mod tests {
     // Bay Weapons, pp. 32-33.
     let meson = weapon_profile(WeaponType::Meson, MountClass::MediumBay).unwrap();
     assert_eq!((meson.damage_dice, meson.ap), (6, AP_INFINITE));
-    // Only a large bay pushes a particle beam out to Distant.
+    // The book's Distant for a large particle bay is Very Long by the HG FAQ
+    // (p. 1), the same as every other particle mount.
     assert_eq!(
       weapon_profile(WeaponType::Particle, MountClass::LargeBay).unwrap().max_range,
-      Some(Range::Distant)
+      Some(Range::VeryLong)
     );
   }
 
@@ -1208,5 +1405,177 @@ mod spinal_tests {
     assert_eq!(ShortBand::of(10_000), ShortBand::Close);
     assert_eq!(ShortBand::of(10_001), ShortBand::Short);
     assert_eq!(ShortBand::of(1_250_000), ShortBand::Short);
+  }
+}
+
+/// High Guard p. 27's size rules, p. 31's radiation and the large-ship
+/// tables, and p. 10's hull points over every shipped design.
+#[cfg(test)]
+mod large_ship_tests {
+  use super::*;
+
+  /// Every mount class at every size, with the thresholds' edges: exactly
+  /// 2,000 tons is not "larger than 2,000", and a spinal crits anything.
+  #[test]
+  fn criticals_ignored_by_size_and_mount() {
+    use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Spinal, Turret};
+    let crits = |tons: u32| -> Vec<MountClass> {
+      [Turret, Barbette, Fixed, Battery, SmallBay, MediumBay, LargeBay, Spinal]
+        .into_iter()
+        .filter(|mount| !ignores_primary_critical(tons, *mount))
+        .collect()
+    };
+    let everything = vec![Turret, Barbette, Fixed, Battery, SmallBay, MediumBay, LargeBay, Spinal];
+    assert_eq!(crits(400), everything);
+    assert_eq!(crits(2_000), everything, "exactly 2,000 tons still takes a turret's critical");
+    assert_eq!(crits(2_001), vec![Fixed, Battery, SmallBay, MediumBay, LargeBay, Spinal]);
+    assert_eq!(crits(10_000), vec![Fixed, Battery, SmallBay, MediumBay, LargeBay, Spinal]);
+    assert_eq!(crits(10_001), vec![MediumBay, LargeBay, Spinal]);
+    assert_eq!(crits(100_000), vec![MediumBay, LargeBay, Spinal]);
+    assert_eq!(crits(100_001), vec![LargeBay, Spinal]);
+    assert_eq!(crits(1_000_000), vec![LargeBay, Spinal]);
+    for tons in [10, 2_000, 2_001, 5_000, 10_001, 100_001, 1_000_000] {
+      assert!(!ignores_primary_critical(tons, Spinal), "a spinal always crits, at {tons} tons");
+    }
+  }
+
+  #[test]
+  fn the_large_ship_tables_start_above_five_thousand_tons() {
+    assert!(!is_capital(5_000));
+    assert!(is_capital(5_001));
+  }
+
+  /// HG p. 10: 1 per 2.5 tons, per 2 from 25,000, per 1.5 from 100,000.
+  #[test]
+  fn hull_points_follow_the_size_bands() {
+    assert_eq!(base_hull_points(400), 160);
+    assert_eq!(base_hull_points(6), 2);
+    assert_eq!(base_hull_points(24_999), 9_999);
+    assert_eq!(base_hull_points(25_000), 12_500);
+    assert_eq!(base_hull_points(75_000), 37_500);
+    assert_eq!(base_hull_points(100_000), 66_666);
+    assert_eq!(base_hull_points(500_000), 333_333);
+    assert_eq!(base_hull_points(1_000_000), 666_666);
+    // Reinforced, dispersed, and the Wind-class's 41,250 for 75,000 tons
+    // reinforced.
+    assert!(hull_points_options(1_000).contains(&440));
+    assert!(hull_points_options(600).contains(&216));
+    assert!(hull_points_options(75_000).contains(&41_250));
+    assert!(hull_points_note(400, 160).is_none());
+    assert!(hull_points_note(360, 160).is_some());
+  }
+
+  /// Every shipped design's hull is one the formula gives, apart from the
+  /// listed exceptions, each with its reason.
+  #[test]
+  fn shipped_designs_have_the_books_hull_points() {
+    #[derive(serde::Deserialize)]
+    struct HullOnly {
+      name: String,
+      displacement: u32,
+      hull: u32,
+    }
+    // The published figure, kept as the design's.
+    let exceptions: [(&str, &str); 1] = [(
+      "Laboratory Ship - Type L",
+      "High Guard p. 185 prints Hull 160 for a 360-ton dispersed hull, which the formula makes 129; 160 is the figure for 400 tons",
+    )];
+    let mut checked = 0;
+    let mut problems = Vec::new();
+    for entry in std::fs::read_dir("ship_templates").expect("ship_templates should be readable") {
+      let path = entry.expect("readable directory entry").path();
+      if path.extension().is_none_or(|ext| ext != "json") {
+        continue;
+      }
+      let body = std::fs::read_to_string(&path).expect("design should be readable");
+      let design: HullOnly =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
+      checked += 1;
+      let excepted = exceptions.iter().any(|(name, _)| *name == design.name);
+      match hull_points_note(design.displacement, design.hull) {
+        Some(note) if !excepted => problems.push(format!("{}: {note}", design.name)),
+        None if excepted => problems.push(format!("{} is listed as an exception but needs none", design.name)),
+        _ => {}
+      }
+    }
+    assert!(checked > 40, "only {checked} designs read");
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+  }
+
+  #[test]
+  fn one_sensor_station_per_full_7500_tons() {
+    assert_eq!(jam_operators(100), 1);
+    assert_eq!(jam_operators(7_499), 1);
+    assert_eq!(jam_operators(7_500), 1);
+    assert_eq!(jam_operators(14_999), 1);
+    assert_eq!(jam_operators(15_000), 2);
+    assert_eq!(jam_operators(75_000), 10, "HG p. 34's example");
+    assert_eq!(jam_operators(500_000), 66);
+  }
+
+  /// Crew Critical Hit Severity (HG p. 27) and the DMs it leaves.
+  #[test]
+  fn crew_losses_and_their_dms() {
+    assert_eq!((1..=6).map(crew_crit_percent).collect::<Vec<_>>(), vec![1, 5, 10, 15, 20, 25]);
+    assert_eq!(crew_loss_dm(100, 100), 0);
+    assert_eq!(crew_loss_dm(91, 100), 0);
+    assert_eq!(
+      crew_loss_dm(90, 100),
+      -1,
+      "a severity-3 hit's 10% is not \"restored above 90%\""
+    );
+    assert_eq!(crew_loss_dm(71, 100), -1);
+    assert_eq!(crew_loss_dm(70, 100), -2);
+    assert_eq!(crew_loss_dm(26, 100), -2);
+    assert_eq!(crew_loss_dm(25, 100), -4);
+    assert_eq!(crew_loss_dm(0, 100), -4);
+    assert_eq!(crew_loss_dm(1_801, 2_000), 0, "exact hundredths, not rounded ones");
+    assert_eq!(crew_loss_dm(0, 0), 0, "a design with no crew has nobody to lose");
+  }
+
+  /// HG p. 31: DM-1 per 10% of hull lost to radiation weapons, per 40%
+  /// with shielding, which mesons ignore.
+  #[test]
+  fn radiation_wears_the_crew_down() {
+    assert_eq!(radiation_dm(1_000, 99, 0, false), 0);
+    assert_eq!(radiation_dm(1_000, 100, 0, false), -1);
+    assert_eq!(radiation_dm(1_000, 350, 0, false), -3);
+    assert_eq!(radiation_dm(1_000, 200, 150, false), -3);
+    assert_eq!(radiation_dm(1_000, 399, 0, true), 0);
+    assert_eq!(radiation_dm(1_000, 400, 0, true), -1);
+    assert_eq!(
+      radiation_dm(1_000, 400, 100, true),
+      -2,
+      "the meson's share ignores the shielding"
+    );
+    assert_eq!(radiation_dm(0, 400, 100, true), 0);
+  }
+
+  /// Cargo and Weapons Critical Hit Severity (HG p. 27).
+  #[test]
+  fn the_cargo_and_weapons_table() {
+    let mut dice = [3u8, 4, 5, 6, 1, 2].into_iter().cycle();
+    let mut d6 = || dice.next().unwrap();
+    assert_eq!(system_loss(1, &mut d6), SystemLoss::Disabled(7), "2D%");
+    assert_eq!(system_loss(2, &mut d6), SystemLoss::Disabled(30), "D3 x 10%, a 5 being a 3");
+    assert_eq!(system_loss(3, &mut d6), SystemLoss::Destroyed(60), "1D x 10%");
+    assert_eq!(system_loss(4, &mut d6), SystemLoss::AllDestroyed { hull: false });
+    assert_eq!(system_loss(5, &mut d6), SystemLoss::AllDestroyed { hull: true });
+    assert_eq!(system_loss(6, &mut d6), SystemLoss::AllDestroyed { hull: true });
+
+    // A share of a battery, rounded up and never nothing.
+    assert_eq!(SystemLoss::Disabled(30).of(12), 4);
+    assert_eq!(SystemLoss::Disabled(7).of(12), 1);
+    assert_eq!(SystemLoss::Disabled(7).of(1), 1, "a spinal is one mount, so it goes out");
+    assert_eq!(SystemLoss::Destroyed(60).of(32), 20);
+    assert_eq!(SystemLoss::AllDestroyed { hull: true }.of(9), 9);
+    assert_eq!(SystemLoss::Disabled(50).of(0), 0);
+
+    assert_eq!(CargoHit::of(1), CargoHit::Fighters);
+    assert_eq!(CargoHit::of(2), CargoHit::Fighters);
+    assert_eq!(CargoHit::of(3), CargoHit::SmallCraft);
+    assert_eq!(CargoHit::of(4), CargoHit::FrozenWatch);
+    assert_eq!(CargoHit::of(5), CargoHit::Cargo);
+    assert_eq!(CargoHit::of(6), CargoHit::Cargo);
   }
 }
