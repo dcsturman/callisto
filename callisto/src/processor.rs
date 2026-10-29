@@ -101,7 +101,7 @@ impl Link {
         // Everything waiting, sent in order, but of the world updates among
         // it only the last: the ones before it are already out of date.
         let mut batch = vec![first];
-        while let Ok(Some(more)) = queued.try_next() {
+        while let Some(Some(more)) = queued.next().now_or_never() {
           batch.push(more);
         }
         let last_world = batch.iter().rposition(is_world_update);

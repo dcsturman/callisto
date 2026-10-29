@@ -26,6 +26,7 @@ Each step of a squadron's script may set:
   - `network` (default): the crews manoeuvre as they judge best. Prefer this unless an order says how to move.
   - `burn`: toward a place -- or `away` from it -- at up to `thrust` G.
   - `arrive`: at a place, or at `band` of it on this side, by `round`, the squadron arriving together. Use this to coordinate squadrons: give each the same `round`. A round is six minutes; a ship at 2 G covers about 1,300 km in its first round from rest and 5,100 km in two. Ask only for what the ships' thrust can do.
+- `dodge`: G of thrust each ship keeps back to dodge, at least -- every shot at a dodging ship is harder by her pilot's skill, for as many shots each round as G kept back. What is left of her drive is for moving, and a ship told to dodge will not run. Leave it out to let the crews choose (they keep 0 to 2 G).
 - `until`: when the step ends and the next begins: `round`, `within` (`of` a place, `band`), `fired_on`, `losses` (share of the squadron's hull lost during the step). Any one given is enough. The last step has no `until`.
 
 Places: `planet`, `ship`, `squadron` (the middle of one of ours), `enemies` (the middle of the enemies a rule picks out, e.g. `{"designs": ["Light Fighter"]}`), or `at_km`.

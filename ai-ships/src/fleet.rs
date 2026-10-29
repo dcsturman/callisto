@@ -84,6 +84,10 @@ pub struct Step {
   pub threats: Option<usize>,
   #[serde(default)]
   pub movement: Movement,
+  /// G of thrust each ship keeps back to dodge, at least; what is left of
+  /// her drive is for moving. The crews choose when this is not given.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub dodge: Option<u8>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub until: Option<Until>,
 }
@@ -492,6 +496,9 @@ pub fn describe(step: &Step) -> String {
       }
     ));
   }
+  if let Some(dodge) = step.dodge {
+    parts.push(format!("dodge {dodge} G"));
+  }
   match step.movement.mode {
     Mode::Network => {}
     Mode::Burn => parts.push(format!(
@@ -538,6 +545,31 @@ fn capitalise(text: &str) -> String {
   chars
     .next()
     .map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+}
+
+/// Keep at least `dodge` G back to dodge on every ship, up to her drive, and
+/// cap her burn to what is left. Running away would spend the reserve, so a
+/// ship told to dodge holds instead.
+fn hold_back(decided: &mut [(String, Intent)], ships: &[&Ship], dodge: u8) {
+  for (name, intent) in decided.iter_mut() {
+    let Some(ship) = ships.iter().find(|ship| ship.get_name() == name) else {
+      continue;
+    };
+    let drive = ship.max_acceleration() + ship.get_dodge_thrust() + u8::from(ship.get_assist_gunners());
+    let reserve = intent.evade.unwrap_or(0).max(dodge).min(drive);
+    // The report was written for the crews' own reserve: say the real one.
+    if let Some(chosen) = intent.evade.filter(|chosen| *chosen != reserve) {
+      intent.rationale = intent
+        .rationale
+        .replace(&format!("{chosen} G kept to dodge"), &format!("{reserve} G kept to dodge"));
+    }
+    intent.evade = Some(reserve);
+    if matches!(intent.helm, Helm::OpenRange { .. }) {
+      intent.helm = Helm::Hold;
+    }
+    let left = f64::from(drive - reserve);
+    intent.max_thrust = Some(intent.max_thrust.map_or(left, |cap| cap.min(left)));
+  }
 }
 
 fn progress_step(progress: &HashMap<String, Progress>, group: &str) -> usize {
@@ -660,6 +692,9 @@ impl Commander for FleetCommander {
           intent.helm = helm.clone();
           intent.max_thrust = cap.or(intent.max_thrust);
         }
+      }
+      if let Some(dodge) = step.dodge {
+        hold_back(&mut decided, &ships, dodge);
       }
       // Each ship's report says what her squadron is doing: "Lance, step 1
       // of 2: ...", or just what it is doing for a ship in no squadron, a
