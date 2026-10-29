@@ -334,7 +334,7 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   row[59] = if full == 0 {
     0.0
   } else {
-    (me.magazine.missiles as f32 / full as f32).min(1.0)
+    (me.aboard().missiles as f32 / full as f32).min(1.0)
   };
   let burn = me.plan.0 .0;
   row[60] = (burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;

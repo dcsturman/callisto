@@ -517,7 +517,9 @@ fn own_ship(out: &mut String, view: &Observation, ship: &Ship) {
     list(&ship.sensor_locks)
   );
   let _ = writeln!(out, "- Weapons: {}", weapon_list(ship));
-  let magazine = &ship.magazine;
+  // Everything aboard, in the mounts and in stores: the crews reload the
+  // mounts from stores themselves.
+  let magazine = ship.aboard();
   if magazine.missiles + magazine.torpedoes + magazine.sand > 0 {
     let _ = writeln!(
       out,

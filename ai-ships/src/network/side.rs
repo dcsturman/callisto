@@ -345,7 +345,7 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
   row[42] = if full == 0 {
     0.0
   } else {
-    (me.magazine.missiles as f32 / full as f32).min(1.0)
+    (me.aboard().missiles as f32 / full as f32).min(1.0)
   };
   let burn = me.plan.0 .0;
   row[43] = (burn.magnitude() / (10.0 * G)).min(1.0) as f32;
@@ -671,5 +671,99 @@ mod salvo_tests {
   #[test]
   fn the_per_ship_count_is_missiles_too() {
     assert_eq!(orders::missiles_inbound(&observe(&world(&[3]), &["Blue".to_string()])), 3);
+  }
+}
+
+/// Mounts now hold their own loads, refilled from stores. What the network
+/// sees is everything aboard, mounts and stores together, as a share of the
+/// design's stock -- what it saw when one shared magazine held it all -- so
+/// however a ship's missiles are split between its racks and its stores, it
+/// encodes the same.
+#[cfg(test)]
+mod reload_tests {
+  use super::*;
+  use crate::observation::observe;
+  use callisto::entity::Entities;
+  use callisto::ship::{Magazine, ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  /// Blue carries a Kinunir's two triple-rack turrets and 120 missiles, and
+  /// `racks` of them sit in each turret.
+  fn world(racks: [u32; 2], spent: u32) -> Entities {
+    let rack = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3);
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Cruiser".to_string(),
+      displacement: 1200,
+      hull: 480,
+      weapons: vec![rack.clone(), rack],
+      magazine: Magazine {
+        missiles: 120,
+        torpedoes: 0,
+        sand: 0,
+      },
+      ..ShipDesignTemplate::default()
+    });
+    let mut world = Entities::default();
+    world.add_ship("Blue".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    world.add_ship("Red".to_string(), Vec3::new(5.0e7, 0.0, 0.0), Vec3::zero(), &design, None, None);
+    world.ships["Blue"].write().unwrap().team = Some(Team::Blue);
+    world.ships["Red"].write().unwrap().team = Some(Team::Red);
+    world.establish_initial_contacts();
+    {
+      let mut blue = world.ships["Blue"].write().unwrap();
+      blue.loaded[0].missiles = racks[0];
+      blue.loaded[1].missiles = racks[1];
+      blue.magazine.missiles = 120 - spent - racks[0] - racks[1];
+    }
+    world
+  }
+
+  fn own_row(world: &Entities) -> Vec<f32> {
+    let view = observe(world, &["Blue".to_string()]);
+    let memory = Memory::default();
+    let history = History::default();
+    let ctx = SideContext {
+      view: &view,
+      memory: &memory,
+      history: &history,
+      round: 1,
+      max_rounds: 20,
+      own_hull_share: 1.0,
+      enemy_hull_share: 1.0,
+      goal: Goal::Destroy,
+      post: None,
+    };
+    let (mut own, mut foes, mut side, mut pairs, mut masks) = (
+      vec![0.0; OWN * OWN_FEATS],
+      vec![0.0; FOES * FOE_FEATS],
+      vec![0.0; SIDE_FEATS],
+      vec![0.0; OWN * FOES * PAIR_FEATS],
+      vec![false; OWN * MASK_LEN],
+    );
+    let _ = encode_side(
+      &ctx,
+      &mut Buffers {
+        own: &mut own,
+        foes: &mut foes,
+        side: &mut side,
+        pairs: &mut pairs,
+        masks: &mut masks,
+      },
+    );
+    own
+  }
+
+  #[test]
+  fn the_split_between_racks_and_stores_does_not_show() {
+    let full = own_row(&world([12, 12], 0));
+    assert_eq!(full, own_row(&world([0, 0], 0)), "all in stores");
+    assert_eq!(full, own_row(&world([12, 0], 0)), "one rack full");
+    assert_eq!(full[42], 1.0, "a full stock");
+
+    // Thirty spent reads as 90 of 120, wherever the 90 are.
+    let spent = own_row(&world([3, 12], 30));
+    assert_eq!(spent, own_row(&world([12, 12], 30)));
+    assert_eq!(spent[42], 90.0 / 120.0);
   }
 }

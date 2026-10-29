@@ -26,7 +26,8 @@ use crate::payloads::{
 };
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS};
 use crate::ship::{
-  FlightPlan, MountClass, PowerSystem, Range, Salvo, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
+  uses_munitions, FlightPlan, MountClass, PowerSystem, Range, Salvo, Ship, ShipSystem, Weapon, WeaponMount,
+  WeaponProfile, WeaponType,
 };
 use crate::software::SoftwareKind;
 
@@ -163,6 +164,12 @@ pub struct Intent {
   /// on its own, so neither needs ordering.
   #[serde(default)]
   pub defend: Vec<usize>,
+  /// Mounts to reload this round, by index, in the order spare gunners take
+  /// them: launchers and sandcasters below their load. Once the spares are
+  /// spoken for, a mount's own gunner reloads it, and it then neither fires
+  /// nor defends. `None` leaves the choice to [`reloads`].
+  #[serde(default)]
+  pub reload: Option<Vec<usize>>,
   /// One per sensor operator aboard, in order; extras are dropped.
   #[serde(default)]
   pub sensors: Vec<SensorVerb>,
@@ -943,7 +950,17 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
 
   let mut actions = Vec::new();
   let mut committed = std::collections::HashSet::new();
-  // Defence first: a mount on point defence is spoken for before any fire
+  // Reloads first. Spare gunners take them in order, and a mount whose own
+  // gunner reloads it is spoken for: it neither fires nor defends.
+  let mut reload: Vec<usize> = Vec::new();
+  for weapon_id in intent.reload.clone().unwrap_or_else(|| reloads(world, &own, intent)) {
+    if own.can_reload(weapon_id) && !reload.contains(&weapon_id) {
+      reload.push(weapon_id);
+    }
+  }
+  committed.extend(reload.iter().skip(own.spare_gunners()).copied());
+  actions.extend(reload.iter().map(|&weapon_id| ShipAction::ReloadAction { weapon_id }));
+  // Defence next: a mount on point defence is spoken for before any fire
   // order can claim it.
   for &weapon_id in &intent.defend {
     let can_defend = own
@@ -1022,6 +1039,80 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
     requests.push(RequestMsg::ModifyActions(vec![(ship_name.to_string(), actions)]));
   }
   Ok(requests)
+}
+
+/// The mounts `intent`'s fire orders would use, each with the gun it fires:
+/// the first engagement to claim a mount has it, as [`orders`] gives them.
+fn engaged_mounts(world: &Entities, own: &Ship, intent: &Intent) -> Vec<(usize, WeaponType)> {
+  let mut engaged: Vec<(usize, WeaponType)> = Vec::new();
+  for engage in &intent.fire {
+    if !own.contacts.contains(&engage.target) {
+      continue;
+    }
+    let Some(target) = world.ships.get(&engage.target) else {
+      continue;
+    };
+    let range = band_between(own, &target.read().unwrap());
+    for (weapon_id, kind) in weapons_that_bear(own, range) {
+      let chosen = engage.weapons.is_empty() || engage.weapons.contains(&weapon_id);
+      if chosen && engaged.iter().all(|(id, _)| *id != weapon_id) {
+        engaged.push((weapon_id, kind));
+      }
+    }
+  }
+  engaged
+}
+
+/// Which mounts to reload this round, when a commander leaves it to tactics.
+///
+/// While spare gunners are free, every launcher and sandcaster below its load,
+/// emptiest first: it costs the mount nothing. With none free, a mount's own
+/// gunner reloads only where that gives up nothing worth having: an empty
+/// launcher or sandcaster, or a partly empty one with nothing to fire on (for
+/// sand, no fight this round). A mixed mount -- a rack beside a laser -- is
+/// reloaded only when the rest of it has no target.
+#[must_use]
+pub fn reloads(world: &Entities, own: &Ship, intent: &Intent) -> Vec<usize> {
+  let mut candidates: Vec<(usize, f64)> = (0..own.weapons().len())
+    .filter(|&weapon_id| own.active_weapons.get(weapon_id).copied().unwrap_or(true) && own.can_reload(weapon_id))
+    .map(|weapon_id| {
+      let held = own.loaded(weapon_id);
+      let full = own.capacity(weapon_id);
+      let share = f64::from(held.missiles + held.torpedoes + held.sand)
+        / f64::from((full.missiles + full.torpedoes + full.sand).max(1));
+      (weapon_id, share)
+    })
+    .collect();
+  candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+  let spares = own.spare_gunners();
+  let engaged = engaged_mounts(world, own, intent);
+  let fighting = !engaged.is_empty();
+  candidates
+    .into_iter()
+    .enumerate()
+    .filter(|&(place, (weapon_id, _))| {
+      if place < spares {
+        return true;
+      }
+      if intent.defend.contains(&weapon_id) {
+        return false;
+      }
+      let weapon = own.get_weapon(weapon_id);
+      let held = own.loaded(weapon_id);
+      let using = engaged.iter().find(|(id, _)| *id == weapon_id).map(|(_, kind)| *kind);
+      let mixed = weapon.guns.iter().any(|gun| !uses_munitions(gun.kind));
+      match using {
+        // The other gun of a mixed mount has a target: keep it firing.
+        Some(kind) if !uses_munitions(kind) => false,
+        // A launcher with a target is reloaded only once it is empty.
+        Some(kind) => held.of(kind) == 0,
+        // Sand is a reaction, wanted whenever there is a fight.
+        None if !mixed && weapon.has_kind(WeaponType::Sand) && fighting => held.sand == 0,
+        None => true,
+      }
+    })
+    .map(|(_, (weapon_id, _))| weapon_id)
+    .collect()
 }
 
 /// Start and stop programs: stops first, so the bandwidth is free for what
@@ -1170,6 +1261,138 @@ mod tests {
       })
       .flatten()
       .collect()
+  }
+
+  /// Two Patrol Corvettes `distance` metres apart: pulse turrets at mounts 1
+  /// and 2, triple-rack turrets at 3 and 4, and `gunners` at the guns.
+  async fn corvettes(distance: f64, gunners: usize) -> Entities {
+    config_test_ship_templates().await;
+    let design = get_ship_template("Patrol Corvette - Type T").unwrap();
+    let mut crew = crate::crew::Crew::new();
+    (0..gunners).for_each(|_| crew.add_gunnery(1));
+    let mut world = Entities::new();
+    world.add_ship("Hunter".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+    world.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(distance, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    world.ships["Hunter"].write().unwrap().contacts = vec!["Quarry".to_string()];
+    world
+  }
+
+  fn set_racks(world: &Entities, loads: [u32; 2]) {
+    let mut hunter = world.ships["Hunter"].write().unwrap();
+    hunter.loaded[2].missiles = loads[0];
+    hunter.loaded[3].missiles = loads[1];
+  }
+
+  fn engage_quarry() -> Intent {
+    Intent {
+      fire: vec![Engage {
+        target: "Quarry".to_string(),
+        ..Engage::default()
+      }],
+      ..Intent::default()
+    }
+  }
+
+  fn reloads_of(actions: &[ShipAction]) -> Vec<usize> {
+    actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::ReloadAction { weapon_id } => Some(*weapon_id),
+        _ => None,
+      })
+      .collect()
+  }
+
+  fn fired(actions: &[ShipAction]) -> Vec<usize> {
+    actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::FireAction { weapon_id, .. } => Some(*weapon_id),
+        _ => None,
+      })
+      .collect()
+  }
+
+  /// A spare gunner reloads for free, so it goes to the emptiest rack, and
+  /// both racks still fire. A rack with no spare for it and missiles left
+  /// keeps firing.
+  #[tokio::test]
+  async fn a_spare_gunner_reloads_the_emptiest_rack() {
+    let world = corvettes(50_000.0 * KM, 5).await;
+    set_racks(&world, [6, 3]);
+    let actions = fire_actions(&orders(&world, "Hunter", &engage_quarry()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![3]);
+    assert_eq!(fired(&actions), vec![2, 3], "both racks bear at Very Long; the lasers do not");
+  }
+
+  /// With no spare, an empty rack is reloaded by its own gunner and does not
+  /// fire; a part-full one with a target fires.
+  #[tokio::test]
+  async fn with_no_spare_only_an_empty_rack_with_a_target_is_reloaded() {
+    let world = corvettes(50_000.0 * KM, 4).await;
+    set_racks(&world, [0, 6]);
+    let actions = fire_actions(&orders(&world, "Hunter", &engage_quarry()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![2]);
+    assert_eq!(fired(&actions), vec![3]);
+
+    // With nothing to shoot at, a part-full rack is topped up too.
+    let actions = fire_actions(&orders(&world, "Hunter", &Intent::default()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![2, 3]);
+  }
+
+  /// A mixed turret -- a rack beside two lasers -- is not reloaded while its
+  /// lasers have a target, even with the rack empty; with no target it is.
+  #[tokio::test]
+  async fn a_mixed_turret_reloads_only_when_its_lasers_have_no_target() {
+    let world = corvettes(5.0 * KM, 1).await;
+    {
+      let mut hunter = world.ships["Hunter"].write().unwrap();
+      let mixed = Weapon {
+        mount: WeaponMount::Turret,
+        guns: vec![
+          crate::ship::Gun::new(WeaponType::Pulse),
+          crate::ship::Gun::new(WeaponType::Pulse),
+          crate::ship::Gun::new(WeaponType::Missile),
+        ],
+        count: 1,
+      };
+      hunter.set_weapons(Some(vec![mixed]));
+      hunter.fixup_current_values();
+      hunter.loaded[0].missiles = 0;
+      hunter.magazine.missiles = 20;
+    }
+    let actions = fire_actions(&orders(&world, "Hunter", &engage_quarry()).unwrap());
+    assert_eq!(reloads_of(&actions), Vec::<usize>::new());
+    assert_eq!(fired(&actions), vec![0], "the lasers fire");
+    let actions = fire_actions(&orders(&world, "Hunter", &Intent::default()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![0]);
+  }
+
+  /// A commander that names its reloads gets them, and a mount it names
+  /// beyond the spares is left out of the fire it would otherwise join.
+  #[tokio::test]
+  async fn named_reloads_are_carried_out() {
+    let world = corvettes(50_000.0 * KM, 4).await;
+    set_racks(&world, [6, 6]);
+    let intent = Intent {
+      reload: Some(vec![3, 3, 0]),
+      ..engage_quarry()
+    };
+    let actions = fire_actions(&orders(&world, "Hunter", &intent).unwrap());
+    assert_eq!(reloads_of(&actions), vec![3], "a full laser and a repeat are dropped");
+    assert_eq!(fired(&actions), vec![2]);
+    let intent = Intent {
+      reload: Some(vec![]),
+      ..engage_quarry()
+    };
+    assert_eq!(fired(&fire_actions(&orders(&world, "Hunter", &intent).unwrap())), vec![2, 3]);
   }
 
   #[test]

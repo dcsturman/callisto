@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use callisto::combat::battery_intercept_dice;
 use callisto::entity::{Entity, Vec3};
-use callisto::ship::{get_ship_template, Range, Ship, ShipDesignTemplate};
+use callisto::ship::{get_ship_template, Magazine, Range, Ship, ShipDesignTemplate, WeaponType};
 use callisto::tactics;
 use cgmath::InnerSpace;
 use serde_json::{json, Value};
@@ -140,6 +140,31 @@ fn middle(points: impl Iterator<Item = Vec3>) -> Vec3 {
   }
 }
 
+/// What ships' mounts hold of what they can, and what is in stores, for each
+/// munition they carry: "missile racks 4/12, stores 30". Empty for ships
+/// with no launcher or sandcaster.
+fn stock<'a>(ships: impl IntoIterator<Item = &'a Ship>) -> String {
+  let (held, full, stores) = ships.into_iter().fold(
+    (Magazine::default(), Magazine::default(), Magazine::default()),
+    |(held, full, stores), ship| {
+      let capacity = (0..ship.weapons().len()).fold(Magazine::default(), |sum, mount| sum.plus(ship.capacity(mount)));
+      let loaded = ship.loaded.iter().fold(Magazine::default(), |sum, load| sum.plus(*load));
+      (held.plus(loaded), full.plus(capacity), stores.plus(ship.magazine))
+    },
+  );
+  [
+    ("missile racks", WeaponType::Missile),
+    ("torpedoes", WeaponType::Torpedo),
+    ("sand", WeaponType::Sand),
+  ]
+  .into_iter()
+  .filter(|(_, kind)| full.of(*kind) > 0)
+  .fold(String::new(), |mut out, (what, kind)| {
+    let _ = write!(out, "; {what} {}/{}, stores {}", held.of(kind), full.of(kind), stores.of(kind));
+    out
+  })
+}
+
 /// One line for a design: size, drive, protection, and every mount with the
 /// furthest band it reaches.
 fn describe_design(design: &Arc<ShipDesignTemplate>) -> String {
@@ -197,7 +222,7 @@ fn describe_design(design: &Arc<ShipDesignTemplate>) -> String {
     .map(|stealth| format!(", {stealth:?} stealth"))
     .unwrap_or_default();
   format!(
-    "{}: {} t, {} G, hull {}, armour {}{stealth}; {}",
+    "{}: {} t, {} G, hull {}, armour {}{stealth}; {}{}",
     design.name,
     design.displacement,
     design.maneuver,
@@ -207,7 +232,8 @@ fn describe_design(design: &Arc<ShipDesignTemplate>) -> String {
       "unarmed".to_string()
     } else {
       weapons.join(", ")
-    }
+    },
+    stock([&ship])
   )
 }
 
@@ -323,9 +349,10 @@ fn write_squadrons(
     };
     let _ = writeln!(
       out,
-      "- {name}: {}; hull {}%; {:.1} km/s{nearest}{script}. Ships: {}",
+      "- {name}: {}; hull {}%{}; {:.1} km/s{nearest}{script}. Ships: {}",
       make_up.join(", "),
       share(hull, built),
+      stock(ships.iter().copied()),
       velocity.magnitude() / 1000.0,
       members.join(", ")
     );
