@@ -1058,6 +1058,42 @@ On `epic-fleet-control`.
 
 **For the user to check by eye:** no shipped design is over 5,000 tons, so give a scenario ship a test design over 5,000 t with a battery (`"count"`), a `frozen_watch` and `radiation_shielding`. Then: a Weapons critical's line and the gunner card's "(N down)" badge, and the Power board's draw; a Crew critical's line, the damage board's crew lines, and the "crew" term in a later attack's hover; the captain card's Revive and the next round's log line; a 15,000-ton ship's sensor station note and the "from sensor station 2" lines when two salvoes are inbound; the Add Ship tooltip on the Laboratory Ship.
 
+## Scenario: Keelhaven (decided 2026-10-29)
+
+The first capital-ship scenario, and the one step 7 builds its designs for. Two fleets bought to a budget from High Guard's price lists: the attacker 100 BCr of jump-capable ships, the defender 70 BCr of ships that cannot jump. Roughly half of each goes on capital ships, and the user asked for two to four capitals a side rather than one.
+
+**The place.** The gas giant **Oroth**, with two moons. **Oroth II, "Keelhaven"**, 600,000 km out, carries the subsector's naval depot and highport: it is what the defender holds. **Oroth V** is a bare outer rock, where the system defence boats lie dark. Scenery only: planets have no gravity and block no shot.
+
+**The defender (Red), 70 BCr: MCr 69,684.**
+
+| Ships | Each | MCr | Notes |
+|---|---|---|---|
+| 1 Hadrian battle rider (50,000 t, HG pp. 255–256) | 34,876 | 34,876 | Armour 30, Thrust 6, meson spinal 18,000 t, 50 medium missile bays, 25 medium railgun bays. The missile wall. |
+| 1 Jaellemo planetoid monitor (50,000 t buffered planetoid, HG pp. 247–248) | 25,031 | 25,031 | Armour 15, Thrust 6, meson spinal 12,000 t, 30 particle barbettes, 30 heavy fighters aboard. The beam ship, sitting at Keelhaven. |
+| 15 Dragon SDBs (400 t) | 308 | 4,624 | |
+| 10 System Defense Boats (200 t, TL15) | 132 | 1,324 | HG's own example boat, already shipped. |
+| 50 Heavy Fighters | 76.6 | 3,829 | Plus the Jaellemo's 30. |
+
+77 hulls. Goal `hold` on Keelhaven: still there at the end, or the enemy beaten or gone.
+
+**The attacker (Blue), 100 BCr: MCr 99,846.**
+
+| Ships | Each | MCr | Notes |
+|---|---|---|---|
+| 1 Wind strike carrier (75,000 t, HG pp. 266–267) | 48,746 | 48,746 | Meson spinal 18,000 t, 80 light fighters aboard, 200 beam turrets, armour 11. Flagship. |
+| 2 Valiant light cruisers (30,000 t, HG pp. 238–239) | 20,759 | 41,518 | Meson spinal 6,000 t each, 160 missile turrets, armour 15, command bridge. |
+| 1 P.F. Sloan fleet escort | 3,286 | 3,286 | |
+| 2 Midu Agasham destroyers | 2,056 | 4,113 | |
+| 3 Fer-de-Lance destroyer escorts | 728 | 2,183 | |
+
+89 hulls. Goal `destroy`. The attacker arrives from the jump limit about 150,000 km out from Keelhaven, under way, so contact comes after six to eight rounds. Round limit about 30.
+
+**Why these.** Only mesons work against the Hadrian: a particle spinal loses 3% a point of armour, 90% against armour 30, so the Ghalalk and Azhanti were passed over. The Wind is the one attacker capital in budget whose spinal matches the Hadrian's. Two Jaellemos were weighed against the Hadrian (two spinals, 2.3× the hull points and 60 fighters for 43% more money, but armour 15 and no missile launchers); one of each gives the attacker a real choice of which to kill first.
+
+**What step 7 must build for it.** The Hadrian, the Jaellemo, the Wind and the Valiant, from their HG pages with the HG FAQ's spinal corrections, and the hull-formula test's buffered-planetoid product for the Jaellemo. The other HG capitals can follow. Until step 9 lands carriers, the Wind's 80 light fighters and the Jaellemo's 30 heavy fighters start in space beside their ships. Embarked craft count in the carrier's price; only extra fighters are bought from the small half.
+
+**Open.** Whether the SDBs start hidden at Oroth V (stealth is only built for ships designed for it) or simply out of detection range; the exact start positions and the round limit are the scenario builder's to tune.
+
 ## 9. Decisions and open questions
 
 **Decided by the user (2026-10-29).** Nothing is open.
