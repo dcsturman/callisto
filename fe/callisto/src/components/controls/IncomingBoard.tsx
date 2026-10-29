@@ -8,7 +8,8 @@ import {useAppSelector} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
 
 /**
- * Salvoes in flight at this ship: how many, from whom, and how soon.
+ * Salvoes in flight at this ship -- how many, from whom, and how soon -- and
+ * her own, in flight at others: how many at whom, and when they land.
  *
  * The guns that could fire at us are on the targets board above, beside the
  * ship they belong to, since "what can that ship do to me" is one question
@@ -32,6 +33,22 @@ export function IncomingBoard(args: {ship: Ship}) {
     [entities.missiles, args.ship]
   );
 
+  // Ours in the air: by target, then by the round they land.
+  const outbound = useMemo(() => {
+    const groups = new Map<string, {target: string; rounds: number; count: number}>();
+    entities.missiles
+      .filter((missile) => missile.source === args.ship.name)
+      .forEach((missile) => {
+        const target = entities.ships.find((ship) => ship.name === missile.target);
+        const rounds = target == null ? Infinity : (roundsToImpact(missile, target) ?? Infinity);
+        const key = `${missile.target}\u0000${rounds}`;
+        const group = groups.get(key) ?? {target: missile.target, rounds, count: 0};
+        group.count += 1;
+        groups.set(key, group);
+      });
+    return [...groups.values()].sort((a, b) => a.rounds - b.rounds || a.target.localeCompare(b.target));
+  }, [entities.missiles, entities.ships, args.ship.name]);
+
   const byRound = useMemo(() => {
     const groups = new Map<number, {count: number; sources: Set<string>}>();
     for (const missile of inbound) {
@@ -45,7 +62,7 @@ export function IncomingBoard(args: {ship: Ship}) {
 
   return (
     <div className="incoming-board" data-tutorial="incoming">
-      <h3 className="incoming-heading">Salvoes</h3>
+      <h3 className="incoming-heading">Salvoes inbound</h3>
       {inbound.length === 0 ? (
         <p className="sensor-empty">Nothing inbound.</p>
       ) : (
@@ -61,7 +78,22 @@ export function IncomingBoard(args: {ship: Ship}) {
           ))}
         </ul>
       )}
-      {/* Who can shoot at us from where they are, and with what. */}
+      {outbound.length > 0 && (
+        <>
+          <h3 className="incoming-heading">Ours in flight</h3>
+          <ul className="incoming-rows">
+            {outbound.map((group) => (
+              <li key={`${group.target}-${group.rounds}`} className="incoming-row">
+                <span className="incoming-count">{group.count}</span>
+                <span className="incoming-from">at {group.target}</span>
+                <span className="incoming-eta">
+                  {group.rounds <= 1 ? "this round" : group.rounds === Infinity ? "not closing" : `${group.rounds} rounds`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

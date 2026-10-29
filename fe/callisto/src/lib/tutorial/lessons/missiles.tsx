@@ -48,7 +48,8 @@ export const missiles: Lesson = {
       body: (
         <p>
           The Gunner card&apos;s <b>Salvoes</b> board lists every missile coming at you: whose they are, and when
-          they arrive. These hit this round.
+          they arrive. These hit this round. Below it, <b>Ours in flight</b> shows your own: how many at each
+          target, and when they land.
         </p>
       ),
     },
