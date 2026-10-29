@@ -126,3 +126,30 @@ round, with the jump drive idle:
   plant) would fire every few rounds. Callisto does not model high-efficiency
   batteries; none of the shipped designs uses them.
 - **RAW** (printed Power Requirements, HG pp. 238, 247, 255, 266).
+
+## Capital fights are decided by the first spinal exchange
+
+**Finding.** Keelhaven, re-run with the errata's screens (seed 1, 30 rounds,
+2026-10-29). Event logs: `scr-close-ev.jsonl`, `scr-net-ev.jsonl`.
+
+- **Heuristic commanders both sides:** four of the five capitals died in three
+  rounds (10–12), almost entirely to spinals: the Valiant *Intrepid* to two
+  Red spinals (67,000 and 44,000); the Hadrian *Cleon* to the *Dauntless*
+  (21,880) and *Sirocco* (72,440), her screens taking 120 and 560; the
+  Jaellemo and the Wind traded spinals and both died. 7 spinal hits in all. No
+  winner by round 30: Red kept 5.5% of its hull, Blue 22.7%.
+- **Network commanders both sides:** the *Dauntless*'s 1× spinal alone killed
+  both Red capitals, two hits each. The *Cleon* fired her spinal once and
+  missed. Red lost 77 ships, Blue 12 (98% of its hull left), yet still no
+  winner by round 30.
+- **The Hadrian:** in both runs only spinals hurt her; armour 30 absorbed
+  everything else.
+- **Doctrine:** a capital-ship action is a duel of spinal mounts that is over in
+  two or three rounds once ranges close. Screens are a rounding error against a
+  spinal. Everything else in the fleet matters for what it can do before and
+  after that exchange, and against the other side's small ships.
+- **Caveats:** one seed each. The network was never trained on capital ships
+  (retraining comes after carriers), so its run says more about the untrained
+  AI than about doctrine. "No winner" with Blue at 98% suggests the scenario's
+  end conditions need a look.
+- **RAW**, with Callisto's per-missile salvos and batteries.
