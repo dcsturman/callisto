@@ -330,6 +330,22 @@ pub enum ShipAction {
   DeleteFireAction {
     weapon_id: usize,
   },
+  /// Refill a launcher or sandcaster mount from stores, at the end of the
+  /// round (Core Rulebook p. 168).
+  ///
+  /// Not merged with the mount's Fire or Point Defence: a spare gunner (one
+  /// beyond the mounts) does the work while there is one free, and the mount
+  /// fires as ordered. Spares go to Reloads in the order they were chosen;
+  /// the first with none left is done by the mount's own gunner, and that
+  /// mount makes no attack and no reaction this round (p. 172).
+  ReloadAction {
+    weapon_id: usize,
+  },
+  /// Anti-action: withdraw the Reload on this mount, and with it the spare
+  /// gunner it took.
+  DeleteReloadAction {
+    weapon_id: usize,
+  },
   // Sensor actions. `operator` is which of the ship's sensor operators is
   // working it: one action each, so a ship with two operators can jam and lock
   // in the same round. Defaulted, so a ship with one operator need not say.
@@ -495,6 +511,21 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             });
             current_actions.push(next_action.clone());
           }
+          // A mount's Reload keeps its place in the queue when the list is
+          // sent again: spare gunners go to Reloads in the order they were
+          // chosen, so a resend must not move one to the back.
+          ShipAction::ReloadAction { weapon_id } => {
+            if !current_actions
+              .iter()
+              .any(|action| matches!(action, ShipAction::ReloadAction { weapon_id: id } if *id == weapon_id))
+            {
+              current_actions.push(next_action.clone());
+            }
+          }
+          ShipAction::DeleteReloadAction { weapon_id } => {
+            current_actions
+              .retain(|action| !matches!(action, ShipAction::ReloadAction { weapon_id: id } if *id == weapon_id));
+          }
           // Delete the noted action.  Given the way we merge just omitting the FireAction or PointDefenseAction does not delete it.
           // We need a specific "anti-action" so we can differentiate between a client that is just missing some information and
           // one that actually wants to eliminate the action.
@@ -577,6 +608,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
               | ShipAction::ClearEngineerAction { .. }
               | ShipAction::ClearLeadershipCheck
               | ShipAction::DeleteFireAction { .. }
+              | ShipAction::DeleteReloadAction { .. }
           )
         })
         .collect();
@@ -688,6 +720,55 @@ mod tests {
       .expect("the captain's inspire list is queued");
     assert!(boosts.contains(&engine_room), "the engineer's inspire survived: {boosts:?}");
     assert!(boosts.contains(&gun), "so should the gun's: {boosts:?}");
+  }
+
+  /// A Reload sits beside the mount's Fire rather than replacing it, keeps
+  /// its place when the list is sent again, and is withdrawn by its
+  /// anti-action.
+  #[test]
+  fn a_reload_keeps_its_place_and_its_mounts_fire() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Exec".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    let fire = ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Quarry".to_string(),
+      called_shot_system: None,
+      salvo_size: None,
+      firing_kind: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    };
+    let reload = |weapon_id| ShipAction::ReloadAction { weapon_id };
+    let queued = |entities: &Entities| entities.actions.iter().find(|(ship, _)| ship == "Exec").unwrap().1.clone();
+
+    merge(&mut entities, vec![("Exec".to_string(), vec![fire.clone(), reload(1)])]);
+    merge(&mut entities, vec![("Exec".to_string(), vec![reload(0)])]);
+    assert_eq!(queued(&entities), vec![fire.clone(), reload(1), reload(0)]);
+
+    // The console sends the whole list again, in its own order.
+    merge(
+      &mut entities,
+      vec![("Exec".to_string(), vec![reload(0), reload(1), fire.clone()])],
+    );
+    assert_eq!(
+      queued(&entities),
+      vec![reload(1), reload(0), fire.clone()],
+      "the reloads keep their order"
+    );
+
+    merge(
+      &mut entities,
+      vec![("Exec".to_string(), vec![ShipAction::DeleteReloadAction { weapon_id: 1 }])],
+    );
+    assert_eq!(queued(&entities), vec![reload(0), fire]);
   }
 
   #[test]

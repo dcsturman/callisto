@@ -35,10 +35,22 @@ fn software_of(design: &str) -> serde_json::Value {
   serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
 }
 
-/// What a design's magazine holds when it is fresh from the yard.
-fn magazine_of(design: &str) -> serde_json::Value {
+/// A design's ship fresh from the yard.
+fn fresh(design: &str) -> crate::ship::Ship {
   let templates = crate::ship::get_ship_templates_snapshot();
-  serde_json::to_value(crate::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+  let template = templates.get(design).unwrap().clone();
+  crate::ship::Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &template, None, None)
+}
+
+/// What a design's stores hold when it is fresh from the yard: what its
+/// mounts cannot.
+fn magazine_of(design: &str) -> serde_json::Value {
+  serde_json::to_value(fresh(design).magazine).unwrap()
+}
+
+/// What each of a design's mounts holds when it is fresh from the yard.
+fn loaded_of(design: &str) -> serde_json::Value {
+  serde_json::to_value(&fresh(design).loaded).unwrap()
 }
 
 /// A default crew's gunnery: one gunner per mount, unskilled.
@@ -121,6 +133,7 @@ async fn test_add_ship() {
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
         "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -169,6 +182,7 @@ async fn test_add_planet_ship() {
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -191,6 +205,7 @@ async fn test_add_planet_ship() {
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -236,6 +251,7 @@ async fn test_add_planet_ship() {
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
        "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -258,6 +274,7 @@ async fn test_add_planet_ship() {
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
        "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -304,6 +321,7 @@ async fn test_add_planet_ship() {
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
        "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -326,6 +344,7 @@ async fn test_add_planet_ship() {
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
        "magazine": magazine_of("Buccaneer"),
+   "loaded": loaded_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -427,6 +446,10 @@ async fn test_update_missile() {
   );
 
   let entities = server.get_entities_json();
+  // The rack fired three of what it held.
+  let mut fired_three = fresh("System Defense Boat").loaded;
+  fired_three[1].missiles -= 3;
+  let fired_three = serde_json::to_value(&fired_three).unwrap();
   let compare = json!(
         {"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
@@ -442,8 +465,9 @@ async fn test_update_missile() {
              "current_computer": 35,
              "active_weapons": [true, true],
              "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
-             // Three missiles away this round, and the magazine shows it.
-             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0},
+             // Three missiles away this round, and the rack shows it.
+             "magazine": magazine_of("System Defense Boat"),
+             "loaded": fired_three,
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
@@ -465,6 +489,7 @@ async fn test_update_missile() {
              "active_weapons": [true, true],
              "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
              "magazine": magazine_of("System Defense Boat"),
+   "loaded": loaded_of("System Defense Boat"),
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
@@ -1036,6 +1061,7 @@ async fn test_big_fight() {
    "active_weapons":[true,true,true,true],
    "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
    "magazine": magazine_of("Gazelle"),
+   "loaded": loaded_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
@@ -1052,6 +1078,7 @@ async fn test_big_fight() {
    "active_weapons":[true,true,true,true],
    "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
    "magazine": magazine_of("Gazelle"),
+   "loaded": loaded_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
@@ -1166,7 +1193,8 @@ async fn test_fight_with_crew() {
    "sensor_locks": [],
    "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-   "magazine": magazine_of("Gazelle")
+   "magazine": magazine_of("Gazelle"),
+   "loaded": loaded_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1177,6 +1205,7 @@ async fn test_fight_with_crew() {
    "active_weapons":[true,false,false,true],
    "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
    "magazine": magazine_of("Gazelle"),
+   "loaded": loaded_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":false,
@@ -2509,4 +2538,73 @@ fn tutorial_builder_sessions_are_builder_sessions() {
   assert!(is_scenario_builder("SCENARIO-$TUTORIAL-amber-river-lamp"));
   assert!(!is_tutorial_builder("SCENARIO-amber-river-lamp"));
   assert!(!is_tutorial_builder("$TUTORIAL-amber-river-lamp"));
+}
+
+/// The two ways a mount is reloaded, through a whole round. A Patrol Corvette
+/// has two triple-rack turrets (mounts 3 and 4) holding twelve each, with 48
+/// in stores, and one gunner more than mounts.
+///
+/// The first Reload chosen takes the spare gunner, so that mount fires and is
+/// refilled in the same round. The second finds none left: its own gunner
+/// reloads, and it makes no attack. Neither Reload is kept for the next round,
+/// though the Fire orders are.
+#[test(tokio::test)]
+async fn test_spare_and_own_gunner_reloads() {
+  let server = setup_test_with_server(setup_authenticator()).await;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "design":"Patrol Corvette - Type T","software":[],
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0, 0, 0, 0, 0]}}"#;
+  server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
+  // Long range: the salvoes are still flying when the test ends.
+  let ship2 = r#"{"name":"ship2","position":[3000000,0,0],"velocity":[0,0,0], "design":"Patrol Corvette - Type T","software":[]}"#;
+  server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
+  server.establish_initial_contacts();
+
+  let racks = |server: &PlayerManager| {
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+    (ship.loaded(2).missiles, ship.loaded(3).missiles, ship.magazine.missiles)
+  };
+  assert_eq!(racks(&server), (12, 12, 48));
+
+  let fire = json!([["ship1", [
+      {"FireAction": {"weapon_id": 2, "target": "ship2"}},
+      {"FireAction": {"weapon_id": 3, "target": "ship2"}},
+  ]]]);
+  server.merge_actions(serde_json::from_value(fire).unwrap());
+  let first: Vec<String> = server.update().iter().map(EffectMsg::rendered).collect();
+  assert_eq!(
+    racks(&server),
+    (9, 9, 48),
+    "three away from each rack, nothing reloads by itself: {first:#?}"
+  );
+
+  // Mount 4's Reload is chosen first, so it takes the spare.
+  let reload = json!([["ship1", [
+      {"ReloadAction": {"weapon_id": 3}},
+      {"ReloadAction": {"weapon_id": 2}},
+  ]]]);
+  server.merge_actions(serde_json::from_value(reload).unwrap());
+  let effects = server.update();
+  let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+  let launches = lines.iter().filter(|line| line.contains("launches")).count();
+  assert_eq!(launches, 1, "only the spare-crewed mount fires: {lines:#?}");
+  assert_eq!(
+    racks(&server),
+    (12, 12, 48 - 6 - 3),
+    "mount 4 fired three and was refilled; mount 3 was refilled instead of firing"
+  );
+  let spare = lines
+    .iter()
+    .find(|line| line.contains("reloads mount 4"))
+    .expect("a line for mount 4");
+  assert!(spare.contains("spare gunner") && spare.contains("12 of 12 missiles"), "{spare}");
+  let own = lines
+    .iter()
+    .find(|line| line.contains("reloads mount 3"))
+    .expect("a line for mount 3");
+  assert!(own.contains("made no attack"), "{own}");
+
+  let entities = server.get_entities().unwrap();
+  let (_, queued) = entities.actions.iter().find(|(ship, _)| ship == "ship1").unwrap();
+  assert_eq!(queued.len(), 2, "the Fire orders stand, the Reloads are spent: {queued:?}");
 }

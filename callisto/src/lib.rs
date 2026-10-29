@@ -21,6 +21,7 @@ pub mod payloads;
 pub mod planet;
 pub mod player;
 pub mod processor;
+pub mod reload;
 mod rules_tables;
 pub mod server;
 pub mod service_auth;

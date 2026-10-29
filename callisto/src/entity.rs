@@ -715,16 +715,18 @@ impl Entities {
 
   /// Drop every queued action that addresses a weapon on `ship_name`.
   ///
-  /// That is the ship's own fire and point-defense orders, plus any boost a
+  /// That is the ship's own fire, point-defense and reload orders, plus any boost a
   /// captain queued against one of its weapons — those live under the
   /// *captain's* ship, so every action list has to be swept, not just this
   /// ship's.  Non-weapon actions (pilot, sensor, engineer) are untouched.
   fn clear_weapon_actions(&mut self, ship_name: &str) {
     for (owner, actions) in &mut self.actions {
       actions.retain_mut(|action| match action {
-        ShipAction::FireAction { .. } | ShipAction::PointDefenseAction { .. } | ShipAction::DeleteFireAction { .. } => {
-          owner != ship_name
-        }
+        ShipAction::FireAction { .. }
+        | ShipAction::PointDefenseAction { .. }
+        | ShipAction::DeleteFireAction { .. }
+        | ShipAction::ReloadAction { .. }
+        | ShipAction::DeleteReloadAction { .. } => owner != ship_name,
         ShipAction::LeadershipCheck { boosts } => {
           boosts.retain(|boost| {
             !matches!(boost,
@@ -973,7 +975,8 @@ impl Entities {
   #[allow(clippy::too_many_lines)]
   pub fn fire_actions(
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
-    ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+    reloading: &HashMap<String, Vec<usize>>, ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap,
+    rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Nothing fires without fire control: not the guns, not point defence, not
     // sand. Judged on the snapshot, since everyone fires at once.
@@ -1008,7 +1011,7 @@ impl Entities {
     let point_defense_actions = point_defense_actions.as_slice();
 
     // Create a snapshot of all the sand capabilities of each ship.
-    let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions);
+    let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions, reloading);
 
     // Point-defence batteries are automatic: they need no action, no gunner and
     // no decision, so every ship that has one gets a pool whether or not its
@@ -1159,17 +1162,19 @@ impl Entities {
 
         let (missiles, effects) =
           do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
-        // Debit the magazine for what actually left the rails. The snapshot
+        // Debit the mount for what actually left the rails. The snapshot
         // the fire actions worked from capped the salvo; this is where the
         // live ship pays for it.
         if let Some(ship) = self.ships.get(attacker) {
           let mut ship = ship.write().unwrap();
           for missile in &missiles {
-            let count = u32::from(missile.count);
-            if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
-              ship.magazine.torpedoes = ship.magazine.torpedoes.saturating_sub(count);
+            let kind = if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
+              crate::ship::WeaponType::Torpedo
             } else {
-              ship.magazine.missiles = ship.magazine.missiles.saturating_sub(count);
+              crate::ship::WeaponType::Missile
+            };
+            if let Some(load) = ship.loaded.get_mut(missile.mount).and_then(|load| load.of_mut(kind)) {
+              *load = load.saturating_sub(u32::from(missile.count));
             }
           }
         }
@@ -1563,6 +1568,8 @@ impl Entities {
           ShipAction::PointDefenseAction { .. }
           | ShipAction::FireAction { .. }
           | ShipAction::DeleteFireAction { .. }
+          | ShipAction::ReloadAction { .. }
+          | ShipAction::DeleteReloadAction { .. }
           | ShipAction::Jump { .. }
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
@@ -3054,7 +3061,11 @@ impl Entities {
           // turn through the Captain HUD).
           // Anti-actions are consumed by `merge` and should never reach here, but
           // strip them defensively if they do.
+          // A Reload is a round's work, chosen again each time it is wanted:
+          // nothing reloads by itself.
           ShipAction::DeleteFireAction { .. }
+          | ShipAction::ReloadAction { .. }
+          | ShipAction::DeleteReloadAction { .. }
           | ShipAction::Jump { .. }
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
@@ -4582,6 +4593,11 @@ mod tests {
       None,
     );
 
+    // The design's 80 canisters: each sandcaster turret's twenty in it, and
+    // the rest in stores.
+    let fresh = Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(fresh.aboard().sand, 80);
+    let loaded = serde_json::to_value(&fresh.loaded).unwrap();
     let cmp = json!({
     "metadata":{"name":"","description":"","owner":""},
     "filename":"","round":1,
@@ -4598,7 +4614,8 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
-        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 40},
+        "loaded": loaded,
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4617,7 +4634,8 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
-        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 40},
+        "loaded": loaded,
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4636,7 +4654,8 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
-        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 40},
+        "loaded": loaded,
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -7513,6 +7532,7 @@ mod tests {
         }],
       )],
       &[],
+      &HashMap::new(),
       &snapshot,
       &BoostMap::default(),
       &mut rng,

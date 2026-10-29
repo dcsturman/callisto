@@ -63,14 +63,25 @@ fn software_of(design: &str) -> serde_json::Value {
   serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
 }
 
-/// A default crew's gunnery: one unskilled gunner per mount, which is what a
-/// ship nobody wrote a crew for sails with.
-/// What a design's magazine holds fresh from the yard.
-fn magazine_of(design: &str) -> serde_json::Value {
+/// A design's ship fresh from the yard.
+fn fresh(design: &str) -> callisto::ship::Ship {
   let templates = callisto::ship::get_ship_templates_snapshot();
-  serde_json::to_value(callisto::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+  let template = templates.get(design).unwrap().clone();
+  callisto::ship::Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &template, None, None)
 }
 
+/// What a design's stores hold fresh from the yard: what its mounts cannot.
+fn magazine_of(design: &str) -> serde_json::Value {
+  serde_json::to_value(fresh(design).magazine).unwrap()
+}
+
+/// What each of a design's mounts holds fresh from the yard.
+fn loaded_of(design: &str) -> serde_json::Value {
+  serde_json::to_value(&fresh(design).loaded).unwrap()
+}
+
+/// A default crew's gunnery: one unskilled gunner per mount, which is what a
+/// ship nobody wrote a crew for sails with.
 fn gunnery_of(design: &str) -> serde_json::Value {
   let templates = callisto::ship::get_ship_templates_snapshot();
   let mounts = templates.get(design).unwrap().weapons.len();
@@ -839,6 +850,7 @@ async fn integration_add_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }],
@@ -935,6 +947,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         },
@@ -957,6 +970,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }],
@@ -1017,6 +1031,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         },
@@ -1039,6 +1054,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }]});
@@ -1098,6 +1114,7 @@ async fn integration_add_planet_ship() {
      "sensor_locks": [],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
      "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
      "software": software_of("Buccaneer"),
      "software_running": software_running_of("Buccaneer")
     },
@@ -1120,6 +1137,7 @@ async fn integration_add_planet_ship() {
      "sensor_locks": [],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
      "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
      "software": software_of("Buccaneer"),
      "software_running": software_running_of("Buccaneer")
     }]});
@@ -1294,6 +1312,10 @@ async fn integration_update_missile() {
     panic!("Improper response to update request received.");
   }
 
+  // The rack fired three of what it held.
+  let mut fired_three = fresh("System Defense Boat").loaded;
+  fired_three[1].missiles -= 3;
+  let fired_three = serde_json::to_value(&fired_three).unwrap();
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
@@ -1316,8 +1338,9 @@ async fn integration_update_missile() {
              "sensor_locks": [],
              "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             // Three missiles away this round, and the magazine shows it.
-             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0}
+             // Three missiles away this round, and the rack shows it.
+             "magazine": magazine_of("System Defense Boat"),
+             "loaded": fired_three
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -1338,7 +1361,8 @@ async fn integration_update_missile() {
              "sensor_locks": [],
              "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             "magazine": magazine_of("System Defense Boat")
+             "magazine": magazine_of("System Defense Boat"),
+         "loaded": loaded_of("System Defense Boat")
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
@@ -2837,4 +2861,70 @@ async fn integration_squadrons() {
   .await;
   assert!(matches!(reply, ResponseMsg::Error(_)), "{reply:?}");
   send_quit(&mut stream).await;
+}
+
+/// A Reload goes over the wire like any other order, is queued beside the
+/// mount's others, and is reported when the round resolves -- here refused,
+/// since a ship fresh from the yard has nothing to reload.
+#[tokio::test]
+async fn integration_reload_action() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+  callisto::ship::config_test_ship_templates().await;
+
+  let message = rpc(
+    &mut stream,
+    RequestMsg::AddShip(AddShipMsg {
+      name: "ship1".to_string(),
+      position: [0.0, 0.0, 0.0].into(),
+      velocity: [0.0, 0.0, 0.0].into(),
+      design: "System Defense Boat".to_string(),
+      crew: None,
+      weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
+      features_on: None,
+      controller: None,
+      orders: None,
+      software: Some(vec![]),
+    }),
+  )
+  .await;
+  assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+  drain_entity_response(&mut stream).await;
+
+  let reload = vec![("ship1".to_string(), vec![ShipAction::ReloadAction { weapon_id: 1 }])];
+  let _response = rpc(&mut stream, RequestMsg::ModifyActions(reload)).await;
+  let ResponseMsg::EntityResponse(entities) = drain_entity_response(&mut stream).await else {
+    panic!("Expected EntityResponse");
+  };
+  assert!(
+    entities
+      .actions
+      .iter()
+      .any(|(name, actions)| name == "ship1" && actions.contains(&ShipAction::ReloadAction { weapon_id: 1 })),
+    "the Reload is queued: {:?}",
+    entities.actions
+  );
+
+  let ResponseMsg::Effects(effects) = rpc(&mut stream, RequestMsg::Update).await else {
+    panic!("Improper response to update request received.");
+  };
+  let lines: Vec<String> = effects.effects.iter().map(EffectMsg::rendered).collect();
+  assert!(
+    lines
+      .iter()
+      .any(|line| line.contains("mount 2") && line.contains("already full")),
+    "{lines:#?}"
+  );
+  let ResponseMsg::EntityResponse(entities) = drain_entity_response(&mut stream).await else {
+    panic!("Expected EntityResponse");
+  };
+  assert!(entities.actions.is_empty(), "a Reload is one round's work");
 }

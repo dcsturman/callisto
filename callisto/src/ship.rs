@@ -482,13 +482,22 @@ pub struct Ship {
   /// Rounds of ion suppression still to run.  Zero means none.
   #[serde(default, skip_serializing_if = "is_zero_u8")]
   pub ion_rounds: u8,
-  /// Missiles, torpedoes and sandcaster barrels still aboard.
+  /// Missiles, torpedoes and sandcaster barrels in stores: what is aboard
+  /// beyond what the mounts hold.
   ///
-  /// Spent as they are fired and thrown, and restored when the scenario is
-  /// reset. A ship that runs out cannot launch or disperse, which is what
-  /// makes a long missile duel a question of stores as well as nerve.
+  /// A mount fires from its own load ([`Ship::loaded`]), and a Reload refills
+  /// it from here. Restored when the scenario is reset. A ship whose stores
+  /// run out fires what is in its mounts and then nothing, which is what makes
+  /// a long missile duel a question of stores as well as nerve.
+  ///
+  /// A ship read without `loaded` -- every scenario written before mounts held
+  /// loads -- takes this as its whole stock and fills the mounts from it.
   #[serde(default)]
   pub magazine: Magazine,
+  /// What each mount holds ready to fire, index-aligned with
+  /// [`Ship::weapons`]. A battery's entry holds all its mounts' loads.
+  #[serde(default)]
+  pub loaded: Vec<Magazine>,
   /// Who is giving this ship its orders: the people at its consoles, or the
   /// AI service.
   ///
@@ -1723,23 +1732,155 @@ impl Magazine {
     *self == Magazine::default()
   }
 
-  /// What a design carries when its write-up does not say.
+  /// Everything a design carries: its mounts' loads and its stores together.
   ///
-  /// Twelve missiles per rack and twenty barrels per sandcaster, which is
-  /// what the small ships that do state a magazine carry; three torpedoes
-  /// per launcher, matching the barbette we already assume holds three.
+  /// A design that states a magazine carries that; one that does not carries
+  /// what [`Magazine::for_weapons`] gives its armament.
   #[must_use]
   pub fn for_design(design: &ShipDesignTemplate) -> Magazine {
     if !design.magazine.is_empty() {
       return design.magazine;
     }
-    let mut magazine = Magazine::default();
-    for weapon in &design.weapons {
-      magazine.missiles += 12 * u32::from(weapon.count_of(WeaponType::Missile));
-      magazine.torpedoes += 3 * u32::from(weapon.count_of(WeaponType::Torpedo));
-      magazine.sand += 20 * u32::from(weapon.count_of(WeaponType::Sand));
+    Magazine::for_weapons(&design.weapons, design.displacement)
+  }
+
+  /// What an armament carries when its design's write-up does not say.
+  ///
+  /// Twelve missiles per rack, twenty barrels per sandcaster and three
+  /// torpedoes per launcher, which is what the small ships that do state a
+  /// magazine carry -- or the mount's own load, where the book gives it more
+  /// (a barbette's 25 missiles, a bay's twelve salvos). What the mounts cannot
+  /// hold is stores.
+  #[must_use]
+  pub fn for_weapons(weapons: &[Weapon], displacement: u32) -> Magazine {
+    weapons.iter().fold(Magazine::default(), |total, weapon| {
+      let mounts = u32::from(weapon.mounts());
+      let capacity = mount_capacity(weapon, displacement);
+      total.plus(Magazine {
+        missiles: capacity
+          .missiles
+          .max(12 * u32::from(weapon.count_of(WeaponType::Missile)) * mounts),
+        torpedoes: capacity
+          .torpedoes
+          .max(3 * u32::from(weapon.count_of(WeaponType::Torpedo)) * mounts),
+        sand: capacity.sand.max(20 * u32::from(weapon.count_of(WeaponType::Sand)) * mounts),
+      })
+    })
+  }
+
+  /// How many of the munition a gun of `kind` uses. Zero for a gun that uses
+  /// none.
+  #[must_use]
+  pub fn of(&self, kind: WeaponType) -> u32 {
+    match kind {
+      WeaponType::Missile => self.missiles,
+      WeaponType::Torpedo => self.torpedoes,
+      WeaponType::Sand => self.sand,
+      _ => 0,
     }
-    magazine
+  }
+
+  /// The count for `kind`, for spending or filling. `None` for a gun that
+  /// uses no munition.
+  pub fn of_mut(&mut self, kind: WeaponType) -> Option<&mut u32> {
+    match kind {
+      WeaponType::Missile => Some(&mut self.missiles),
+      WeaponType::Torpedo => Some(&mut self.torpedoes),
+      WeaponType::Sand => Some(&mut self.sand),
+      _ => None,
+    }
+  }
+
+  #[must_use]
+  pub fn plus(self, other: Magazine) -> Magazine {
+    Magazine {
+      missiles: self.missiles + other.missiles,
+      torpedoes: self.torpedoes + other.torpedoes,
+      sand: self.sand + other.sand,
+    }
+  }
+
+  /// Each count the smaller of the two.
+  #[must_use]
+  pub fn min(self, other: Magazine) -> Magazine {
+    Magazine {
+      missiles: self.missiles.min(other.missiles),
+      torpedoes: self.torpedoes.min(other.torpedoes),
+      sand: self.sand.min(other.sand),
+    }
+  }
+
+  #[must_use]
+  pub fn saturating_sub(self, other: Magazine) -> Magazine {
+    Magazine {
+      missiles: self.missiles.saturating_sub(other.missiles),
+      torpedoes: self.torpedoes.saturating_sub(other.torpedoes),
+      sand: self.sand.saturating_sub(other.sand),
+    }
+  }
+}
+
+/// The munitions a gun of this kind fires: missiles, torpedoes or sand.
+#[must_use]
+pub fn uses_munitions(kind: WeaponType) -> bool {
+  matches!(kind, WeaponType::Missile | WeaponType::Torpedo | WeaponType::Sand)
+}
+
+/// What a mount holds ready to fire, for every mount in the entry.
+///
+/// "Each turret with one or more missile racks holds 12 missiles (missile
+/// racks on Firmpoints hold four missiles)" (High Guard p. 28; Core Rulebook
+/// p. 168), so the load is the turret's, however many racks share it. The same
+/// for sandcasters: twenty canisters a turret, four on a Firmpoint (High Guard
+/// p. 29; Core Rulebook p. 168). A barbette holds five salvos, 25 missiles
+/// (p. 31), a torpedo barbette three torpedoes (p. 31), and a bay twelve full
+/// salvos (pp. 33-34). A hull under 100 tons mounts on Firmpoints. A fixed
+/// mount loads as a turret does.
+#[must_use]
+pub fn mount_capacity(weapon: &Weapon, displacement: u32) -> Magazine {
+  let firmpoint = displacement < 100;
+  let turret_load = |kind: WeaponType, hardpoint: u32| {
+    if weapon.has_kind(kind) {
+      if firmpoint {
+        4
+      } else {
+        hardpoint
+      }
+    } else {
+      0
+    }
+  };
+  let salvos = |kind: WeaponType| {
+    weapon.firing(kind).map_or(0, |firing| {
+      match crate::rules_tables::profile_for(kind, firing.mount).and_then(|profile| profile.salvo) {
+        Some(Salvo::Fixed(missiles)) => 12 * u32::from(missiles),
+        _ => 0,
+      }
+    })
+  };
+  let one = match weapon.mount {
+    WeaponMount::Turret | WeaponMount::FixedMount => Magazine {
+      missiles: turret_load(WeaponType::Missile, 12),
+      torpedoes: 3 * u32::from(weapon.count_of(WeaponType::Torpedo)),
+      sand: turret_load(WeaponType::Sand, 20),
+    },
+    WeaponMount::Barbette => Magazine {
+      missiles: if weapon.has_kind(WeaponType::Missile) { 25 } else { 0 },
+      torpedoes: if weapon.has_kind(WeaponType::Torpedo) { 3 } else { 0 },
+      sand: 0,
+    },
+    WeaponMount::Bay(_) => Magazine {
+      missiles: salvos(WeaponType::Missile),
+      torpedoes: salvos(WeaponType::Torpedo),
+      sand: 0,
+    },
+    WeaponMount::Battery(_) => Magazine::default(),
+  };
+  let mounts = u32::from(weapon.mounts());
+  Magazine {
+    missiles: one.missiles * mounts,
+    torpedoes: one.torpedoes * mounts,
+    sand: one.sand * mounts,
   }
 }
 
@@ -1843,7 +1984,7 @@ impl Ship {
   ) -> Self {
     let weapons = weapons.map(|weapons| form_batteries(&weapons, design.displacement));
     let num_weapons = weapons.as_ref().map_or(design.weapons.len(), Vec::len);
-    Ship {
+    let mut ship = Ship {
       name,
       position,
       velocity,
@@ -1914,14 +2055,86 @@ impl Ship {
       ion_power_loss: 0,
       ion_bandwidth_loss: 0,
       ion_rounds: 0,
-      magazine: Magazine::for_design(design),
+      magazine: Magazine::default(),
+      loaded: vec![],
       controller: Controller::Human,
       ai_report: None,
       orders: None,
       goal: None,
       post: None,
       post_radius: None,
+    };
+    ship.stock(ship.full_stock());
+    ship
+  }
+
+  /// Everything this ship carries fresh from the yard: the design's stated
+  /// magazine, or what its armament carries when the design says nothing.
+  #[must_use]
+  pub fn full_stock(&self) -> Magazine {
+    if self.design.magazine.is_empty() {
+      Magazine::for_weapons(self.weapons(), self.design.displacement)
+    } else {
+      self.design.magazine
     }
+  }
+
+  /// Put `total` aboard: each mount filled in order, as far as it goes, and
+  /// the rest to stores. A stated magazine is the ship's whole stock, so no
+  /// design carries more or less than it says.
+  pub fn stock(&mut self, total: Magazine) {
+    let displacement = self.design.displacement;
+    let mut left = total;
+    let loaded: Vec<Magazine> = self
+      .weapons()
+      .iter()
+      .map(|weapon| {
+        let load = mount_capacity(weapon, displacement).min(left);
+        left = left.saturating_sub(load);
+        load
+      })
+      .collect();
+    self.loaded = loaded;
+    self.magazine = left;
+  }
+
+  /// What mount `weapon_id` holds ready to fire.
+  #[must_use]
+  pub fn loaded(&self, weapon_id: usize) -> Magazine {
+    self.loaded.get(weapon_id).copied().unwrap_or_default()
+  }
+
+  /// What mount `weapon_id` holds when full.
+  #[must_use]
+  pub fn capacity(&self, weapon_id: usize) -> Magazine {
+    self
+      .weapons()
+      .get(weapon_id)
+      .map(|weapon| mount_capacity(weapon, self.design.displacement))
+      .unwrap_or_default()
+  }
+
+  /// Everything aboard: every mount's load and the stores.
+  #[must_use]
+  pub fn aboard(&self) -> Magazine {
+    self.loaded.iter().fold(self.magazine, |total, load| total.plus(*load))
+  }
+
+  /// Whether a Reload on mount `weapon_id` would put anything in it: it has a
+  /// launcher or sandcaster below its load, and stores hold some of what it
+  /// is missing.
+  #[must_use]
+  pub fn can_reload(&self, weapon_id: usize) -> bool {
+    let missing = self.capacity(weapon_id).saturating_sub(self.loaded(weapon_id));
+    !missing.min(self.magazine).is_empty()
+  }
+
+  /// Gunners beyond the mounts: the crew's `gunnery` list is index-aligned
+  /// with the mounts, so its entries past the last are gunners with no mount
+  /// of their own, free to reload one.
+  #[must_use]
+  pub fn spare_gunners(&self) -> usize {
+    self.get_crew().gunners().saturating_sub(self.weapons().len())
   }
 
   /// Reset every current value to what the design says, discarding damage.
@@ -1941,7 +2154,7 @@ impl Ship {
     self.current_crew = self.design.crew;
     self.current_sensors = self.design.sensors;
     self.current_computer = self.design.computer;
-    self.magazine = Magazine::for_design(&self.design);
+    self.stock(self.full_stock());
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
@@ -1962,13 +2175,6 @@ impl Ship {
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
     self.current_computer = u32::max(self.current_computer, self.design.computer);
-    // A ship read from a scenario has no magazine on the wire, and serde
-    // fills zeros -- which would put every scenario ship to sea with empty
-    // racks. An empty magazine here means "not stated", so it is loaded from
-    // the design the same way a new ship's is.
-    if self.magazine.is_empty() {
-      self.magazine = Magazine::for_design(&self.design);
-    }
     // The same for software: a scenario states none, and a ship with an
     // empty list has nothing to run and refuses every order to run it --
     // while the console, which falls back to the design's list, shows a
@@ -1980,6 +2186,23 @@ impl Ship {
     // A scenario's own armament is split into batteries as a design's is.
     if let Some(weapons) = self.weapons.take() {
       self.weapons = Some(form_batteries(&weapons, self.design.displacement));
+    }
+    // A ship read from a scenario has no magazine on the wire, and serde
+    // fills zeros -- which would put every scenario ship to sea with empty
+    // racks. An empty magazine here means "not stated", so it is loaded from
+    // the design the same way a new ship's is.
+    //
+    // A ship written before mounts held loads states no `loaded`, and its
+    // magazine is then its whole stock, filled into the mounts first. One
+    // whose mounts no longer line up with its armament was re-armed, and goes
+    // to sea fully stocked.
+    if self.loaded.len() != self.weapons().len() {
+      let total = if self.loaded.is_empty() && !self.magazine.is_empty() {
+        self.magazine
+      } else {
+        self.full_stock()
+      };
+      self.stock(total);
     }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
@@ -4225,26 +4448,167 @@ mod tests {
   fn a_loaded_ship_is_given_the_magazine_its_design_carries() {
     let design = Arc::new(ShipDesignTemplate {
       name: "Harrier".to_string(),
+      displacement: 200,
       weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)],
       magazine: Magazine {
-        missiles: 12,
+        missiles: 30,
         torpedoes: 0,
         sand: 0,
       },
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.loaded(0).missiles, 12, "the rack is full");
+    assert_eq!(ship.magazine.missiles, 18, "and the rest is in stores");
 
     // What deserialization leaves behind.
     ship.magazine = Magazine::default();
+    ship.loaded = vec![];
     ship.fixup_current_values();
-    assert_eq!(ship.magazine.missiles, 12, "the racks are full again");
+    assert_eq!(ship.loaded(0).missiles, 12, "the rack is full again");
+    assert_eq!(ship.magazine.missiles, 18);
 
-    // A magazine that was spent down is left alone: only an empty one means
-    // "the file did not say".
-    ship.magazine.missiles = 4;
+    // A ship whose mounts say what they hold is left alone, even with its
+    // stores spent: only a missing load means "the file did not say".
+    ship.loaded[0].missiles = 4;
+    ship.magazine.missiles = 0;
     ship.fixup_current_values();
-    assert_eq!(ship.magazine.missiles, 4, "a part-spent magazine is not refilled");
+    assert_eq!(ship.loaded(0).missiles, 4, "a part-spent rack is not refilled");
+    assert_eq!(ship.magazine.missiles, 0, "nor are spent stores");
+  }
+
+  /// A ship written before mounts held loads states its whole magazine and
+  /// no loads. The mounts are filled from it, so it carries what it did.
+  #[test]
+  fn an_old_ship_fills_its_mounts_from_its_magazine() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Corvette".to_string(),
+      displacement: 400,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Old".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    // As the old wire had it: 33 missiles left in the one shared pool.
+    ship.loaded = vec![];
+    ship.magazine = Magazine {
+      missiles: 33,
+      torpedoes: 0,
+      sand: 0,
+    };
+    ship.fixup_current_values();
+    assert_eq!(
+      ship.loaded,
+      vec![
+        Magazine {
+          missiles: 12,
+          ..Magazine::default()
+        };
+        2
+      ]
+    );
+    assert_eq!(ship.magazine.missiles, 9);
+    assert_eq!(ship.aboard().missiles, 33, "nothing made or lost");
+
+    // The same ship serialized and read back keeps its split.
+    let json = serde_json::to_value(&ship).unwrap();
+    assert_eq!(json["loaded"][0]["missiles"], 12);
+    assert_eq!(json["magazine"]["missiles"], 9);
+  }
+
+  /// What each mount holds, from the books.
+  #[test]
+  fn a_mount_holds_the_books_load() {
+    let rack = |racks| Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, racks);
+    let caster = |casters| Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, casters);
+    // A turret's load, however many racks share it (HG p. 28, CRB p. 168).
+    assert_eq!(mount_capacity(&rack(1), 200).missiles, 12);
+    assert_eq!(mount_capacity(&rack(3), 200).missiles, 12);
+    // Firmpoints hold four (HG pp. 28-29).
+    assert_eq!(mount_capacity(&rack(1), 50).missiles, 4);
+    assert_eq!(mount_capacity(&caster(1), 50).sand, 4);
+    assert_eq!(mount_capacity(&caster(3), 400).sand, 20);
+    let fixed = Weapon::single(WeaponType::Missile, WeaponMount::FixedMount);
+    assert_eq!(mount_capacity(&fixed, 50).missiles, 4, "the heavy fighter's rack");
+    // Barbettes and bays (HG pp. 31, 33-34).
+    let barbette = |kind| Weapon::single(kind, WeaponMount::Barbette);
+    assert_eq!(mount_capacity(&barbette(WeaponType::Missile), 1000).missiles, 25);
+    assert_eq!(mount_capacity(&barbette(WeaponType::Torpedo), 70).torpedoes, 3);
+    let bay = |size| Weapon::single(WeaponType::Missile, WeaponMount::Bay(size));
+    assert_eq!(mount_capacity(&bay(BaySize::Small), 400).missiles, 144);
+    assert_eq!(mount_capacity(&bay(BaySize::Medium), 400).missiles, 288);
+    assert_eq!(mount_capacity(&bay(BaySize::Large), 400).missiles, 1440);
+    let torpedo_bay = Weapon::single(WeaponType::Torpedo, WeaponMount::Bay(BaySize::Small));
+    assert_eq!(mount_capacity(&torpedo_bay, 400).torpedoes, 36);
+    // A mixed turret holds each kind's load; a battery all its mounts'.
+    let mixed = Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![
+        Gun::new(WeaponType::Missile),
+        Gun::new(WeaponType::Sand),
+        Gun::new(WeaponType::Beam),
+      ],
+      count: 1,
+    };
+    assert_eq!(
+      mount_capacity(&mixed, 400),
+      Magazine {
+        missiles: 12,
+        torpedoes: 0,
+        sand: 20
+      }
+    );
+    assert_eq!(mount_capacity(&rack(3).times(4), 3000).missiles, 48);
+    // Lasers hold nothing.
+    assert!(mount_capacity(&Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3), 400).is_empty());
+  }
+
+  /// A design that says nothing carries what it did before mounts held
+  /// loads -- twelve a rack -- with the mounts filled first, so a triple
+  /// rack's turret holds its twelve and two dozen wait in stores. A bay is
+  /// given its twelve salvos.
+  #[test]
+  fn a_silent_design_keeps_its_total_and_fills_its_mounts() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Silent".to_string(),
+      displacement: 400,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let ship = Ship::new("Silent".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.loaded(0).missiles, 12);
+    assert_eq!(ship.loaded(1).missiles, 144);
+    assert_eq!(ship.magazine.missiles, 24);
+    assert_eq!(ship.aboard().missiles, 36 + 144);
+  }
+
+  /// A stated magazine smaller than the mounts hold fills them in order and
+  /// leaves nothing in stores.
+  #[test]
+  fn a_short_magazine_fills_the_first_mounts() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Short".to_string(),
+      displacement: 200,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+      ],
+      magazine: Magazine {
+        missiles: 16,
+        torpedoes: 0,
+        sand: 0,
+      },
+      ..ShipDesignTemplate::default()
+    });
+    let ship = Ship::new("Short".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!((ship.loaded(0).missiles, ship.loaded(1).missiles), (12, 4));
+    assert!(ship.magazine.is_empty());
+    assert!(!ship.can_reload(1), "nothing in stores to reload with");
   }
 
   /// A design that states its magazine keeps it; one that does not gets a
@@ -4276,6 +4640,13 @@ mod tests {
     assert_eq!(magazine.missiles, 36, "twelve a rack");
     assert_eq!(magazine.sand, 40, "twenty a caster");
     assert_eq!(magazine.torpedoes, 3, "three a launcher");
+    // A battery carries for every mount.
+    let battery = ShipDesignTemplate {
+      name: "Battery".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3).times(4)],
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(Magazine::for_design(&battery).missiles, 144);
   }
 
   /// Jump Control is what plots a jump: no software, no jump, whatever the
@@ -5248,6 +5619,42 @@ mod tests {
     assert!(Sensors::Civilian < Sensors::Military);
     assert!(Sensors::Military < Sensors::Improved);
     assert!(Sensors::Improved < Sensors::Advanced);
+  }
+
+  /// Every shipped design carries what it did before mounts held loads --
+  /// its stated magazine, or twelve a rack, twenty a caster and three a
+  /// torpedo launcher -- except where the book gives a mount more: a bay's
+  /// twelve salvos, a barbette's 25 missiles. Each fresh ship has it all
+  /// aboard, its mounts full where the stock allows.
+  #[tokio::test]
+  async fn shipped_designs_carry_what_they_did() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    for design in templates.values() {
+      let ship = Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+      assert_eq!(ship.aboard(), Magazine::for_design(design), "{}", design.name);
+      let book_load = design.weapons.iter().any(|weapon| {
+        matches!(weapon.mount, WeaponMount::Barbette | WeaponMount::Bay(_)) && weapon.has_kind(WeaponType::Missile)
+      });
+      if design.magazine.is_empty() && !book_load {
+        let before = design.weapons.iter().fold(Magazine::default(), |total, weapon| {
+          total.plus(Magazine {
+            missiles: 12 * u32::from(weapon.count_of(WeaponType::Missile)),
+            torpedoes: 3 * u32::from(weapon.count_of(WeaponType::Torpedo)),
+            sand: 20 * u32::from(weapon.count_of(WeaponType::Sand)),
+          })
+        });
+        assert_eq!(ship.aboard(), before, "{}", design.name);
+      }
+      for (mount, weapon) in design.weapons.iter().enumerate() {
+        assert!(
+          ship.loaded(mount).missiles <= ship.capacity(mount).missiles,
+          "{} mount {mount} ({})",
+          design.name,
+          String::from(weapon)
+        );
+      }
+    }
   }
 
   /// A client reading the world sees each ship's criticals: they survive the

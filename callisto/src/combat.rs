@@ -13,8 +13,8 @@ use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{
-  BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, SystemDamage, Weapon, WeaponMount,
-  WeaponProfile, WeaponType,
+  BridgeStation, Firing, Magazine, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, SystemDamage, Weapon,
+  WeaponMount, WeaponProfile, WeaponType,
 };
 use crate::software::SoftwareKind;
 use crate::{debug, error, info, warn};
@@ -1476,8 +1476,9 @@ pub(crate) fn find_range_band(distance: u32) -> Range {
 /// Also, if we check that sand casters are available but then cannot pop an element from the `sand_counts` list.
 #[allow(clippy::too_many_lines)]
 pub fn do_fire_actions<S: BuildHasher>(
-  attacker: &Ship, ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>, sand_counts: &mut HashMap<String, Vec<i32>, S>,
-  actions: &[ShipAction], boost_map: &BoostMap, rng: &mut dyn RngCore,
+  attacker: &Ship, ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>,
+  sand_counts: &mut HashMap<String, Vec<SandCloud>, S>, actions: &[ShipAction], boost_map: &BoostMap,
+  rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
   let mut new_missiles = vec![];
 
@@ -1524,11 +1525,10 @@ pub fn do_fire_actions<S: BuildHasher>(
   let fire_control_pool = i32::from(attacker.running_level(SoftwareKind::FireControl).unwrap_or(0));
   let mut fire_control_left = fire_control_pool;
 
-  // What is left in the magazine, spent down as this attacker's orders are
+  // What is left in each mount, spent down as this attacker's orders are
   // worked through. The live ship is debited by the caller from what was
   // actually launched.
-  let mut missiles_left = attacker.magazine.missiles;
-  let mut torpedoes_left = attacker.magazine.torpedoes;
+  let mut loads_left: Vec<Magazine> = attacker.loaded.clone();
 
   let mut effects: Vec<EffectMsg> = actions
     .iter()
@@ -1756,19 +1756,28 @@ pub fn do_fire_actions<S: BuildHasher>(
         // for none would be an order to do nothing, so one is the floor.
         let count = firing.salvo_limit.map_or(full_salvo, |limit| limit.clamp(1, full_salvo));
 
-        // Nothing leaves the rails that is not in the magazine. A short
-        // magazine throws what it has; an empty one says so.
-        let aboard = if firing.kind == WeaponType::Torpedo {
-          &mut torpedoes_left
-        } else {
-          &mut missiles_left
+        // Nothing leaves the rails that is not in the mount. A short load
+        // throws what it has; an empty mount says so, and waits for a Reload.
+        let Some(aboard) = loads_left.get_mut(*weapon_id).and_then(|load| load.of_mut(firing.kind)) else {
+          return vec![];
         };
         let count = count.min(u16::try_from(*aboard).unwrap_or(u16::MAX));
         if count == 0 {
+          let stores = attacker.magazine.of(firing.kind);
+          let advice = if stores > 0 {
+            format!("; {stores} in stores, so reload it")
+          } else {
+            "; none left in stores".to_string()
+          };
           return vec![EffectMsg::about(
             attacker.get_name(),
             MessageCategory::Attack,
-            format!("%s has no {}s left to launch.", String::from(&firing.kind).to_lowercase()),
+            format!(
+              "%s's {} (mount {}) is out of {}s{advice}.",
+              String::from(weapon),
+              weapon_id + 1,
+              String::from(&firing.kind).to_lowercase()
+            ),
           )];
         }
         *aboard -= u32::from(count);
@@ -1780,6 +1789,7 @@ pub fn do_fire_actions<S: BuildHasher>(
           target: target.get_name().to_string(),
           weapon: weapon.clone(),
           count,
+          mount: *weapon_id,
         });
 
         debug!(
@@ -1818,10 +1828,13 @@ pub fn do_fire_actions<S: BuildHasher>(
               Some(sand_casters) if !sand_casters.is_empty() => {
                 // There is a serious error if after checking if the sand_casters list isn't empty
                 // it then cannot pop an element. So unwrap() is safe here.
-                let modifier = sand_casters.pop().unwrap();
-                // One barrel per cloud dispersed (Core Rulebook p. 166 prices
-                // them by the barrel, and a ship carries a finite number).
-                target.magazine.sand = target.magazine.sand.saturating_sub(1);
+                let SandCloud { modifier, mount } = sand_casters.pop().unwrap();
+                // One canister per cloud dispersed, out of the mount that threw
+                // it (Core Rulebook p. 166 prices them by the canister, and a
+                // mount holds a finite number).
+                if let Some(load) = target.loaded.get_mut(mount) {
+                  load.sand = load.sand.saturating_sub(1);
+                }
                 let dice = i32::from(roll_dice(2, rng));
                 let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
                 // Same compact shape as an attack line: sand is part of the same
@@ -2011,10 +2024,27 @@ fn sand_summary(defender: &Ship, attacker: &str, sand_mods: &[i32], shots: u16) 
   EffectMsg::about(defender.get_name(), MessageCategory::Damage, line).at(attacker)
 }
 
+/// One sand cloud a defender can throw this round: the reaction's DM, and the
+/// mount it comes out of, which pays a canister for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SandCloud {
+  pub modifier: i32,
+  pub mount: usize,
+}
+
+/// Every ship's sand clouds for the round, the last thrown first.
+pub type SandCounts = HashMap<String, Vec<SandCloud>>;
+
+/// The sand each ship can throw this round: a cloud per sandcaster mount
+/// with canisters in it, a battery's per mount as far as its load goes.
+///
+/// A mount gets one reaction a round, so one on point defence throws none,
+/// and nor does one whose own gunner is reloading it (`reloading`).
 #[must_use]
-pub fn create_sand_counts<S: BuildHasher>(
+pub fn create_sand_counts<S: BuildHasher, T: BuildHasher>(
   ship_snapshot: &HashMap<String, Ship, S>, point_defense_actions: &[(String, Vec<ShipAction>)],
-) -> HashMap<String, Vec<i32>> {
+  reloading: &HashMap<String, Vec<usize>, T>,
+) -> SandCounts {
   ship_snapshot
     .iter()
     .map(|(name, ship)| {
@@ -2029,6 +2059,7 @@ pub fn create_sand_counts<S: BuildHasher>(
           ShipAction::PointDefenseAction { weapon_id, .. } => Some(*weapon_id),
           _ => None,
         })
+        .chain(reloading.get(name).into_iter().flatten().copied())
         .collect();
 
       (
@@ -2039,10 +2070,11 @@ pub fn create_sand_counts<S: BuildHasher>(
           .enumerate()
           .filter_map(|(index, weapon)| {
             if reacting.contains(&index) {
-              debug!("(Combat.create_sand_counts) Mount {index} on {name} is on point defence, so it cannot also disperse sand.");
+              debug!("(Combat.create_sand_counts) Mount {index} on {name} is on point defence or reloading, so it cannot also disperse sand.");
               return None;
             }
-            if ship.magazine.sand == 0 {
+            let canisters = ship.loaded(index).sand;
+            if canisters == 0 {
               // Nothing left to throw.
               return None;
             }
@@ -2072,12 +2104,13 @@ pub fn create_sand_counts<S: BuildHasher>(
             } else {
               None
             }
-            .map(|modifier| (modifier, weapon.mounts()))
+            .map(|modifier| (SandCloud { modifier, mount: index }, weapon.mounts().min(u16::try_from(canisters).unwrap_or(u16::MAX))))
           })
           // A sandcaster battery throws a cloud from every mount, as a
-          // point-defence battery adds every mount to the pool.
-          .flat_map(|(modifier, mounts)| std::iter::repeat_n(modifier, usize::from(mounts)))
-          .collect::<Vec<i32>>(),
+          // point-defence battery adds every mount to the pool, while it has
+          // the canisters.
+          .flat_map(|(cloud, clouds)| std::iter::repeat_n(cloud, usize::from(clouds)))
+          .collect::<Vec<SandCloud>>(),
       )
     })
     .collect()
@@ -2673,7 +2706,7 @@ mod battery_tests {
     let mut ships: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();
     ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
     let snapshot: HashMap<String, Ship> = HashMap::new();
-    let mut sand = create_sand_counts(&snapshot, &[]);
+    let mut sand = create_sand_counts(&snapshot, &[], &HashMap::new());
 
     let actions = vec![ShipAction::FireAction {
       weapon_id: 0,
@@ -3242,7 +3275,7 @@ mod battery_tests {
     let ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship)].into_iter().collect();
 
     // With no point-defence order, the sandcaster is available.
-    let free = create_sand_counts(&ships, &[]);
+    let free = create_sand_counts(&ships, &[], &HashMap::new());
     assert_eq!(free["Batteries"].len(), 1, "the sandcaster should be ready: {free:?}");
 
     // Ordering point defence on that mount spends its reaction.
@@ -3253,11 +3286,45 @@ mod battery_tests {
         protecting: None,
       }],
     )];
-    let spent = create_sand_counts(&ships, &pd);
+    let spent = create_sand_counts(&ships, &pd, &HashMap::new());
     assert!(
       spent["Batteries"].is_empty(),
       "a mount on point defence has no reaction left for sand: {spent:?}"
     );
+  }
+
+  /// A mount whose own gunner is reloading it makes no reaction either, and
+  /// a sandcaster with no canisters in it throws nothing, whatever is in
+  /// stores.
+  #[test]
+  fn a_reloading_or_empty_sandcaster_throws_nothing() {
+    let mut ship = ship_with(vec![Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 1)]);
+    let mut ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship.clone())].into_iter().collect();
+    let reloading: HashMap<String, Vec<usize>> = [("Batteries".to_string(), vec![0])].into_iter().collect();
+    assert_eq!(create_sand_counts(&ships, &[], &HashMap::new())["Batteries"].len(), 1);
+    assert!(
+      create_sand_counts(&ships, &[], &reloading)["Batteries"].is_empty(),
+      "its gunner is reloading"
+    );
+
+    ship.loaded[0].sand = 0;
+    ship.magazine.sand = 40;
+    ships.insert("Batteries".to_string(), ship);
+    assert!(
+      create_sand_counts(&ships, &[], &HashMap::new())["Batteries"].is_empty(),
+      "the caster is empty"
+    );
+  }
+
+  /// A sandcaster battery throws a cloud per mount only while its load lasts.
+  #[test]
+  fn a_sandcaster_battery_throws_what_it_holds() {
+    let mut ship = ship_with(vec![Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 3).times(4)]);
+    ship.loaded[0].sand = 2;
+    let ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship)].into_iter().collect();
+    let clouds = &create_sand_counts(&ships, &[], &HashMap::new())["Batteries"];
+    assert_eq!(clouds.len(), 2);
+    assert!(clouds.iter().all(|cloud| cloud.mount == 0));
   }
 
   /// Attacking does *not* spend the sandcaster, which is the whole reason to put
@@ -3273,7 +3340,7 @@ mod battery_tests {
 
     // A fire action is not a point-defence action, so sand is untouched.  The
     // gunner attacks with the laser and still reacts with the sandcaster.
-    let counts = create_sand_counts(&ships, &[]);
+    let counts = create_sand_counts(&ships, &[], &HashMap::new());
     assert_eq!(counts["Batteries"].len(), 1);
   }
 
@@ -3371,7 +3438,7 @@ mod tests {
     // Create sand counts
     let mut sand_ships = HashMap::with_capacity(1);
     sand_ships.insert("Target".to_string(), target.clone());
-    let mut sand_counts = create_sand_counts(&sand_ships, &[]);
+    let mut sand_counts = create_sand_counts(&sand_ships, &[], &HashMap::new());
 
     let actions = vec![
       ShipAction::FireAction {
@@ -5183,7 +5250,7 @@ mod tests {
 
     let mut snapshot = HashMap::new();
     snapshot.insert("Executor".to_string(), defender.clone());
-    let mut sand_counts = create_sand_counts(&snapshot, &[]);
+    let mut sand_counts = create_sand_counts(&snapshot, &[], &HashMap::new());
     assert_eq!(
       sand_counts.get("Executor").map(Vec::len),
       Some(1),
@@ -5420,7 +5487,7 @@ mod tests {
       ships_unboosted.insert("Target".to_string(), Arc::new(RwLock::new(target_unboosted.clone())));
       let mut sand_unboosted: HashMap<String, Ship> = HashMap::new();
       sand_unboosted.insert("Target".to_string(), target_unboosted.clone());
-      let mut sand_counts_unboosted = create_sand_counts(&sand_unboosted, &[]);
+      let mut sand_counts_unboosted = create_sand_counts(&sand_unboosted, &[], &HashMap::new());
       let mut rng_unboosted = StdRng::seed_from_u64(seed);
 
       do_fire_actions(
@@ -5448,7 +5515,7 @@ mod tests {
       ships_boosted.insert("Target".to_string(), Arc::new(RwLock::new(target_boosted.clone())));
       let mut sand_boosted: HashMap<String, Ship> = HashMap::new();
       sand_boosted.insert("Target".to_string(), target_boosted.clone());
-      let mut sand_counts_boosted = create_sand_counts(&sand_boosted, &[]);
+      let mut sand_counts_boosted = create_sand_counts(&sand_boosted, &[], &HashMap::new());
       let mut boost_map = BoostMap::default();
       boost_map.insert(BoostTarget::AssistGunner {
         ship: "Attacker".to_string(),
@@ -5534,7 +5601,7 @@ mod tests {
     ships.insert("Target".to_string(), Arc::new(RwLock::new(target.clone())));
     let mut sand_input: HashMap<String, Ship> = HashMap::new();
     sand_input.insert("Target".to_string(), target);
-    let mut sand_counts = create_sand_counts(&sand_input, &[]);
+    let mut sand_counts = create_sand_counts(&sand_input, &[], &HashMap::new());
 
     let actions = vec![
       ShipAction::FireAction {
@@ -5779,7 +5846,7 @@ mod weapon_battery_tests {
     let mut ships = HashMap::new();
     ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
     let mut sand_counts = HashMap::new();
-    sand_counts.insert("Target".to_string(), vec![0, 0]);
+    sand_counts.insert("Target".to_string(), vec![SandCloud { modifier: 0, mount: 0 }; 2]);
     let (_, effects) = do_fire_actions(
       &attacker,
       &mut ships,
@@ -5807,7 +5874,7 @@ mod weapon_battery_tests {
     let ship = ship_with("Target", vec![sand], 1, 0.0);
     let mut snapshot = HashMap::new();
     snapshot.insert("Target".to_string(), ship);
-    assert_eq!(create_sand_counts(&snapshot, &[])["Target"].len(), 5);
+    assert_eq!(create_sand_counts(&snapshot, &[], &HashMap::new())["Target"].len(), 5);
   }
 
   /// Every shipped design comes out of battery forming exactly as it went in.

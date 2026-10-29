@@ -267,6 +267,11 @@ pub struct LaunchMissileMsg {
   /// Missiles in the salvo: one launch from one mount flies as one object.
   #[serde(default = "one_missile")]
   pub count: u16,
+  /// Which of the source's mounts threw it, so the launch is taken out of
+  /// that mount's load. Not on the wire: it matters only the round it is
+  /// fired.
+  #[serde(skip)]
+  pub mount: usize,
 }
 
 fn one_missile() -> u16 {

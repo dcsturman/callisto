@@ -17,6 +17,7 @@ use crate::payloads::{
   SetOrders, SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning,
   SetSquadron, ShipActionMsg, ShipDesignTemplateMsg,
 };
+use crate::reload::{self, Reload};
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
 use crate::{debug, info, warn};
@@ -1139,7 +1140,7 @@ impl PlayerManager {
     // engagements where the missile would otherwise impact in the same
     // round it was launched, with no defensive opportunity).
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, jam_missile_actions, point_defense_actions, engineer_actions): (
+    let (mut fire_actions, sensor_actions, jam_missile_actions, mut point_defense_actions, engineer_actions): (
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -1178,7 +1179,10 @@ impl PlayerManager {
         // the per-category slices. Nor do the anti-actions, which `merge`
         // consumes and which should never get this far -- but if one slips
         // through it belongs nowhere either.
+        // Reloads are worked out per ship below, and applied after fire.
         ShipAction::LeadershipCheck { .. }
+        | ShipAction::ReloadAction { .. }
+        | ShipAction::DeleteReloadAction { .. }
         | ShipAction::ClearSensorAction { .. }
         | ShipAction::ClearEngineerAction { .. }
         | ShipAction::ClearLeadershipCheck => (None, None, None, None, None),
@@ -1191,6 +1195,36 @@ impl PlayerManager {
         (ship_name.clone(), e_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
     }));
+
+    // Who reloads what, from the ships as the round starts. A mount its own
+    // gunner is reloading makes no attack and no reaction (Core Rulebook
+    // p. 172), so its Fire and Point Defence orders are set aside for the
+    // round -- and kept in the queue for the next.
+    let mut reload_lines: Vec<EffectMsg> = Vec::new();
+    let reloads: Vec<(String, Vec<Reload>)> = actions
+      .iter()
+      .filter_map(|(ship_name, ship_actions)| {
+        let ship = entities.ships.get(ship_name)?.read().unwrap();
+        let (reloads, mut refused) = reload::assign(&ship, ship_actions);
+        reload_lines.append(&mut refused);
+        (!reloads.is_empty()).then(|| (ship_name.clone(), reloads))
+      })
+      .collect();
+    let reloading: HashMap<String, Vec<usize>> = reloads
+      .iter()
+      .map(|(ship_name, reloads)| (ship_name.clone(), reload::busy(reloads)))
+      .collect();
+    for (ship_name, ship_actions) in fire_actions.iter_mut().chain(point_defense_actions.iter_mut()) {
+      let Some(busy) = reloading.get(ship_name) else {
+        continue;
+      };
+      ship_actions.retain(|action| match action {
+        ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id, .. } => {
+          !busy.contains(weapon_id)
+        }
+        _ => true,
+      });
+    }
 
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
@@ -1220,6 +1254,7 @@ impl PlayerManager {
     effects.append(&mut entities.fire_actions(
       &fire_actions,
       &point_defense_actions,
+      &reloading,
       &ship_snapshot,
       &boost_map,
       &mut rng,
@@ -1242,6 +1277,15 @@ impl PlayerManager {
       .map(|(ship_name, _)| ship_name.clone())
       .collect();
     effects.append(&mut entities.broad_spectrum_pass(&jammed_by_hand, &mut rng));
+
+    // Reloads land after fire, so a mount a spare gunner reloads both fires
+    // and is refilled this round; and before movement.
+    effects.append(&mut reload_lines);
+    for (ship_name, reloads) in &reloads {
+      if let Some(ship) = entities.ships.get(ship_name) {
+        effects.append(&mut reload::apply(&mut ship.write().unwrap(), reloads));
+      }
+    }
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
