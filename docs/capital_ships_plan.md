@@ -39,10 +39,10 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
   - a primary critical on Effect 6+;
   - sustained damage, one severity-1 critical per tenth of hull lost, counted across a single huge hit too.
 
-  Nothing depends on the target's size.
+  Nothing depends on the target's size. **Done** (steps 1 and 6): HG p. 27's thresholds on the primary critical and the large-ship tables over 5,000 t.
 - **Every missile is its own entity.** A large missile bay fires 120 a round, so one Tigress broadside would create about 5,000 entities. **Done** (step 3): a launch is one salvo entity with a count.
 - **Screens are implemented:** meson screens and nuclear dampers (`ScreenType`, `roll_screen_pool`).
-  - The FAQ's opening section still says they are not, and so do the headers of `docs/screens_design.md` and `docs/pd_batteries_design.md`. Step 1 fixes those words.
+  - The FAQ's opening section still says they are not, and so do the headers of `docs/screens_design.md` and `docs/pd_batteries_design.md`. Step 1 fixes those words. **Done.**
 - **Small craft do not exist.** No docking, hangars, launch tubes or carried craft. The two "carriers" in `ship_templates/` (Sakhai, Ulfhednar) are their guns only.
 - **The network** (`ai-ships/src/network/`) has:
   - 15 heads;
@@ -52,7 +52,7 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
 
   Adding a head changes `HEAD_SIZES`, which `net.rs` and `side_net.rs` check, so the shipped `side.cside` must be retrained.
 
-**A bug found on the way.** The HG FAQ changes the large particle beam bay's range from Distant to **Very Long** (HG FAQ p. 1, "Large Bay Weapons Table (page 33)"). Callisto still gives it Distant (`rules_tables.rs`, `LargeBay => … Range::Distant`), and the FAQ repeats it ("a particle beam only reaches Distant out of a large bay"). Step 1 fixes both.
+**A bug found on the way.** The HG FAQ changes the large particle beam bay's range from Distant to **Very Long** (HG FAQ p. 1, "Large Bay Weapons Table (page 33)"). Callisto still gives it Distant (`rules_tables.rs`, `LargeBay => … Range::Distant`), and the FAQ repeats it ("a particle beam only reaches Distant out of a large bay"). Step 1 fixes both. **Done.**
 
 ---
 
@@ -792,12 +792,12 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 
 | # | Step | Size | Retrain? |
 |---|---|---|---|
-| 1 | Size rules and fixes | S–M | No (evaluate) |
+| 1 | Size rules and fixes — **done** (with step 6) | S–M | No (evaluate) |
 | 2 | Weapon batteries — **done** (branch `batteries`) | L | No (evaluate) |
 | 3 | Missile salvos as one entity — **done** (branch `salvos`) | M | No (evaluate) |
 | 4 | Reloading: mount loads, spare gunners, the Reload choice — **done** | M | No (evaluate) |
 | 5 | Spinal mounts — **done** | L | No |
-| 6 | Large-ship criticals, frozen watch, sensor operators | M | No |
+| 6 | Large-ship criticals, frozen watch, sensor operators — **done** | M | No |
 | 7 | Capital designs to the Tigress, scenarios, the remaining size hardening | M | No |
 | 8 | **Retrain 1:** capital ships and reloading | M + GPU run | **Yes** |
 | 9 | Embarked craft: engine, rearming aboard | L | No |
@@ -806,7 +806,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 | 12 | **Retrain 2:** the `Flight` head | M + GPU run | **Yes** |
 | 13 | FAQ and docs | S–M | No |
 
-1. **Size rules and fixes.**
+1. **Size rules and fixes.** **Done**; see "Steps 1 and 6: what was built" below.
    - Criticals ignored on hulls over 2,000/10,000/100,000 t; spinal hits always crit (in place for step 5).
    - The large particle bay at Very Long.
    - The radiation DM, with `radiation_shielding`.
@@ -847,7 +847,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
    - **Damage dice:** already wide enough (`caa590be`: a `u16` total, to 255 dice). The ×1,000 damage arithmetic moves to `u64`.
    - Frontend summary, gunner card and odds.
    - *Tests:* table-driven profile tests against HG p. 35 and the Wind and Ghalalk figures; DM tests at each size boundary; a 66D spinal hit doing damage end to end.
-6. **Large-ship criticals, frozen watch, sensor operators.**
+6. **Large-ship criticals, frozen watch, sensor operators.** **Done**; see below.
    - Battery-percentage weapon criticals, the crew-percentage table and its DMs, and the cargo D6 table (cargo only until step 9).
    - `frozen_watch` and Revive; one Jam Missiles per 7,500 t, capped at the salvos incoming.
    - *Tests:* severity tables, threshold DMs, revive.
@@ -1017,6 +1017,46 @@ On `epic-fleet-control`.
 - The crew of 1 per 100 tons of spinal is only the design's `crew` count; crew criticals reaching it belong with the crew table.
 
 **For the user to check by eye:** no shipped design has a spinal yet (step 7 adds them), so try one by giving a scenario ship or a test design a `{"Spinal": 3}` meson. Then look at: the gunner card's spinal button and its "3×", greyed against a fighter; Shot Odds against a fighter and a cruiser at Short; the design tooltip in Add Ship; a results line, and the hover's "x1000 mount" and "-30% armour" for a particle spinal; and the magazine's spinal rounds on a railgun spinal.
+
+### Steps 1 and 6: what was built (2026-10-29)
+
+On `epic-fleet-control`.
+
+**Size rules** (`rules_tables.rs`, `combat.rs`).
+- `ignores_primary_critical(target_tons, mount_class)` is HG p. 27's table, applied in `resolve_attack` to the Effect-6 critical only; `MountClass::Spinal` is exempt everywhere, and exactly 2,000 tons is not "larger than 2,000". A missile takes its launcher's mount class. Sustained-damage criticals are untouched.
+- The large particle bay reaches Very Long (HG FAQ p. 1), and the rules test says so.
+- `base_hull_points`, `hull_points_options` and `hull_points_note`: HG p. 10's bands under every legal configuration and reinforcement product. A test checks every shipped design; the one exception is the Laboratory Ship (HG p. 185 prints 160 for a 360-ton dispersed hull, which is the 400-ton figure). The loader warns on a new design that matches nothing, and the Add Ship tooltip shows the plain figure beside a stated hull the formula does not give. No design's hull was changed.
+- **Radiation** (`Ship::radiation_hull_lost`, `meson_hull_lost`, `radiation_dm`): hull lost to Radiation-trait weapons is counted in `resolve_attack`, mesons apart, and `crew_dm` carries DM-1 per 10% (per 40% with `radiation_shielding`, which mesons ignore). The design field `radiation_shielding` is new, default false.
+- The FAQ's opening section, radiation line and large-bay line, and the headers of `screens_design.md` and `pd_batteries_design.md`, are brought up to date.
+
+**Large-ship tables** (`combat::apply_large_ship_crit`), for a target over 5,000 tons (`is_capital`).
+- **Weapons, severity 2+:** one live entry at random; `system_loss` rolls the Cargo and Weapons table and `SystemLoss::of` takes that share of the mounts it has left, rounded up, at least one. `Ship::mounts_down` (on the wire when any) is index-aligned with the weapons; `live_mounts` is what fires (`do_fire_actions`, `volley`), defends (point defence, repulsors, sand), and draws Power. Disabled mounts are `SystemDamage::MountsOff` and come back with a Weapon repair; destroyed mounts do not. A weapon with no mount left is switched off. Severity 5–6 adds a Hull critical.
+- **Crew:** `crew_crit_percent` of the complement off `current_crew`, at least one; the life-support lines as before. `crew_loss_dm` reads the DM off the crew left -- DM-1 at 90% and below, DM-2 at 70%, DM-4 at 25%, the worst -- so a severity-3 hit's 10% is under the DM-1, as the table's "unless restored above 90%" says.
+- **Cargo:** `CargoHit::of(1D)` is the carrier table; the fighter and small-craft rows are cargo until step 9, which will take craft from the hangar there; the frozen-watch row takes the severity share of the berths.
+- **The crew DM on every check** (`Ship::crew_dm_terms`: "crew losses" and "radiation"): attack terms (where the Sensors/Weapon severity-1 DM-1, `attack_dm`, is now applied too -- it had been decremented and never read), the pilot's assist, point defence, sensor checks and detection, every engineer check, and repairs by an engineer (not by drones). Not the dodge, which is a DM on the attacker.
+
+**Frozen watch and sensor stations.**
+- `ShipDesignTemplate.frozen_watch` and `Ship::frozen_watch`; `ShipAction::ReviveWatch { count }`, the captain's action for the round: `merge` makes it and `LeadershipCheck` replace each other, and a count of 0 withdraws it. `Entities::revive_watch_pass` runs as the round ends, after the engineers, so the crew is back for the next round, capped by the berths and the complement.
+- `jam_operators(tons)` = max(1, ⌊tons / 7,500⌋). `Entities::jam_extra_stations`: after the sensop's jam, the other stations each jam one of the largest salvoes still inbound, at the same skill without the captain's inspire, never more stations than salvoes.
+
+**Frontend.**
+- `lib/crewStrength.ts` mirrors the DMs, the station count, live mounts and the hull formula. The damage board lists the crew's strength and DM, the radiation DM and the frozen watch; the gunner card's battery badge reads "×12 (3 down)" and a tooltip says so; the captain card has the Revive control (count, Revive, Withdraw) and greys the Leadership button while one is queued; the sensor station says how many stations are on duty and what the extra ones do; Add Ship's tooltip notes a hull the formula does not give.
+- Wire: `mounts_down`, `frozen_watch`, `radiation_hull_lost`, `meson_hull_lost` on the ship, all omitted when zero; `radiation_shielding` and `frozen_watch` on the design; `ReviveWatch` in the action list. Old JSON round-trips: every shipped design still loads unchanged, and a ship without the new fields reads as whole.
+
+**AI.** No new features or heads; `side.rs`'s fingerprint test passes unchanged (a fresh ship's crew DM is 0, and the new wire fields are ignored by the observation). Tactics and the admiral do not revive or count stations; that can come with step 7's designs.
+
+**Rulings made on the way** (also in the FAQ):
+- The crew-loss DM is read off the crew left, by the table's "unless restored above" wording, so exactly 90% is under the DM-1. (The plan's "below" would have made a lone severity-3 hit carry no DM.)
+- The Revive is the captain's whole action, replacing the leadership check that round.
+- Extra jams are one station to a salvo, capped at the salvoes still inbound after the sensop's own jam.
+- Point-defence batteries, fixed mounts and small bays crit hulls up to 10,000 tons, being none of the classes HG names at 2,000.
+- The crew DM is not applied to the dodge.
+- A hull formula check cannot know a design's configuration, so it accepts any legal product of the modifiers; the Laboratory Ship is the listed exception.
+- Rads on people are not tracked; only the ship-level DM.
+
+**Not done:** the 200-game baseline before and after (deferred by the user to the retraining step).
+
+**For the user to check by eye:** no shipped design is over 5,000 tons, so give a scenario ship a test design over 5,000 t with a battery (`"count"`), a `frozen_watch` and `radiation_shielding`. Then: a Weapons critical's line and the gunner card's "(N down)" badge, and the Power board's draw; a Crew critical's line, the damage board's crew lines, and the "crew" term in a later attack's hover; the captain card's Revive and the next round's log line; a 15,000-ton ship's sensor station note and the "from sensor station 2" lines when two salvoes are inbound; the Add Ship tooltip on the Laboratory Ship.
 
 ## 9. Decisions and open questions
 

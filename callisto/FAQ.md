@@ -4,10 +4,11 @@ This FAQ gives additional detail on the state of the Callisto project.
 
 ## The big one: no capital ships
 
-**Callisto supports hulls up to 5,000 tons.** Traveller goes to 1,000,000, and closing that gap is a
-substantial piece of work rather than a few missing stats.  The two weapons problems, spinal mounts and
-weapon batteries, are now both in; no shipped design carries a spinal yet, and the large-ship critical
-hit rules are still to come:
+**Callisto's shipped designs stop at 5,000 tons.** Traveller goes to 1,000,000, and closing that gap is a
+substantial piece of work rather than a few missing stats.  The rules that change with size are now in --
+spinal mounts, weapon batteries, High Guard's size thresholds on criticals and its large-ship critical
+tables, the frozen watch, radiation on crews and one sensor station per 7,500 tons (see *Critical hits*
+below) -- and what is left is the designs themselves, which no shipped scenario carries yet:
 
 * **Spinal mounts** are supported: a design gives a weapon the mount `{"Spinal": 3}`, a multiple of its
   type's Base Size, and it has the book's x1,000 damage multiple, dice and Power by the multiple, a Hardpoint
@@ -18,9 +19,9 @@ hit rules are still to come:
   32 mounts by hull size (Imperial Navy p. 113), each with one gunner and one target.  See *Weapons* below.
   (Not to be confused with *point defence laser batteries*, a specific 20-ton installation, also supported.)
 
-Defensive **screens** — meson screens, nuclear dampers, black globe generators — are also unimplemented, and
-capital ships lean on them heavily.  Designs that carry them are simply missing that protection today; the
-design work is written up in `docs/screens_design.md`.
+Defensive **screens** are in for meson screens and nuclear dampers (`ScreenType`, angled by a screen
+gunner each round); black globe generators are not, being a referee's artefact rather than something a
+design buys.  The design record is `docs/screens_design.md`.
 
 Everything below is a smaller deviation within the tonnage we do support.
 
@@ -42,8 +43,8 @@ Everything below is a smaller deviation within the tonnage we do support.
     guns, railguns, meson guns, mass drivers, ion cannons, repulsors and point defence laser batteries.
   * Spinal mounts: mass drivers, mesons, particle accelerators and railguns (High Guard pp. 34-36).
   * Damage, range, armour penetration and hit modifiers depend on the **mount** as much as the weapon -- a
-    railgun reaches Short from a turret but Medium from a barbette, and a particle beam only reaches Distant
-    out of a large bay.
+    railgun reaches Short from a turret but Medium from a barbette.  (A large particle bay reaches Very
+    Long, not the book's Distant: the HG FAQ, p. 1, corrects the Large Bay Weapons table.)
   * Which weapons fit which mounts follows the book, so the editor will not offer a pairing High Guard does not
     sell: there is no torpedo turret, no laser bay and no meson gun below bay size.
   * **Repulsors** can be fitted but do nothing yet.  The book gives them "Special" damage because they deflect
@@ -88,7 +89,9 @@ Everything below is a smaller deviation within the tonnage we do support.
   * Missile and torpedo **warhead types** (nuclear, advanced, decoy and the rest) are not modelled; every
     missile carries a standard warhead.
   * Missile launch is detected by all ships.
-* **Radiation** is tracked on weapons that have the trait but has no effect on crews yet.
+* **Radiation** wears the crew down, as HG p. 31 has it: every 10% of hull lost to Radiation-trait weapons
+  is a cumulative DM-1 on everything the crew does, every 40% if the design has `radiation_shielding`,
+  which meson weapons ignore.  See *Critical hits* below.  Rads on individuals are not tracked.
 * _Boarding actions_ are outside the scope of Callisto.
 * Planets currently do not support gravity.  Currently we found the movement of ships near planets was just difficult hard to get right and there'd often be collisions.  This may be addressed in a future release.
 * _Astrogation_ checks for jump are considered to automatically succeed.  _Engineering (Jump)_ skill is used for the check to see if the jump is successful.  
@@ -334,6 +337,14 @@ round for every pair not already in contact.
 
 ---
 
+#### Addition — one Jam Missiles action per 7,500 tons
+"Assume that a ship has one on-duty sensor operator for every full 7,500 tons", each able to jam a
+different salvo (HG p. 34). The sensor station's Jam Missiles order is the first station's, and works as
+it always has, across everything inbound. The other stations go automatically to the largest other
+salvoes still inbound, one station to a salvo, each a check at the same operator's skill without the
+captain's inspire, and never more stations than there are salvoes left: a 75,000-ton ship would
+otherwise need ten orders a round. A ship under 15,000 tons has one station.
+
 ### Teams
 
 Teams are not a Mongoose concept at all; they exist so hand-offs have something
@@ -453,10 +464,16 @@ A laser battery on point defence makes a check for every mount in it, at its one
 all add to the pool. A sandcaster battery throws a cloud from every mount. Against a laser battery, each
 mount's shot can draw a cloud while the target has any to throw, as that many single shots would.
 
-#### Assumption — a weapons critical takes out the whole battery, for now
-A battery is one weapon, so a Weapons critical of severity 2 or more that picks it switches all of it off,
-as it would a single mount. High Guard's large-ship tables, which take a percentage of a battery, are still
-to come.
+#### Rule enforced — a weapons critical on a big ship takes a share of one battery
+On a ship over 5,000 tons a Weapons critical of severity 2 or more picks one battery, bay or spinal at
+random by entry and takes a share of its mounts from the Cargo and Weapons Critical Hit Severity table
+(HG p. 27): D3 x 10% disabled at severity 2, 1D x 10% destroyed at 3, all remaining destroyed at 4, and
+at 5 and 6 all destroyed with the Hull's severity raised by one. The share is rounded up and is never
+less than one mount, so a spinal, being one mount, goes out at any severity of 2 or more. The battery
+fires, defends and draws Power for the mounts it has left ("×12 (3 down)" on the gunner card); disabled
+mounts come back when the Weapon system is repaired, destroyed ones do not. Severity 1 stays the CRB's
+DM-1. On a ship of 5,000 tons or less a Weapons critical switches off the whole weapon it picks, as the
+CRB has it, a battery included.
 
 #### Addition — spinal mounts
 A design gives a weapon the mount `{"Spinal": 3}`: one weapon the length of the ship, a whole multiple of
@@ -584,6 +601,65 @@ occupant is reported but not tracked.
 Repairing the Bridge undoes the damage in reverse order: each severity
 recovered brings back what that level's hit took, most recent first, lost
 Bandwidth included. Injuries are not undone.
+
+#### Rule enforced — big ships shrug off small guns
+HG p. 27's thresholds apply to the primary critical, the one an Effect of 6 scores: a target larger than
+2,000 tons ignores criticals from turrets and barbettes; larger than 10,000 tons, from everything but
+medium and large bays and spinals; larger than 100,000 tons, from everything but large bays and spinals.
+A missile is a weapon of the mount that launched it. A point-defence battery, a fixed mount and a small
+bay are none of the listed classes and crit a hull up to 10,000 tons. Exactly 2,000 tons is not larger
+than 2,000, so a turret still crits the Sakhai and the Ulfhednar; the 3,000-ton Midu Agasham and the
+5,000-ton P.F. Sloan now take criticals only from bays and spinals. "Spinal mount weapons can always
+(and will!) cause critical hits", at every size. Sustained damage -- a critical for every tenth of the
+hull lost -- is suffered "as normal" by every ship.
+
+#### Interpretation — the large-ship critical tables apply to any target over 5,000 tons
+HG p. 27 brings in its Cargo, Crew and Weapons tables "when two large ships square off". Callisto keys
+them on the target alone, at HG p. 5's own definition of a capital ship, over 5,000 tons: a small
+attacker can only crit a big ship through sustained damage or a big gun anyway, and judging "large
+attacker" for a destroyer with one medium bay would be arbitrary.
+
+#### Rule enforced — crew criticals on big ships are percentages
+Over 5,000 tons the Crew row is the Crew Critical Hit Severity table (HG p. 27): 1%, 5%, 10%, 15%, 20%
+or 25% of the complement killed or disabled by severity, rounded up and never nobody, taken off the
+ship's `current_crew`. The life-support failures are reported as the CRB's rows report them. The DMs are
+read off the crew that is left rather than off which severities have landed, as the table words them:
+DM-1 "unless crew restored above 90%" of the complement, DM-2 unless above 70%, DM-4 unless above 25%,
+the worst that applies. So a severity-3 hit's 10% leaves the crew at 90% and under the DM-1. The DM is
+on every check the crew makes -- attacks, point defence, the pilot's assist, sensor actions, detection,
+engineering, repairs -- and is named "crew" in the roll. It is not on the dodge, which is a DM on the
+attacker's roll rather than a check of the pilot's.
+
+#### Addition — the frozen watch
+A design may give a `frozen_watch`, spare crew in low berths (HG p. 27). The captain revives any number
+of them with a Revive order, which is the captain's action for the round in place of the leadership
+check: queuing one withdraws the other. They are at their posts as the round ends, "the following turn",
+up to what the complement is short, and the crew DM lifts as the thresholds are crossed. A Cargo
+critical can kill them in their berths (below).
+
+#### Rule enforced — a cargo critical on a big ship rolls the carrier's D6 table
+Over 5,000 tons a Cargo critical rolls the D6 table HG p. 27 gives for a large military carrier: 1-2
+fighters, 3 other small craft, 4 the frozen watch, 5-6 cargo, and the Cargo and Weapons Severity table
+says how much of the row is lost -- 2D% at severity 1, D3 x 10% at 2, 1D x 10% at 3, all at 4, and all
+with a Hull critical at 5 and 6. Nothing is embarked yet, so the fighter and small-craft rows are cargo
+until carried craft exist (plan step 9), and so is the frozen-watch row on a ship without one. Cargo
+itself is not tracked, so a cargo result is a line in the log, as it is for a small ship.
+
+#### Rule enforced — radiation wears down crews
+A ship carries a cumulative DM-1 on every check its crew makes for every 10% of its hull lost to weapons
+with the Radiation trait, or every 40% if the design has `radiation_shielding`; meson weapons ignore the
+shielding, so their share is counted apart (HG p. 31). Only hull the ship had counts, and the DM is named
+"radiation" in the roll beside the crew-loss DM. Every ship is affected: HG frames the rule as a
+simplification for large crews, but writes it for all ships, and a size below which it stopped would be
+an invented threshold.
+
+#### Rule enforced — hull points follow the size bands
+A design keeps its stated `hull`, but a test recomputes HG p. 10's figure (1 per 2.5 tons, per 2 from
+25,000 and per 1.5 from 100,000, rounded down) under every legal mix of configuration (HG p. 11) and
+reinforced or light (HG p. 12), and fails on a shipped design that matches none of them unless it is
+listed as an exception with the reason. The one exception is the Laboratory Ship, whose published 160
+(HG p. 185) is the figure for 400 tons, not for its 360-ton dispersed hull. The loader logs the same
+check for a new design, and the Add Ship tooltip says when a stated hull is not the formula's.
 
 #### Change — a critically failed overload is a critical hit
 Failing an overload by 6 or more applies a severity +1 critical hit to that
@@ -868,8 +944,8 @@ idle. Reconnecting is just a page reload.
 
 ## Known gaps being considered for future versions
 
-* **Capital ships**: hulls above 5,000 tons, which needs spinal mounts before anything else -- see the top
-  of this document.
-* **Defensive screens**: meson screens, nuclear dampers and black globe generators.
+* **Capital ships**: the designs above 5,000 tons, and carriers with embarked craft -- see the top of this
+  document for what is already in place for them.
+* **Black globe generators**; meson screens and nuclear dampers are in.
 * **Ship Design Editor**: new ship designs can be created and saved by users.
 * **Scenario editor**: entire scenarios can be created and saved by users.

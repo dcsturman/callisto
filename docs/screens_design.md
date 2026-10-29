@@ -1,6 +1,8 @@
 # Screens and Repulsors
 
-Status: **design proposal, nothing implemented.**
+Status: **implemented** for meson screens and nuclear dampers (`ScreenType`, `roll_screen_pool`, angled
+by screen gunners each round); black globe generators and the tractor-beam half of repulsors are not.
+Kept as the design record; the FAQ has the rulings as played.
 Date: 2026-09-07, revised 2026-09-08 with decisions on allocation, nuclear
 warheads, black globes and tractor beams.
 Rules source: *Mongoose Traveller High Guard*, April 2024 update, pp. 40–41 (screens)
