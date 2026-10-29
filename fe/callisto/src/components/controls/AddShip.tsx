@@ -11,6 +11,7 @@ import {
   formatMcr,
   shipWeapons,
 } from "lib/shipDesignTemplates";
+import {hullPointsOptions} from "lib/crewStrength";
 import {
   Gun,
   Weapon,
@@ -1375,8 +1376,11 @@ const ShipDesignDetails = (render: {
     <>
       <h3>{design.name}</h3>
       <div className="ship-design-description-tooltip">
-        {design.displacement} tons with {design.hull} hull points and{" "}
-        {design.armor} armor.&nbsp;
+        {design.displacement} tons with {design.hull} hull points
+        {hullPointsOptions(design.displacement).includes(design.hull)
+          ? ""
+          : ` (High Guard's formula gives ${hullPointsOptions(design.displacement)[0]} plain)`}{" "}
+        and {design.armor} armor.&nbsp;
         {design.power} power back {design.maneuver}G thrust and jump{" "}
         {design.jump}. {weaponDesc}.
         {design.cost_mcr != null ? ` Price ${formatMcr(design.cost_mcr)}.` : " Price not recorded."}

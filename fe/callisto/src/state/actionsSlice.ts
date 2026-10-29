@@ -40,6 +40,8 @@ const newShipAction = () => {
     engineers: [] as EngineerState[],
     computerRepairs: [] as ShipSystem[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
+    reviveWatch: null as number | null,
+    clearRevive: false,
     pendingBoosts: [] as {target: BoostTarget; on: boolean; at: number}[],
     clearSensors: [] as number[],
     clearEngineers: [] as number[],
@@ -216,6 +218,24 @@ export const actionsSlice = createSlice({
       }
       updateActions(state);
     },
+    // The captain revives `count` of the frozen watch as the round ends, or
+    // withdraws the order with 0. It is the captain's action for the round,
+    // so queuing one drops the leadership check and its boosts.
+    setReviveWatch: (state, item: PayloadAction<{shipName: string; count: number}>) => {
+      state[item.payload.shipName] ??= newShipAction();
+      const slot = state[item.payload.shipName];
+      if (item.payload.count > 0) {
+        slot.reviveWatch = item.payload.count;
+        slot.clearRevive = false;
+        slot.leadershipCheck = null;
+        slot.pendingBoosts = [];
+        slot.clearLeadership = false;
+      } else {
+        slot.clearRevive = slot.reviveWatch != null;
+        slot.reviveWatch = null;
+      }
+      updateActions(state);
+    },
     // Idempotently add or remove a boost target. When the list goes empty,
     // set `clearLeadership` so the server strips its queued LeadershipCheck;
     // otherwise the LeadershipCheck wire form rides along on the ModifyActions
@@ -234,6 +254,11 @@ export const actionsSlice = createSlice({
       const nextBoosts = on ? [...boosts, item.payload.target] : boosts.filter((_, i) => i !== idx);
       slot.leadershipCheck = { boosts: nextBoosts };
       slot.clearLeadership = nextBoosts.length === 0;
+      // The leadership check is the captain's action, as a revive is: one
+      // replaces the other, on the server as here.
+      if (nextBoosts.length > 0) {
+        slot.reviveWatch = null;
+      }
       // Remember the toggle until the server says it back, so a snapshot
       // already in flight cannot undo it.
       slot.pendingBoosts = [
@@ -435,6 +460,7 @@ export const actionsSlice = createSlice({
 
 export const {
   setActions,
+  setReviveWatch,
   setSensorAction,
   setEngineerAction,
   toggleBoost,

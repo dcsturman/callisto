@@ -190,6 +190,21 @@ export interface Ship extends Entity {
   /** What each mount holds ready to fire, index-aligned with its weapons. */
   loaded?: Magazine[];
   /**
+   * Mounts of each weapon entry knocked out by a large-ship Weapons critical
+   * (High Guard p. 27), index-aligned with its weapons: a battery of twelve
+   * with three down fires nine. Absent while every mount is up.
+   */
+  mounts_down?: number[];
+  /** Spare crew still in low berths, to be revived by the captain. Absent when none. */
+  frozen_watch?: number;
+  /**
+   * Hull lost to Radiation weapons that shielding protects against, and to
+   * mesons, which it does not (High Guard p. 31). Each wears the crew down.
+   * Absent when none.
+   */
+  radiation_hull_lost?: number;
+  meson_hull_lost?: number;
+  /**
    * Switchable features to start running, by index into the design's list.
    *
    * Only ever set by the Add Ship dialog on its way to the server; a ship

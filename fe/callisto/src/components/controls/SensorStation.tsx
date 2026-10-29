@@ -20,6 +20,7 @@ import {shipWeapons} from "lib/shipDesignTemplates";
 import {useAppSelector} from "state/hooks";
 import {entitiesSelector, templatesSelector} from "state/serverSlice";
 import {EmissionProfile} from "components/controls/EmissionProfile";
+import {jamStations} from "lib/crewStrength";
 
 /**
  * The sensor operator's station.
@@ -42,11 +43,24 @@ export function SensorStation(args: {ship: Ship}) {
     [args.ship, entities.missiles]
   );
 
+  // "One on-duty sensor operator for every full 7,500 tons" (High Guard
+  // p. 34): the sensop's Jam Missiles is the first station's, and the rest
+  // jam the largest other salvoes on their own, at the same skill.
+  const stations = jamStations(templates[args.ship.design]?.displacement ?? 0);
+
   return (
     <div className="sensor-station">
       <EmissionProfile ship={args.ship} />
       <EyesOnUs watchers={watchers} />
       {salvoes.length > 0 && <IncomingSalvoes salvoes={salvoes} />}
+      {stations > 1 && (
+        <p
+          className="sensor-stations"
+          title="One sensor station on duty per full 7,500 tons (High Guard p. 34). Jam Missiles is the first station's action; the others jam the largest other inbound salvoes automatically, at the same skill, one salvo each.">
+          {stations} sensor stations on duty: Jam Missiles brings {stations - 1} more jam
+          {stations - 1 === 1 ? "" : "s"}, one per other inbound salvo.
+        </p>
+      )}
       {/* A squadron of one has no picture to manage. */}
       {picture.ours.length > 1 && (
         <TeamPicture ours={picture.ours.map((ship) => ship.name)} rows={picture.rows} />

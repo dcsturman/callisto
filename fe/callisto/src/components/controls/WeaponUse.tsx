@@ -24,9 +24,11 @@ import {
   createWeapon,
   weaponToString,
   weaponKindLabel,
+  weaponMounts,
   spinalOf,
   WEAPON_COLORS,
 } from "lib/weapon";
+import {liveMounts} from "lib/crewStrength";
 import { spinalSizeDm } from "lib/spinal";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
@@ -146,17 +148,27 @@ export const WeaponButton = (props: {
    * a battery, which takes one target and fires every mount at it.
    */
   mounts?: number;
+  /**
+   * Mounts of these knocked out by criticals (High Guard p. 27): a battery
+   * of twelve with three down fires nine, and the badge says so.
+   */
+  down?: number;
 }) => {
   // Tooltips name the weapon for a person, so they use the readable label
   // rather than the wire identifier.  Colours are still keyed off the raw kind.
   const label = weaponKindLabel(props.weapon);
 
   const mixed = props.alongside != null && props.alongside.length > 0;
+  const down = props.down ?? 0;
   const tip = (text: string) => {
     const battery =
       (props.mounts ?? 1) > 1
-        ? `${text}, a battery of ${props.mounts}: one target, an attack from every mount`
-        : text;
+        ? `${text}, a battery of ${props.mounts}: one target, an attack from every mount${
+            down > 0 ? ` (${down} down to criticals)` : ""
+          }`
+        : down > 0
+          ? `${text} — knocked out by a critical`
+          : text;
     const shared = mixed
       ? `${battery} — shares the mount with ${props.alongside!
           .map(weaponKindLabel)
@@ -177,6 +189,14 @@ export const WeaponButton = (props: {
   // An unmanned mount is drawn in the colour of a thing that is not working,
   // rather than in the colour of the gun it is.
   const fill = props.unmanned ? UNMANNED_COLOR : WEAPON_COLORS[props.weapon];
+
+  // "×12" for a battery, "×12 (3 down)" once criticals have taken some of it.
+  const batteryBadge = (props.mounts ?? 1) > 1 && (
+    <span className="weapon-symbol-battery">
+      ×{props.mounts}
+      {down > 0 && <span className="weapon-symbol-down"> ({down} down)</span>}
+    </span>
+  );
 
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
@@ -199,7 +219,7 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
         </button>
         <Tooltip
           id={props.weapon + props.mount}
@@ -227,7 +247,7 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
         </button>
         <Tooltip
           id={props.weapon + props.mount}
@@ -289,7 +309,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + "small-bay"}
@@ -316,7 +336,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + "med-bay"}
@@ -343,7 +363,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + "large-bay"}
@@ -373,7 +393,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + num + "turret"}
@@ -401,7 +421,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + num + "turret"}
@@ -428,7 +448,7 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
-          {(props.mounts ?? 1) > 1 && <span className="weapon-symbol-battery">×{props.mounts}</span>}
+          {batteryBadge}
         </button>
         <Tooltip
           id={props.weapon + num + "turret"}
@@ -609,6 +629,19 @@ export const FireControl: React.FC<FireControlProps> = () => {
     () => compressedWeapons(computerShipWeapons),
     [computerShipWeapons],
   );
+
+  // Mounts of each group knocked out by criticals: a battery with mounts
+  // down, or a weapon switched off altogether, all of whose mounts count.
+  const downCounts = useMemo(() => {
+    const down = {} as {[key: string]: number};
+    computerShipWeapons.forEach((weapon, index) => {
+      const name = getWeaponName(computerShipWeapons, index);
+      const mounts = weaponMounts(weapon);
+      const lost = computerShip == null ? 0 : mounts - liveMounts(computerShip, index, mounts);
+      down[name] = (down[name] ?? 0) + lost;
+    });
+    return down;
+  }, [computerShip, computerShipWeapons]);
 
   const availableCounts = useMemo(() => {
     const counts = {} as { [key: string]: number };
@@ -839,6 +872,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
               mount={weapon.mount}
               count={availableCounts[weapon_name]}
               mounts={weapon.mounts}
+              down={downCounts[weapon_name]}
               onClick={() =>
                 handleWeaponClick(weapon_name, mixed ? kind : undefined)
               }
@@ -866,6 +900,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
       computerShipName,
       computerShipWeapons,
       availableCounts,
+      downCounts,
       handleWeaponClick,
       isWeaponDisabled,
     ],

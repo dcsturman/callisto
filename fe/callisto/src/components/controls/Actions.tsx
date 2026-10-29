@@ -31,6 +31,14 @@ export type ActionType = {
     // Action" button (cached on `ship.leadership_points`); end-of-turn Phase 0
     // truncates this list to the rolled N.
     leadershipCheck: { boosts: BoostTarget[] } | null;
+    /**
+     * How many of the frozen watch the captain revives as the round ends
+     * (High Guard p. 27). The captain's action for the round, in place of the
+     * leadership check: queuing one drops the other. `null` is none.
+     */
+    reviveWatch?: number | null;
+    /** A revive withdrawn and not yet seen gone from the server. Transient. */
+    clearRevive?: boolean;
     // Transient anti-actions. `clearSensors` and `clearEngineers` hold the
     // crew positions whose queued action the user explicitly cancelled, and
     // are emitted as `ClearSensorAction` / `ClearEngineerAction` naming that
@@ -220,6 +228,14 @@ export function actionPayload(actions: ActionType) {
       });
     }
 
+    // The captain's revive, or its withdrawal: a count of 0 is how the
+    // server is told to forget one.
+    if (value.reviveWatch != null && value.reviveWatch > 0) {
+      fire_actions.push({ReviveWatch: {count: value.reviveWatch}});
+    } else if (value.clearRevive) {
+      fire_actions.push({ReviveWatch: {count: 0}});
+    }
+
     // Anti-actions: explicit "strip queued sensor/engineer/leadership"
     // intents, each naming the crew member whose action is being withdrawn.
     for (const operator of value.clearSensors ?? []) {
@@ -393,6 +409,7 @@ export function payloadToAction(payload: object[]): ActionType {
       | {JamComms: string}
       | {Repair: {system: string}}
       | {LeadershipCheck: {boosts: unknown[]}}
+      | {ReviveWatch: {count: number}}
     )[];
     if (!actions) {
       continue;
@@ -523,12 +540,20 @@ export function payloadToAction(payload: object[]): ActionType {
     }
     result[shipName] = {...result[shipName], leadershipCheck};
 
+    // The captain's revive, if one is queued.
+    const revive = actions.find(
+      (action): action is {ReviveWatch: {count: number}} =>
+        typeof action === "object" && Object.hasOwn(action, "ReviveWatch")
+    );
+    result[shipName] = {...result[shipName], reviveWatch: revive?.ReviveWatch.count ?? null};
+
     // Anti-action flags are transient client-only state; server never echoes them.
     result[shipName] = {
       ...result[shipName],
       clearSensors: [],
       clearEngineers: [],
       clearLeadership: false,
+      clearRevive: false,
     };
   }
   return result;

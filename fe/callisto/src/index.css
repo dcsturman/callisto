@@ -1074,6 +1074,13 @@ h3.control-form {
     grid-row: 1;
 }
 
+/* Mounts a battery has lost to criticals, beside its size. */
+.weapon-symbol-down {
+    font-size: var(--font-xs);
+    font-weight: normal;
+    color: #ffa94d;
+}
+
 /* A battery's mounts, under the count of batteries left to order. */
 .weapon-symbol-battery {
     font-size: var(--font-sm);
@@ -1871,6 +1878,27 @@ h3.control-form {
     opacity: 0.45;
 }
 
+/* The captain's frozen watch: how many wait in the berths, and the revive. */
+.captain-revive {
+    margin-top: 6px;
+    font-size: var(--font-xs);
+}
+
+.captain-revive-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.captain-revive-row input {
+    width: 4em;
+}
+
+.captain-revive-queued {
+    color: #ffa94d;
+}
+
 .victory-screen {
     text-align: center;
 }
@@ -2373,6 +2401,13 @@ h3.control-form {
     font-size: var(--font-sm);
     font-style: italic;
     opacity: 0.6;
+}
+
+/* A big ship's extra sensor stations, and what they do without being asked. */
+.sensor-stations {
+    margin: 4px 0 0;
+    font-size: var(--font-xs);
+    opacity: 0.75;
 }
 
 /* Icons inherit the row's colour, so a lit row and a quiet one differ in one
@@ -3750,6 +3785,23 @@ h3.control-form {
     font-size: var(--font-xs);
     font-family: "Sono", monospace;
     opacity: 0.75;
+}
+
+/* The crew's strength and what it costs every check: losses, radiation,
+   and the frozen watch waiting in the berths. */
+.damage-crew {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+}
+
+.damage-crew-line {
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+.damage-crew-dm {
+    color: #ffa94d;
 }
 
 /* ---------------------------------------------------------------------------

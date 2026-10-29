@@ -8,6 +8,7 @@ import {useAppDispatch, useAppSelector} from "state/hooks";
 import {templatesSelector} from "state/serverSlice";
 import {setComputerRepair} from "state/actionsSlice";
 import {ShipDesignTemplate} from "lib/shipDesignTemplates";
+import {crewDm, crewPercent} from "lib/crewStrength";
 
 /** A stable empty list, so the selector does not re-render on every tick. */
 const EMPTY_REPAIRS: ShipSystem[] = [];
@@ -76,6 +77,21 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
     {label: "Power plant", attempts: args.ship.overload_plant_attempts ?? 0},
   ].filter((entry) => entry.attempts > 0);
 
+  // What the crew carries into every check: losses to criticals (High Guard
+  // p. 27) and radiation (p. 31). Shown only once there is something to say,
+  // as the overloads are.
+  const dm = crewDm(args.ship, design);
+  const complement = design?.crew ?? 0;
+  const crewShort = complement > 0 && args.ship.current_crew < complement;
+  const crewLines = [
+    crewShort
+      ? `Crew ${args.ship.current_crew}/${complement} (${crewPercent(args.ship.current_crew, complement)}%)` +
+        (dm.losses < 0 ? `: DM${dm.losses} to every check` : "")
+      : null,
+    dm.radiation < 0 ? `Radiation: DM${dm.radiation} to every check` : null,
+    (args.ship.frozen_watch ?? 0) > 0 ? `Frozen watch: ${args.ship.frozen_watch} in the berths` : null,
+  ].filter((line): line is string => line != null);
+
   return (
     <div className="damage-board" data-tutorial="damage-board">
       {/* The whole ship at a glance, before the list of what is wrong with
@@ -141,6 +157,15 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
             <li key={entry.label} className="damage-overload">
               {entry.label} overloaded {entry.attempts}×: next attempt at DM
               {-2 * entry.attempts}
+            </li>
+          ))}
+        </ul>
+      )}
+      {crewLines.length > 0 && (
+        <ul className="damage-crew">
+          {crewLines.map((line) => (
+            <li key={line} className={line.includes("DM") ? "damage-crew-line damage-crew-dm" : "damage-crew-line"}>
+              {line}
             </li>
           ))}
         </ul>

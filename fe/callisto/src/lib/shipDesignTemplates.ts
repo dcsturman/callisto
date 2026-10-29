@@ -82,6 +82,10 @@ export interface ShipDesignTemplate {
   computer_bis?: boolean;
   /** Hardened against ion weapons. */
   computer_fib?: boolean;
+  /** Radiation shielding: the crew's radiation DM grows per 40% of hull lost, not 10% (HG p. 31). */
+  radiation_shielding?: boolean;
+  /** The frozen watch: spare crew in low berths the captain can revive (HG p. 27). */
+  frozen_watch?: number;
   tl: number;
   // Both are free-form and optional on the Rust side (`Option<String>`, omitted
   // from the wire when unset).  Used only to organize the design picker.
