@@ -11,10 +11,12 @@ use crate::action::{
 };
 use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
-use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
+use crate::rules_tables::{
+  damage_multiple, profile_for, spinal_range_dm, spinal_size_dm, ShortBand, RANGE_BANDS, RANGE_MOD,
+};
 use crate::ship::{
-  BridgeStation, Firing, Magazine, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, SystemDamage, Weapon,
-  WeaponMount, WeaponProfile, WeaponType,
+  spinal_name, spinal_uses_rounds, BridgeStation, Firing, Magazine, MountClass, Range, Salvo, Sensors, Ship,
+  ShipSystem, SystemDamage, Weapon, WeaponMount, WeaponProfile, WeaponType,
 };
 use crate::software::SoftwareKind;
 use crate::{debug, error, info, warn};
@@ -129,6 +131,11 @@ pub(crate) struct AttackSituation<'a> {
   pub firing: &'a Firing<'a>,
   pub profile: &'a WeaponProfile,
   pub range_band: Range,
+  /// How far apart the ships are, in metres, when that is known. Only a
+  /// spinal mount looks: its close-range DMs split the Short band
+  /// ([`ShortBand`]). `None` is anywhere in the band, which a spinal reads as
+  /// the Short row: the AI pricing a band it is not in.
+  pub distance: Option<u32>,
   pub called_shot: bool,
 }
 
@@ -141,7 +148,7 @@ pub(crate) struct AttackSituation<'a> {
 /// because spending it is a side effect of really being shot at.
 pub(crate) fn attack_terms(
   situation: &AttackSituation<'_>, evade_mod: i32, captain_mod: i32,
-) -> Option<[(&'static str, i32); 16]> {
+) -> Option<[(&'static str, i32); 18]> {
   let AttackSituation {
     hit,
     attacker,
@@ -149,6 +156,7 @@ pub(crate) fn attack_terms(
     firing,
     profile,
     range_band,
+    distance,
     called_shot,
   } = situation;
   // Evade software flies the ship evasively on its own: "a negative DM equal
@@ -197,8 +205,20 @@ pub(crate) fn attack_terms(
   // and torpedo salvoes do not use these modifiers" (High Guard p. 31). A bay
   // gun is laid for a capital ship. One term, since a torpedo bay is a salvo
   // and takes only the torpedo's DM.
+  //
+  // A spinal mount takes DM-4 against 10,000 tons or less and DM-8 against
+  // 5,000 or less, and cannot attack under 2,000 tons at all "unless they are
+  // stationary" (High Guard p. 34) -- for Callisto, unless the target held
+  // still last round (see `Ship::held_still`).
   let tons = defender.design.displacement;
-  let small_target_mod = if firing.kind == WeaponType::Torpedo && tons < 2_000 {
+  let spinal = matches!(firing.mount, WeaponMount::Spinal { .. });
+  let small_target_mod = if spinal {
+    match spinal_size_dm(tons) {
+      Some(dm) => dm,
+      None if defender.held_still => -8,
+      None => return None,
+    }
+  } else if firing.kind == WeaponType::Torpedo && tons < 2_000 {
     -2
   } else if matches!(firing.mount, WeaponMount::Bay(_)) && profile.salvo.is_none() {
     match tons {
@@ -206,6 +226,23 @@ pub(crate) fn attack_terms(
       101..=2_000 => -2,
       _ => 0,
     }
+  } else {
+    0
+  };
+
+  // Spinal Weapon Range Adjustments (High Guard p. 35): a spinal is aimed by
+  // pointing the ship, so it struggles to lay on anything close, and more so
+  // the bigger the ship.
+  let spinal_range_mod = if spinal && *range_band == Range::Short {
+    spinal_range_dm(attacker.design.displacement, distance.map_or(ShortBand::Short, ShortBand::of))
+  } else {
+    0
+  };
+
+  // "Weapons with the Orbital Bombardment trait suffer DM-12 when attacking
+  // any target that can manoeuvre in space combat" (High Guard p. 30).
+  let bombardment_mod = if profile.bombardment && defender.current_maneuver > 0 {
+    -12
   } else {
     0
   };
@@ -221,6 +258,8 @@ pub(crate) fn attack_terms(
     ("range", range_mod),
     ("called shot", called_mod),
     ("small target", small_target_mod),
+    ("spinal range", spinal_range_mod),
+    ("bombardment", bombardment_mod),
     ("sensor lock", lock_mod),
     ("evade", evade_mod),
     ("captain evade", captain_mod),
@@ -476,7 +515,8 @@ fn resolve_attack(
   // Note we will lose precision here but this is just for range so okay.
   #[allow(clippy::cast_sign_loss)]
   #[allow(clippy::cast_possible_truncation)]
-  let range_band = find_range_band((defender.get_position() - attacker.get_position()).magnitude() as u32);
+  let distance = (defender.get_position() - attacker.get_position()).magnitude() as u32;
+  let range_band = find_range_band(distance);
 
   // "Ships at a range of Short or less may attempt to make called shots with
   // direct-fire weapons (not missiles or torpedoes)" (Core Rulebook p. 169).
@@ -536,6 +576,7 @@ fn resolve_attack(
       firing,
       profile: &profile,
       range_band,
+      distance: Some(distance),
       called_shot: called_shot_system.is_some(),
     },
     evade_mod,
@@ -605,7 +646,7 @@ fn resolve_attack(
   // Every attack opens the same way: who fired what at whom, with the two
   // ships left as placeholders so the client can draw each in its own
   // colour. Reused by all four outcomes below.
-  let weapon_name = String::from(&firing.kind);
+  let weapon_name = firing_name(firing);
   let attack_line = format!("%s {weapon_name} -> %t");
   // How the number came out, for the hover. This used to sit in the middle
   // of the sentence, which made every attack a line of arithmetic with the
@@ -699,8 +740,24 @@ fn resolve_attack(
 
   // AP comes off the armour before the armour comes off the damage
   // (High Guard p. 29).  Meson guns carry AP_INFINITE and so ignore it wholly.
-  let effective_armor = defender.get_current_armor().saturating_sub(u32::from(profile.ap));
-  if effective_armor > 0 || profile.ap > 0 {
+  //
+  // A particle or railgun spinal loses a percentage a point instead (High
+  // Guard p. 36), taken with the Damage Multiple below so nothing is rounded
+  // away before it is multiplied by 1,000.
+  let armour = defender.get_current_armor();
+  let effective_armor = profile.armour_subtracted(armour);
+  let through = profile.armour_through(armour);
+  if profile.armour_percent > 0 {
+    let left = armour.saturating_sub(u32::from(profile.ap));
+    if left > 0 {
+      let ap = if profile.ap > 0 {
+        format!(", AP {}", profile.ap)
+      } else {
+        String::new()
+      };
+      terms.push(format!("-{}% armour ({left} × {}%{ap})", 100 - through, profile.armour_percent));
+    }
+  } else if effective_armor > 0 || profile.ap > 0 {
     // Name the AP only when it did something, so an ordinary shot stays short.
     if profile.ap > 0 {
       terms.push(format!("-{effective_armor} armour (AP {})", profile.ap));
@@ -709,7 +766,7 @@ fn resolve_attack(
     }
   }
 
-  damage = if damage > effective_armor {
+  damage = if damage > effective_armor && through > 0 {
     damage - effective_armor
   } else {
     debug!(
@@ -803,12 +860,16 @@ fn resolve_attack(
 
     // Damage Multiples (High Guard p. 29).  Launchers never reach here; their
     // scaling is salvo size, which is why the two are mutually exclusive.
-    if profile.use_multiple {
-      let multiple = damage_multiple(MountClass::from(firing.mount));
-      damage *= multiple;
-      if multiple > 1 {
-        terms.push(format!("x{multiple} mount"));
-      }
+    // A spinal's ×1,000 on 80D runs to hundreds of thousands, so the
+    // arithmetic is wide, and the armour percentage is taken in the same step.
+    let multiple = if profile.use_multiple {
+      damage_multiple(MountClass::from(firing.mount))
+    } else {
+      1
+    };
+    damage = u32::try_from(u64::from(damage) * u64::from(multiple) * u64::from(through) / 100).unwrap_or(u32::MAX);
+    if multiple > 1 {
+      terms.push(format!("x{multiple} mount"));
     }
 
     vec![
@@ -864,7 +925,12 @@ fn resolve_attack(
   }
 
   // The primary crit (if any) is a single crit at a level determined by the success of the hit.
-  let primary_crit = hit_roll - CRITICAL_THRESHOLD > 0;
+  //
+  // "Spinal mount weapons can always (and will!) cause critical hits" (High
+  // Guard p. 27): every spinal hit that does damage scores one, at the
+  // usual severity but never less than 1.
+  let spinal = matches!(firing.mount, WeaponMount::Spinal { .. });
+  let primary_crit = spinal || hit_roll - CRITICAL_THRESHOLD > 0;
 
   // "If the attack is successful and scores a critical hit, the attacker may
   // choose which location is hit" (CRB p. 169) -- which critical is not said,
@@ -885,8 +951,13 @@ fn resolve_attack(
       defender.get_name()
     );
     // Add a single crit at the effect level
-    let severity =
-      u8::try_from(hit_roll - CRITICAL_THRESHOLD).expect("(combat.attack) hit_role primary crit calc is out of range");
+    let severity = u8::try_from((hit_roll - CRITICAL_THRESHOLD).max(1))
+      .expect("(combat.attack) hit_role primary crit calc is out of range");
+    let why = if spinal && hit_roll - CRITICAL_THRESHOLD <= 0 {
+      format!("a spinal mount hit always crits; effect {effect}, so at severity {severity}")
+    } else {
+      format!("effect {effect} on the hit, which is a critical at severity {severity}")
+    };
     shot.criticals += 1;
     effects.append(&mut do_critical(
       severity,
@@ -894,7 +965,7 @@ fn resolve_attack(
       called.take(),
       &CritCause {
         attacker: attacker_name,
-        why: format!("effect {effect} on the hit, which is a critical at severity {severity}"),
+        why,
       },
       rng,
     ));
@@ -1529,6 +1600,9 @@ pub fn do_fire_actions<S: BuildHasher>(
   // worked through. The live ship is debited by the caller from what was
   // actually launched.
   let mut loads_left: Vec<Magazine> = attacker.loaded.clone();
+  // Railgun and mass driver spinals fire rounds straight from stores; what
+  // they spend is taken off the live ship once every order is worked through.
+  let mut rounds_left = attacker.magazine.rounds;
 
   let mut effects: Vec<EffectMsg> = actions
     .iter()
@@ -1736,6 +1810,33 @@ pub fn do_fire_actions<S: BuildHasher>(
           format!("%t is out of range of %s's {}.", String::from(&firing.kind)),
         )
         .at(target.get_name())];
+      }
+
+      // "Spinal weapons cannot attack targets of less than 2,000 tons unless
+      // they are stationary" (High Guard p. 34). Said here, before a dodge or
+      // a sand cloud is spent on a shot that cannot be made.
+      if let Some(multiple) = firing.mount.spinal_multiple() {
+        if spinal_size_dm(target.design.displacement).is_none() && !target.held_still {
+          return vec![EffectMsg::about(
+            attacker.get_name(),
+            MessageCategory::Info,
+            format!(
+              "%t is too small for %s's {} ({multiple}×): under 2,000 tons, and she manoeuvred last round.",
+              spinal_name(firing.kind)
+            ),
+          )
+          .at(target.get_name())];
+        }
+        if spinal_uses_rounds(firing.kind) {
+          if rounds_left == 0 {
+            return vec![EffectMsg::about(
+              attacker.get_name(),
+              MessageCategory::Attack,
+              format!("%s's {} is out of rounds.", spinal_name(firing.kind)),
+            )];
+          }
+          rounds_left -= 1;
+        }
       }
 
       // At this point all these attacks should be in range.
@@ -1995,7 +2096,24 @@ pub fn do_fire_actions<S: BuildHasher>(
     effects.insert(0, assist);
   }
 
+  let rounds_spent = attacker.magazine.rounds - rounds_left;
+  if rounds_spent > 0 {
+    if let Some(ship) = ships.get(attacker.get_name()) {
+      let mut ship = ship.write().unwrap();
+      ship.magazine.rounds = ship.magazine.rounds.saturating_sub(rounds_spent);
+    }
+  }
+
   (new_missiles, effects)
+}
+
+/// What a mount firing is called in an attack line: its gun, "meson gun",
+/// or for a spinal mount the mount, "meson spinal mount (3×)".
+fn firing_name(firing: &Firing<'_>) -> String {
+  match firing.mount.spinal_multiple() {
+    Some(multiple) => format!("{} ({multiple}×)", spinal_name(firing.kind)),
+    None => String::from(&firing.kind),
+  }
 }
 
 /// What a battery is called in its volley's line, "particle barbette ×12
@@ -2098,6 +2216,10 @@ pub fn create_sand_counts<S: BuildHasher, T: BuildHasher>(
                 }
                 WeaponMount::Battery(_) => {
                   error!("A sandcaster cannot be a point defence battery.");
+                  None
+                }
+                WeaponMount::Spinal { .. } => {
+                  error!("A sandcaster cannot be a spinal mount.");
                   None
                 }
               }
@@ -2255,8 +2377,13 @@ pub(crate) fn point_defense_score(weapon: &Weapon) -> u16 {
 
   match weapon.mount {
     WeaponMount::Turret => u16::try_from(lasers).unwrap_or(u16::MAX),
-    // Barbettes, bays and fixed mounts cannot track an incoming missile.
-    WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_) => 0,
+    // Barbettes, bays, spinals and fixed mounts cannot track an incoming
+    // missile.
+    WeaponMount::Barbette
+    | WeaponMount::Bay(_)
+    | WeaponMount::FixedMount
+    | WeaponMount::Battery(_)
+    | WeaponMount::Spinal { .. } => 0,
   }
 }
 
@@ -3402,6 +3529,7 @@ mod tests {
         missiles: 1000,
         torpedoes: 100,
         sand: 100,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     };
@@ -4007,6 +4135,7 @@ mod tests {
           firing: &firing,
           profile: &profile,
           range_band: Range::Short,
+          distance: None,
           called_shot: false,
         },
         0,
@@ -5659,6 +5788,7 @@ mod weapon_battery_tests {
         missiles: 10_000,
         torpedoes: 0,
         sand: 100,
+        rounds: 0,
       },
       weapons,
       ..ShipDesignTemplate::default()
@@ -5897,5 +6027,385 @@ mod weapon_battery_tests {
       checked += 1;
     }
     assert!(checked > 40);
+  }
+}
+
+/// Spinal mounts (High Guard pp. 34-36): the size and close-range DMs, the
+/// 2,000-ton limit, armour by the percentage, ×1,000, the critical every hit
+/// brings, and rounds.
+#[cfg(test)]
+mod spinal_tests {
+  use super::*;
+  use crate::entity::Vec3;
+  use crate::ship::{ShipDesignTemplate, Weapon};
+  use cgmath::Zero;
+  use rand::rngs::StdRng;
+  use rand::SeedableRng;
+  use std::sync::{Arc, RwLock};
+
+  fn spinal(kind: WeaponType, multiple: u8) -> Weapon {
+    Weapon::single(kind, WeaponMount::Spinal { multiple, tl: None })
+  }
+
+  fn design(name: &str, tons: u32, armor: u32, weapons: Vec<Weapon>) -> Arc<ShipDesignTemplate> {
+    Arc::new(ShipDesignTemplate {
+      name: name.to_string(),
+      displacement: tons,
+      hull: 1_000_000,
+      armor,
+      maneuver: 2,
+      power: 1_000_000,
+      tl: 15,
+      weapons,
+      ..ShipDesignTemplate::default()
+    })
+  }
+
+  fn ship(name: &str, design: &Arc<ShipDesignTemplate>, x: f64) -> Ship {
+    Ship::new(name.to_string(), Vec3::new(x, 0.0, 0.0), Vec3::zero(), design, None, None)
+  }
+
+  /// The DM terms a spinal on a ship of `attacker_tons` gets against a
+  /// target of `target_tons`, `distance` metres away.
+  fn terms(
+    attacker_tons: u32, target_tons: u32, distance: Option<u32>, band: Range, held_still: bool,
+  ) -> Option<HashMap<&'static str, i32>> {
+    let weapon = spinal(WeaponType::Meson, 1);
+    let attacker = ship("A", &design("A", attacker_tons, 0, vec![weapon.clone()]), 0.0);
+    let mut defender = ship("D", &design("D", target_tons, 0, vec![]), 1.0);
+    defender.held_still = held_still;
+    let firing = weapon.firing_default().unwrap();
+    let profile = profile_for(firing.kind, firing.mount).unwrap();
+    attack_terms(
+      &AttackSituation {
+        hit: HitMods::default(),
+        attacker: &attacker,
+        defender: &defender,
+        firing: &firing,
+        profile: &profile,
+        range_band: band,
+        distance,
+        called_shot: false,
+      },
+      0,
+      0,
+    )
+    .map(|terms| terms.into_iter().collect())
+  }
+
+  /// "DM-4 when attacking targets of 10,000 tons or less and DM-8 when
+  /// attacking targets of 5,000 tons or less", and nothing under 2,000 tons
+  /// "unless they are stationary" (High Guard p. 34).
+  #[test]
+  fn the_size_dms_and_the_two_thousand_ton_limit() {
+    let size = |tons, still| terms(50_000, tons, None, Range::Medium, still).map(|terms| terms["small target"]);
+    assert_eq!(size(10_001, false), Some(0));
+    assert_eq!(size(10_000, false), Some(-4));
+    assert_eq!(size(5_001, false), Some(-4));
+    assert_eq!(size(5_000, false), Some(-8));
+    assert_eq!(size(2_000, false), Some(-8));
+    assert_eq!(size(1_999, false), None, "cannot attack a ship under 2,000 tons");
+    assert_eq!(size(1_999, true), Some(-8), "unless she held still, and then at DM-8");
+    assert_eq!(size(10, true), Some(-8));
+  }
+
+  /// Spinal Weapon Range Adjustments (High Guard p. 35), by the attacker's
+  /// size, at Adjacent (under 1 km), Close (to 10 km) and Short.
+  #[test]
+  fn the_close_range_dms_grow_with_the_attacker() {
+    let dm = |attacker, distance| terms(attacker, 50_000, distance, Range::Short, false).unwrap()["spinal range"];
+    for (attacker, [adjacent, close, short]) in [
+      (9_999, [-4, -2, -1]),
+      (10_000, [-6, -4, -2]),
+      (50_000, [-6, -4, -2]),
+      (50_001, [-8, -6, -4]),
+      (250_000, [-8, -6, -4]),
+      (250_001, [-10, -8, -6]),
+    ] {
+      assert_eq!(dm(attacker, Some(999)), adjacent, "{attacker} t at Adjacent");
+      assert_eq!(dm(attacker, Some(1_000)), close, "{attacker} t at Close");
+      assert_eq!(dm(attacker, Some(10_000)), close, "{attacker} t at Close");
+      assert_eq!(dm(attacker, Some(10_001)), short, "{attacker} t at Short");
+      assert_eq!(dm(attacker, None), short, "anywhere in the band reads as Short");
+    }
+    // Past Short there is no penalty.
+    assert_eq!(terms(9_999, 50_000, None, Range::Medium, false).unwrap()["spinal range"], 0);
+    // And no other mount pays it.
+    let laser = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let attacker = ship("A", &design("A", 300_000, 0, vec![laser.clone()]), 0.0);
+    let defender = ship("D", &design("D", 50_000, 0, vec![]), 500.0);
+    let firing = laser.firing_default().unwrap();
+    let profile = profile_for(firing.kind, firing.mount).unwrap();
+    let laser_terms = attack_terms(
+      &AttackSituation {
+        hit: HitMods::default(),
+        attacker: &attacker,
+        defender: &defender,
+        firing: &firing,
+        profile: &profile,
+        range_band: Range::Short,
+        distance: Some(500),
+        called_shot: false,
+      },
+      0,
+      0,
+    )
+    .unwrap();
+    assert!(laser_terms.iter().all(|(name, value)| *name != "spinal range" || *value == 0));
+  }
+
+  /// Orbital Bombardment: "DM-12 when attacking any target that can
+  /// manoeuvre in space combat" (High Guard p. 30). Mass drivers carry it,
+  /// in a bay or a spinal.
+  #[test]
+  fn a_mass_driver_is_a_bombardment_weapon() {
+    for weapon in [
+      spinal(WeaponType::MassDriver, 1),
+      Weapon::single(WeaponType::MassDriver, WeaponMount::Bay(crate::ship::BaySize::Large)),
+    ] {
+      let attacker = ship("A", &design("A", 50_000, 0, vec![weapon.clone()]), 0.0);
+      let mut defender = ship("D", &design("D", 50_000, 0, vec![]), 500_000.0);
+      let firing = weapon.firing_default().unwrap();
+      let profile = profile_for(firing.kind, firing.mount).unwrap();
+      let bombardment = |defender: &Ship| {
+        attack_terms(
+          &AttackSituation {
+            hit: HitMods::default(),
+            attacker: &attacker,
+            defender,
+            firing: &firing,
+            profile: &profile,
+            range_band: Range::Short,
+            distance: Some(500_000),
+            called_shot: false,
+          },
+          0,
+          0,
+        )
+        .unwrap()
+        .into_iter()
+        .find(|(name, _)| *name == "bombardment")
+        .unwrap()
+        .1
+      };
+      assert_eq!(bombardment(&defender), -12, "{}", String::from(&weapon));
+      defender.current_maneuver = 0;
+      assert_eq!(bombardment(&defender), 0, "a hulk with no drive cannot manoeuvre");
+    }
+  }
+
+  /// One spinal attack at a target with this armour: the damage the hit did,
+  /// its Effect and whether it scored a critical, or `None` for a miss.
+  fn shoot(weapon: &Weapon, armor: u32, gunner: i32, seed: u64) -> Option<(u32, i32, bool)> {
+    let attacker = ship("A", &design("A", 100_000, 0, vec![weapon.clone()]), 0.0);
+    let mut defender = ship("D", &design("D", 100_000, armor, vec![]), 2.0e6);
+    let mut rng = StdRng::seed_from_u64(seed);
+    let effects = attack(
+      HitMods::gunner(gunner),
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    let line = effects.first().map(EffectMsg::rendered).unwrap_or_default();
+    let effect: i32 = line.split("effect ").nth(1)?.split(['.', ' ']).next()?.parse().ok()?;
+    let critical = effects.iter().any(|e| {
+      matches!(
+        e,
+        EffectMsg::Message {
+          category: MessageCategory::Critical,
+          ..
+        }
+      )
+    });
+    // The hit's own damage, as its line gives it; a critical on the hull
+    // does more of its own.
+    let damage = line
+      .split("Damage ")
+      .nth(1)
+      .and_then(|rest| rest.trim_end_matches('.').parse().ok())
+      .unwrap_or(0);
+    Some((damage, effect, critical))
+  }
+
+  /// Damage is the dice plus Effect, then ×1,000; a 66D meson does what a
+  /// 66D gun should, all of it through armour (High Guard pp. 29, 35).
+  #[test]
+  fn a_tigress_meson_hits_for_its_66_dice_through_any_armour() {
+    let meson = spinal(WeaponType::Meson, 11);
+    assert_eq!(profile_for(WeaponType::Meson, &meson.mount).unwrap().damage_dice, 66);
+    for seed in 0..20 {
+      let (damage, effect, critical) = shoot(&meson, 30, 20, seed).expect("a +20 gunner hits");
+      let effect = u32::try_from(effect).unwrap();
+      assert_eq!(damage % 1_000, 0, "×1,000 with nothing taken off: {damage}");
+      assert!(
+        (66 + effect..=396 + effect).contains(&(damage / 1_000)),
+        "{damage} from 66D+{effect}"
+      );
+      assert!(critical, "a spinal hit always crits");
+    }
+  }
+
+  /// "Reduced by 3% per point of armour ... before applying the Damage
+  /// Multiple" (High Guard p. 36): armour 10 takes 30%, so every hit is a
+  /// multiple of 700.
+  #[test]
+  fn a_particle_spinal_loses_three_percent_a_point_of_armour() {
+    let particle = spinal(WeaponType::Particle, 1);
+    for seed in 0..20 {
+      let (damage, effect, _) = shoot(&particle, 10, 20, seed).unwrap();
+      let effect = u32::try_from(effect).unwrap();
+      assert_eq!(damage % 700, 0, "{damage}");
+      assert!((8 + effect..=48 + effect).contains(&(damage / 700)), "{damage}");
+    }
+    // Armour 34 and up takes all of it.
+    let (damage, _, critical) = shoot(&particle, 34, 20, 1).unwrap();
+    assert_eq!(damage, 0);
+    assert!(!critical, "a hit that does nothing does not crit");
+  }
+
+  /// The results line names the mount and its multiple, and the hover shows
+  /// the percentage and the ×1,000.
+  #[test]
+  fn the_line_shows_the_percentage_and_the_multiple() {
+    let particle = spinal(WeaponType::Particle, 2);
+    let attacker = ship("A", &design("A", 100_000, 0, vec![particle.clone()]), 0.0);
+    let mut defender = ship("D", &design("D", 100_000, 10, vec![]), 2.0e6);
+    let effects = attack(
+      HitMods::gunner(20),
+      0,
+      &attacker,
+      &mut defender,
+      &particle.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut StdRng::seed_from_u64(1),
+    );
+    let EffectMsg::Message { roll: Some(roll), .. } = &effects[0] else {
+      panic!("{effects:?}");
+    };
+    let line = effects[0].rendered();
+    assert!(line.contains("particle spinal mount (2×)"), "{line}");
+    assert!(roll.contains("16D"), "{roll}");
+    assert!(roll.contains("-30% armour (10 × 3%)"), "{roll}");
+    assert!(roll.contains("x1000 mount"), "{roll}");
+    assert!(
+      effects.iter().any(|e| matches!(
+        e,
+        EffectMsg::Message {
+          category: MessageCategory::Critical,
+          ..
+        }
+      )),
+      "{effects:?}"
+    );
+  }
+
+  /// A railgun spinal's AP 20 comes off the armour first, and what is left
+  /// costs 2% a point (High Guard pp. 35-36).
+  #[test]
+  fn a_railgun_spinal_has_ap_twenty_and_then_two_percent() {
+    let railgun = spinal(WeaponType::Railgun, 1);
+    let (damage, _, _) = shoot(&railgun, 20, 20, 3).unwrap();
+    assert_eq!(damage % 1_000, 0, "armour 20 is all taken by the AP: {damage}");
+    for seed in 0..10 {
+      let (damage, effect, _) = shoot(&railgun, 25, 20, seed).unwrap();
+      let effect = u32::try_from(effect).unwrap();
+      assert_eq!(damage % 900, 0, "five points left, 10% off: {damage}");
+      assert!((4 + effect..=24 + effect).contains(&(damage / 900)));
+    }
+  }
+
+  /// "Spinal mount weapons can always (and will!) cause critical hits" (High
+  /// Guard p. 27): every hit that does damage scores one, even below the
+  /// Effect 6 another gun needs.
+  #[test]
+  fn every_spinal_hit_is_a_critical() {
+    let meson = spinal(WeaponType::Meson, 1);
+    let low_effect_hits: Vec<bool> = (0..200)
+      .filter_map(|seed| shoot(&meson, 0, 0, seed))
+      .filter(|(_, effect, _)| *effect < 6)
+      .map(|(_, _, critical)| critical)
+      .collect();
+    assert!(low_effect_hits.len() > 20, "enough low hits to tell");
+    assert!(low_effect_hits.iter().all(|critical| *critical));
+    // Where a bay's hit with the same Effect does not.
+    let bay = Weapon::single(WeaponType::Meson, WeaponMount::Bay(crate::ship::BaySize::Large));
+    assert!((0..200)
+      .filter_map(|seed| shoot(&bay, 0, 0, seed))
+      .filter(|(_, effect, _)| *effect < 6)
+      .any(|(_, _, critical)| !critical));
+  }
+
+  /// A ship under 2,000 tons is too small to fire on unless she held still,
+  /// and the gunner is told before anything is spent.
+  #[test]
+  fn a_spinal_holds_fire_on_a_manoeuvring_fighter() {
+    let meson = spinal(WeaponType::Meson, 1);
+    let mut attacker = ship("A", &design("A", 30_000, 0, vec![meson]), 0.0);
+    attacker.contacts.push("Fighter".to_string());
+    let mut fighter = ship("Fighter", &design("Fighter", 10, 0, vec![]), 2.0e6);
+    let fire = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Fighter".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    }];
+    let run = |fighter: &Ship| {
+      let mut ships: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();
+      ships.insert("Fighter".to_string(), Arc::new(RwLock::new(fighter.clone())));
+      let mut sand = create_sand_counts(&HashMap::<String, Ship>::new(), &[], &HashMap::new());
+      let mut rng = StdRng::seed_from_u64(5);
+      let (_, effects) = do_fire_actions(&attacker, &mut ships, &mut sand, &fire, &BoostMap::default(), &mut rng);
+      effects.iter().map(EffectMsg::rendered).collect::<Vec<_>>().join(" | ")
+    };
+    let refused = run(&fighter);
+    assert!(refused.contains("too small"), "{refused}");
+    fighter.held_still = true;
+    let fired = run(&fighter);
+    assert!(fired.contains("meson spinal mount (1×)"), "{fired}");
+    assert!(!fired.contains("too small"), "{fired}");
+  }
+
+  /// A railgun spinal comes with five rounds and fires one an attack; the
+  /// sixth attack finds none (High Guard p. 36).
+  #[test]
+  fn a_railgun_spinal_runs_out_of_rounds() {
+    let railgun = spinal(WeaponType::Railgun, 1);
+    let attacker_design = design("A", 30_000, 0, vec![railgun]);
+    let mut attacker = ship("A", &attacker_design, 0.0);
+    attacker.contacts.push("D".to_string());
+    assert_eq!(attacker.magazine.rounds, 5);
+    assert_eq!(attacker.loaded(0).rounds, 0, "they feed it from stores");
+    let mut ships: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();
+    ships.insert("A".to_string(), Arc::new(RwLock::new(attacker)));
+    ships.insert(
+      "D".to_string(),
+      Arc::new(RwLock::new(ship("D", &design("D", 30_000, 0, vec![]), 2.0e6))),
+    );
+    let fire = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "D".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    }];
+    let mut rng = StdRng::seed_from_u64(9);
+    for round in 0..6 {
+      let snapshot = ships["A"].read().unwrap().clone();
+      let mut sand = create_sand_counts(&HashMap::<String, Ship>::new(), &[], &HashMap::new());
+      let (_, effects) = do_fire_actions(&snapshot, &mut ships, &mut sand, &fire, &BoostMap::default(), &mut rng);
+      let said = effects.iter().map(EffectMsg::rendered).collect::<Vec<_>>().join(" | ");
+      assert_eq!(said.contains("out of rounds"), round == 5, "round {round}: {said}");
+    }
+    assert_eq!(ships["A"].read().unwrap().magazine.rounds, 0);
   }
 }

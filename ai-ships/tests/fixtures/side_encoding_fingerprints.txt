@@ -1,0 +1,1245 @@
+assault_carrier_sakhai itself 5e3 318190b1e6a3000d
+assault_carrier_sakhai vs sloan 5e3 e65dbebc25e328dc
+assault_carrier_sakhai sloan vs 5e3 7001ef070b38d231
+assault_carrier_sakhai itself 5e5 9dc5c29f33590705
+assault_carrier_sakhai vs sloan 5e5 9020c1373f463460
+assault_carrier_sakhai sloan vs 5e5 f6c5adc6da1695e1
+assault_carrier_sakhai itself 5e6 833ef36985af62cb
+assault_carrier_sakhai vs sloan 5e6 6145c9e35062fc3a
+assault_carrier_sakhai sloan vs 5e6 648f9ce9b2fea6a3
+assault_carrier_sakhai itself 2e7 eeefe4287eaa9e4c
+assault_carrier_sakhai vs sloan 2e7 2dab3fb0cd74f725
+assault_carrier_sakhai sloan vs 2e7 28ca66020bc70024
+assault_carrier_sakhai itself 4e7 e877220fcabcec7c
+assault_carrier_sakhai vs sloan 4e7 d0e3d93d35288455
+assault_carrier_sakhai sloan vs 4e7 3a67733abc53c454
+buccaneer itself 5e3 f8b9c25438bf683d
+buccaneer vs sloan 5e3 af64f1d828f1d91a
+buccaneer sloan vs 5e3 1ffb67665c6d9ca4
+buccaneer itself 5e5 011d510e400ba1f5
+buccaneer vs sloan 5e5 25939d7b6d31341e
+buccaneer sloan vs 5e5 8b0fc460789b1ac4
+buccaneer itself 5e6 49659c9a78c96837
+buccaneer vs sloan 5e6 6a5ef28b8c03a378
+buccaneer sloan vs 5e6 5dec32581d300d82
+buccaneer itself 2e7 34ce4b6fbfb63354
+buccaneer vs sloan 2e7 c496a3b679387daf
+buccaneer sloan vs 2e7 6d8902237b49fca9
+buccaneer itself 4e7 b89ea233fd981674
+buccaneer vs sloan 4e7 d32f6082debef26f
+buccaneer sloan vs 4e7 005c4c8d959c5819
+cargo_carrier_mk_mora itself 5e3 000357ec9186e4f9
+cargo_carrier_mk_mora vs sloan 5e3 0d58f0eae66f1134
+cargo_carrier_mk_mora sloan vs 5e3 e0786a2ebe18ba74
+cargo_carrier_mk_mora itself 5e5 149aad88ceeb1bc1
+cargo_carrier_mk_mora vs sloan 5e5 4cf5630471baf6c0
+cargo_carrier_mk_mora sloan vs 5e5 522a6be3fb762d6c
+cargo_carrier_mk_mora itself 5e6 13f9bab6a2206a13
+cargo_carrier_mk_mora vs sloan 5e6 e2b94bf74822b8fa
+cargo_carrier_mk_mora sloan vs 5e6 cb7910f7efe72e3a
+cargo_carrier_mk_mora itself 2e7 1a805c6a144f6964
+cargo_carrier_mk_mora vs sloan 2e7 9dc2501379c78c11
+cargo_carrier_mk_mora sloan vs 2e7 1e7a24f7dc944f31
+cargo_carrier_mk_mora itself 4e7 2e7098622d8e0564
+cargo_carrier_mk_mora vs sloan 4e7 763d78b6923fa7e9
+cargo_carrier_mk_mora sloan vs 4e7 720eda9ff2656621
+clan_transport_khtukhao itself 5e3 9c0a382aed0ce209
+clan_transport_khtukhao vs sloan 5e3 d8fc5d37629ac9ee
+clan_transport_khtukhao sloan vs 5e3 ac30348b174d8982
+clan_transport_khtukhao itself 5e5 7bb98e0a82043181
+clan_transport_khtukhao vs sloan 5e5 693e773bb9c25672
+clan_transport_khtukhao sloan vs 5e5 369a84be0249ffaa
+clan_transport_khtukhao itself 5e6 a97537ef80f4e5ef
+clan_transport_khtukhao vs sloan 5e6 ead7b07d38089ad0
+clan_transport_khtukhao sloan vs 5e6 7da58728afc86aa8
+clan_transport_khtukhao itself 2e7 25f3d3e27cb3003c
+clan_transport_khtukhao vs sloan 2e7 29f89d6b1edf9043
+clan_transport_khtukhao sloan vs 2e7 8e5b40bddff5b47f
+clan_transport_khtukhao itself 4e7 a70979a9478604d4
+clan_transport_khtukhao vs sloan 4e7 bd3f550ed3666713
+clan_transport_khtukhao sloan vs 4e7 aed4e85f7afaa287
+colonial_cruiser_kinunir itself 5e3 dede94b3c02b039e
+colonial_cruiser_kinunir vs sloan 5e3 732effd4a0903376
+colonial_cruiser_kinunir sloan vs 5e3 1e83e867b778846f
+colonial_cruiser_kinunir itself 5e5 3edc676d491fefbe
+colonial_cruiser_kinunir vs sloan 5e5 5b5062e7a4e34c5a
+colonial_cruiser_kinunir sloan vs 5e5 868dc973c2cf278f
+colonial_cruiser_kinunir itself 5e6 432a6a472acd568c
+colonial_cruiser_kinunir vs sloan 5e6 ae2ec4be6c57e264
+colonial_cruiser_kinunir sloan vs 5e6 0966087969f8bb5d
+colonial_cruiser_kinunir itself 2e7 8a4704043e40fe37
+colonial_cruiser_kinunir vs sloan 2e7 8ed38341476df3c7
+colonial_cruiser_kinunir sloan vs 2e7 1cca1deb680f772e
+colonial_cruiser_kinunir itself 4e7 b6670a8ab1819d17
+colonial_cruiser_kinunir vs sloan 4e7 9a1e66a8d2f62d7f
+colonial_cruiser_kinunir sloan vs 4e7 3f8cd117a9febfe6
+corsair itself 5e3 3832ef7e91e090af
+corsair vs sloan 5e3 7f841e8b284f28b1
+corsair sloan vs 5e3 6501de1e08d52099
+corsair itself 5e5 c70687e97641bb93
+corsair vs sloan 5e5 3d11fe550632c745
+corsair sloan vs 5e5 5774a242d80778bd
+corsair itself 5e6 186d6796c1e0b469
+corsair vs sloan 5e6 4524668e7e3eee9f
+corsair sloan vs 5e6 a3722398b394124f
+corsair itself 2e7 9e604ad8fbc6086a
+corsair vs sloan 2e7 788d4c7553f1bc7c
+corsair sloan vs 2e7 fc823601bf0abda0
+corsair itself 4e7 686424d77a6f216a
+corsair vs sloan 4e7 18a14e037633ee0c
+corsair sloan vs 4e7 395ec95d9e588e30
+corsair_big_bad_wolf itself 5e3 d814084dfc4e894b
+corsair_big_bad_wolf vs sloan 5e3 d2c27f66b333d5d9
+corsair_big_bad_wolf sloan vs 5e3 5021b8507710818b
+corsair_big_bad_wolf itself 5e5 10c77e17ceb21153
+corsair_big_bad_wolf vs sloan 5e5 757b8e062a2065ad
+corsair_big_bad_wolf sloan vs 5e5 611c4090eb6185ab
+corsair_big_bad_wolf itself 5e6 f5400fe7f8bc7811
+corsair_big_bad_wolf vs sloan 5e6 cc262ee061c9682f
+corsair_big_bad_wolf sloan vs 5e6 5eaf0c314bfc13a1
+corsair_big_bad_wolf itself 2e7 00fbb27e6722f802
+corsair_big_bad_wolf vs sloan 2e7 9e43ce9d9a578ec8
+corsair_big_bad_wolf sloan vs 2e7 a513cb2b7b7effba
+corsair_big_bad_wolf itself 4e7 d2060b26ec3cd3b2
+corsair_big_bad_wolf vs sloan 4e7 05e14215bea83958
+corsair_big_bad_wolf sloan vs 4e7 032a3424d76992ca
+corsair_lionsbane itself 5e3 ff6a2b4c7c78996a
+corsair_lionsbane vs sloan 5e3 8389f4e97f54c02f
+corsair_lionsbane sloan vs 5e3 2a233a740546c01a
+corsair_lionsbane itself 5e5 f8ca4ad85b7c8ce6
+corsair_lionsbane vs sloan 5e5 4285082f69db75eb
+corsair_lionsbane sloan vs 5e5 b35818e9a873df06
+corsair_lionsbane itself 5e6 07475d409a12b5a8
+corsair_lionsbane vs sloan 5e6 cb461e17a6aea19d
+corsair_lionsbane sloan vs 5e6 adef45648113d328
+corsair_lionsbane itself 2e7 3c3041ad80f2a197
+corsair_lionsbane vs sloan 2e7 844e084ddce7807a
+corsair_lionsbane sloan vs 2e7 8ea973af1b5942c7
+corsair_lionsbane itself 4e7 b399f9753ce9ba97
+corsair_lionsbane vs sloan 4e7 78ec11353c37ff6a
+corsair_lionsbane sloan vs 4e7 53b5ed09875b5cd7
+corsair_type_p itself 5e3 bcdf9965b6021a4e
+corsair_type_p vs sloan 5e3 9719d8d2fefd1eda
+corsair_type_p sloan vs 5e3 1b2035a8b931cac8
+corsair_type_p itself 5e5 82e5fed505292c46
+corsair_type_p vs sloan 5e5 46c2c3c516d1df2e
+corsair_type_p sloan vs 5e5 5c1eb84f18758d28
+corsair_type_p itself 5e6 f75b9c5798e461d8
+corsair_type_p vs sloan 5e6 0f56f228c4b07ae0
+corsair_type_p sloan vs 5e6 d3ee18be84b7cd0a
+corsair_type_p itself 2e7 15fc5dd4a68696a3
+corsair_type_p vs sloan 2e7 91bcee2244af291b
+corsair_type_p sloan vs 2e7 7ead45a5e4920765
+corsair_type_p itself 4e7 d113f617fc79dac3
+corsair_type_p vs sloan 4e7 d89e6bdef0dcbe63
+corsair_type_p sloan vs 4e7 b4758b762eb86055
+courier_ktiyhui itself 5e3 7709bff9088a720c
+courier_ktiyhui vs sloan 5e3 a65e31ae07e9f001
+courier_ktiyhui sloan vs 5e3 0e141370ad265181
+courier_ktiyhui itself 5e5 6b24d0f10f759ce4
+courier_ktiyhui vs sloan 5e5 a6bda6395efb1e85
+courier_ktiyhui sloan vs 5e5 555eba074e668949
+courier_ktiyhui itself 5e6 d29a3cc7fe4aec1e
+courier_ktiyhui vs sloan 5e6 95abf120911b793f
+courier_ktiyhui sloan vs 5e6 edd1f26dba946997
+courier_ktiyhui itself 2e7 24cfa8cc58ed4191
+courier_ktiyhui vs sloan 2e7 0e0d32b1b50567b4
+courier_ktiyhui sloan vs 2e7 997b6b49595ceff0
+courier_ktiyhui itself 4e7 6922be896ac51339
+courier_ktiyhui vs sloan 4e7 4bcabe627bd40aa4
+courier_ktiyhui sloan vs 4e7 314c78ab025c4128
+cruiser_aositaoh itself 5e3 e751cecd5dffb2c1
+cruiser_aositaoh vs sloan 5e3 2528b27dfedbfc07
+cruiser_aositaoh sloan vs 5e3 aa8a2088d7d7271c
+cruiser_aositaoh itself 5e5 37ec789023c13f15
+cruiser_aositaoh vs sloan 5e5 a185fa7c8419c393
+cruiser_aositaoh sloan vs 5e5 fd9db4939379ce28
+cruiser_aositaoh itself 5e6 acb327013fc92253
+cruiser_aositaoh vs sloan 5e6 9778c58ad943fd81
+cruiser_aositaoh sloan vs 5e6 402fc7b8f803d75a
+cruiser_aositaoh itself 2e7 00a5e52f7edb1dbc
+cruiser_aositaoh vs sloan 2e7 55bb7946a25a1122
+cruiser_aositaoh sloan vs 2e7 1acce2d176cf36b9
+cruiser_aositaoh itself 4e7 8eb30d4f3df57c2c
+cruiser_aositaoh vs sloan 4e7 823deba67a962eda
+cruiser_aositaoh sloan vs 4e7 a9ca7d4cb7f1e3b9
+destroyer_escort_chrysanthemum itself 5e3 c907b9e229614c77
+destroyer_escort_chrysanthemum vs sloan 5e3 2c2654bc8c985af8
+destroyer_escort_chrysanthemum sloan vs 5e3 06edfc8683291ff9
+destroyer_escort_chrysanthemum itself 5e5 e66401525a1bee5b
+destroyer_escort_chrysanthemum vs sloan 5e5 7cab4f9977bd1b9c
+destroyer_escort_chrysanthemum sloan vs 5e5 15d2cd506c18c53d
+destroyer_escort_chrysanthemum itself 5e6 ac9c060f279d9c3d
+destroyer_escort_chrysanthemum vs sloan 5e6 8f2a66421a527636
+destroyer_escort_chrysanthemum sloan vs 5e6 0e4f7121a8b2b273
+destroyer_escort_chrysanthemum itself 2e7 faad2a5e6762f0f6
+destroyer_escort_chrysanthemum vs sloan 2e7 6f474046dbf845a9
+destroyer_escort_chrysanthemum sloan vs 2e7 2581e9eaebff37c8
+destroyer_escort_chrysanthemum itself 4e7 36324a78d4e04ede
+destroyer_escort_chrysanthemum vs sloan 4e7 c7d8382791824941
+destroyer_escort_chrysanthemum sloan vs 4e7 291407833af3d030
+destroyer_escort_fer_de_lance itself 5e3 ff5f4bb4eff1b50e
+destroyer_escort_fer_de_lance vs sloan 5e3 97857d37ee8c6548
+destroyer_escort_fer_de_lance sloan vs 5e3 0d278e9e314df570
+destroyer_escort_fer_de_lance itself 5e5 3d1424a194cd9a8e
+destroyer_escort_fer_de_lance vs sloan 5e5 17de5163d060796c
+destroyer_escort_fer_de_lance sloan vs 5e5 14c6ef0bafce0210
+destroyer_escort_fer_de_lance itself 5e6 f8a573e034518214
+destroyer_escort_fer_de_lance vs sloan 5e6 5e07f75547d1be6e
+destroyer_escort_fer_de_lance sloan vs 5e6 559d4973c2591016
+destroyer_escort_fer_de_lance itself 2e7 a8cb585babe2bd43
+destroyer_escort_fer_de_lance vs sloan 2e7 11702ed54c76c669
+destroyer_escort_fer_de_lance sloan vs 2e7 80fa335286318ba9
+destroyer_escort_fer_de_lance itself 4e7 09bb8a098a3383d3
+destroyer_escort_fer_de_lance vs sloan 4e7 0b6c7e9fc5b2e581
+destroyer_escort_fer_de_lance sloan vs 4e7 5cdcd6b5209a53f9
+ekawsiykua_escort itself 5e3 808a97172932e938
+ekawsiykua_escort vs sloan 5e3 301437857c7452bb
+ekawsiykua_escort sloan vs 5e3 1250ee587086e610
+ekawsiykua_escort itself 5e5 b54ea91bd7de3cc0
+ekawsiykua_escort vs sloan 5e5 bf179efe24a7dfe7
+ekawsiykua_escort sloan vs 5e5 dc29473eb786a348
+ekawsiykua_escort itself 5e6 8b4360df705033de
+ekawsiykua_escort vs sloan 5e6 6bd04afe24959b3d
+ekawsiykua_escort sloan vs 5e6 9d8a981a65bd0b32
+ekawsiykua_escort itself 2e7 10ff408604400589
+ekawsiykua_escort vs sloan 2e7 ae8fb08fe679271a
+ekawsiykua_escort sloan vs 2e7 e84195d9f919ab7d
+ekawsiykua_escort itself 4e7 e49b5c95a3e88ed1
+ekawsiykua_escort vs sloan 4e7 6785470d352bf092
+ekawsiykua_escort sloan vs 4e7 8065b42b74626f7d
+escort_carrier_ulfhednar itself 5e3 c68e25bea678e657
+escort_carrier_ulfhednar vs sloan 5e3 d4ff68b102f52b39
+escort_carrier_ulfhednar sloan vs 5e3 b63091a0c42b17a6
+escort_carrier_ulfhednar itself 5e5 ec885d2074bdb503
+escort_carrier_ulfhednar vs sloan 5e5 dcfb375b19fd4f6d
+escort_carrier_ulfhednar sloan vs 5e5 9cda9c6d3a7d3472
+escort_carrier_ulfhednar itself 5e6 9491c582e78958b5
+escort_carrier_ulfhednar vs sloan 5e6 179afad4fe0743cf
+escort_carrier_ulfhednar sloan vs 5e6 c8ed1e1b06c32840
+escort_carrier_ulfhednar itself 2e7 d152d5188cd65522
+escort_carrier_ulfhednar vs sloan 2e7 6adbc41e238a3250
+escort_carrier_ulfhednar sloan vs 2e7 38b8425e6ade7027
+escort_carrier_ulfhednar itself 4e7 65bf9dc79ffc5b62
+escort_carrier_ulfhednar vs sloan 4e7 492119a9060b77f8
+escort_carrier_ulfhednar sloan vs 4e7 a76169a760dd7a2f
+executor itself 5e3 a35c80888b55b5a4
+executor vs sloan 5e3 7b940b840c86d643
+executor sloan vs 5e3 c03248eaff2c9102
+executor itself 5e5 b70fcf4f7d27ed88
+executor vs sloan 5e5 57e4335c482f93cf
+executor sloan vs 5e5 ff22362eaeac9bee
+executor itself 5e6 adabf7332a6b3c86
+executor vs sloan 5e6 55285b502ae3cd01
+executor sloan vs 5e6 06d4eaee7d4d28a4
+executor itself 2e7 d76a981a21a8e87d
+executor vs sloan 2e7 7f0b99ec1e2ef376
+executor sloan vs 2e7 373e6c16af508f87
+executor itself 4e7 c056b088005f2035
+executor vs sloan 4e7 00edfdd18cbdbd1e
+executor sloan vs 4e7 1310bd49d808ce17
+express_boat itself 5e3 f6f7e0dfc905b07a
+express_boat vs sloan 5e3 2c8819faa37062d4
+express_boat sloan vs 5e3 0760bef50dceda80
+express_boat itself 5e5 3f106602240be7ea
+express_boat vs sloan 5e5 81dc1ecb6532b270
+express_boat sloan vs 5e5 aa9764f91c9c1bd0
+express_boat itself 5e6 916667dca9a4f150
+express_boat vs sloan 5e6 0265c76dc64ad7ba
+express_boat sloan vs 5e6 95159b5e6f487ae2
+express_boat itself 2e7 704163d6fbccff27
+express_boat vs sloan 2e7 b3d5a29568471c19
+express_boat sloan vs 2e7 337dd617fba770d5
+express_boat itself 4e7 8fcf5a2afdb5dff7
+express_boat vs sloan 4e7 87f5f6c98d5f9289
+express_boat sloan vs 4e7 dc05355b4e1279f5
+far_trader itself 5e3 749a9f44ecf95b4c
+far_trader vs sloan 5e3 4bbadb00bb94a94a
+far_trader sloan vs 5e3 dc64ff7ea899ed6e
+far_trader itself 5e5 c4aadf25ce07e7c8
+far_trader vs sloan 5e5 61c65a7f002503d6
+far_trader sloan vs 5e5 fdd946c83b15f952
+far_trader itself 5e6 d2ec9b7b75268662
+far_trader vs sloan 5e6 7e422a4e6f5375dc
+far_trader sloan vs 5e6 1fcb699dd178d6c8
+far_trader itself 2e7 e54c0362cbf65969
+far_trader vs sloan 2e7 683632d4dc5fedf3
+far_trader sloan vs 2e7 1f506b68810603d7
+far_trader itself 4e7 2809e2b1d9b88189
+far_trader vs sloan 4e7 52a48d6030ea97cb
+far_trader sloan vs 4e7 2d782f1077ca48c7
+far_trader_type_a2 itself 5e3 c58d48350bb6ad03
+far_trader_type_a2 vs sloan 5e3 66dc96845a9a4d1c
+far_trader_type_a2 sloan vs 5e3 f1ef35c4f0ab8bca
+far_trader_type_a2 itself 5e5 8b4de89b50945cc7
+far_trader_type_a2 vs sloan 5e5 bb956e6281ea0800
+far_trader_type_a2 sloan vs 5e5 cf4bb1761580f82e
+far_trader_type_a2 itself 5e6 b4d1554d25727875
+far_trader_type_a2 vs sloan 5e6 07bc0055b7bc8406
+far_trader_type_a2 sloan vs 5e6 451d1b44d85386d4
+far_trader_type_a2 itself 2e7 311210657ac353d6
+far_trader_type_a2 vs sloan 2e7 8692f3404659c8bd
+far_trader_type_a2 sloan vs 2e7 9124d5c4777dc8f3
+far_trader_type_a2 itself 4e7 8a70a27f7d974eee
+far_trader_type_a2 vs sloan 4e7 211f495da88ff715
+far_trader_type_a2 sloan vs 4e7 5fce3590e4494ca3
+fast_trader_type_a3 itself 5e3 259cc8694eada58b
+fast_trader_type_a3 vs sloan 5e3 65d20722e667e19d
+fast_trader_type_a3 sloan vs 5e3 90760abce857c47f
+fast_trader_type_a3 itself 5e5 caf6199430e786a3
+fast_trader_type_a3 vs sloan 5e5 a1dafb7abdef9581
+fast_trader_type_a3 sloan vs 5e5 52ddc06da48dd927
+fast_trader_type_a3 itself 5e6 0390f7ee46e50e15
+fast_trader_type_a3 vs sloan 5e6 2d3325bcec0d7547
+fast_trader_type_a3 sloan vs 5e6 f8b0ce5bb673d359
+fast_trader_type_a3 itself 2e7 5841d2842195a60e
+fast_trader_type_a3 vs sloan 2e7 57941b7ceabfe6bc
+fast_trader_type_a3 sloan vs 2e7 053c1a1374ad12fe
+fast_trader_type_a3 itself 4e7 425ee167448f1ffe
+fast_trader_type_a3 vs sloan 4e7 e4778ce76d1f9a94
+fast_trader_type_a3 sloan vs 4e7 344774a6c1b560be
+fleet_courier itself 5e3 144a41d6235ef8e4
+fleet_courier vs sloan 5e3 2b7a1dde86a61338
+fleet_courier sloan vs 5e3 50715e82acd095ac
+fleet_courier itself 5e5 d5a95e499148f8f0
+fleet_courier vs sloan 5e5 43bf52552350ba1c
+fleet_courier sloan vs 5e5 cc133131512798d8
+fleet_courier itself 5e6 65d1ab624c3d7042
+fleet_courier vs sloan 5e6 7cf10864faf2c632
+fleet_courier sloan vs 5e6 42ef8d6b8e25d4e2
+fleet_courier itself 2e7 373b66c87421f0b5
+fleet_courier vs sloan 2e7 26d8b9069879268d
+fleet_courier sloan vs 2e7 76468788833a61d9
+fleet_courier itself 4e7 42ca6e20a6a55ad5
+fleet_courier vs sloan 4e7 ea245ee0edfe64d5
+fleet_courier sloan vs 4e7 e1ac191969e85579
+fleet_escort_p_f_sloan itself 5e3 72136e2f79a95ec5
+fleet_escort_p_f_sloan vs sloan 5e3 72136e2f79a95ec5
+fleet_escort_p_f_sloan sloan vs 5e3 72136e2f79a95ec5
+fleet_escort_p_f_sloan itself 5e5 5fbac56f5a1aca39
+fleet_escort_p_f_sloan vs sloan 5e5 5fbac56f5a1aca39
+fleet_escort_p_f_sloan sloan vs 5e5 5fbac56f5a1aca39
+fleet_escort_p_f_sloan itself 5e6 4897107e9941e4f7
+fleet_escort_p_f_sloan vs sloan 5e6 4897107e9941e4f7
+fleet_escort_p_f_sloan sloan vs 5e6 4897107e9941e4f7
+fleet_escort_p_f_sloan itself 2e7 03701c6cc0dc1100
+fleet_escort_p_f_sloan vs sloan 2e7 03701c6cc0dc1100
+fleet_escort_p_f_sloan sloan vs 2e7 03701c6cc0dc1100
+fleet_escort_p_f_sloan itself 4e7 d1e90c2e3fe3ecd0
+fleet_escort_p_f_sloan vs sloan 4e7 d1e90c2e3fe3ecd0
+fleet_escort_p_f_sloan sloan vs 4e7 d1e90c2e3fe3ecd0
+fleet_picket_watchdog itself 5e3 233086f862fae74f
+fleet_picket_watchdog vs sloan 5e3 b510eae51f669305
+fleet_picket_watchdog sloan vs 5e3 d3330c2dcbd50c96
+fleet_picket_watchdog itself 5e5 f681e34d2564f07b
+fleet_picket_watchdog vs sloan 5e5 98663e4ef0a53cc1
+fleet_picket_watchdog sloan vs 5e5 4ad2a36305dc8032
+fleet_picket_watchdog itself 5e6 4ae18210402f75b5
+fleet_picket_watchdog vs sloan 5e6 d4b1fccecce85b2b
+fleet_picket_watchdog sloan vs 5e6 5b8703af8dae2930
+fleet_picket_watchdog itself 2e7 053ce336fff8667a
+fleet_picket_watchdog vs sloan 2e7 21747567b6fda62c
+fleet_picket_watchdog sloan vs 2e7 34e8176f6b678c47
+fleet_picket_watchdog itself 4e7 4c3625c3f78e4b02
+fleet_picket_watchdog vs sloan 4e7 5bf60e7447932614
+fleet_picket_watchdog sloan vs 4e7 fa95716fd161ece7
+free_trader itself 5e3 14a8342a8f2e85d3
+free_trader vs sloan 5e3 87ea81e0abcca409
+free_trader sloan vs 5e3 d3d918101501d2e6
+free_trader itself 5e5 803fefefd3275fc7
+free_trader vs sloan 5e5 e430b61cb7e23975
+free_trader sloan vs 5e5 f404ee9f7874a752
+free_trader itself 5e6 d41466eaa6577999
+free_trader vs sloan 5e6 7b2a3c19032d6453
+free_trader sloan vs 5e6 05856b18204775f8
+free_trader itself 2e7 ea2140a6e8c5d82e
+free_trader vs sloan 2e7 a1860b734bf204b4
+free_trader sloan vs 2e7 bbeeba9fc7eac143
+free_trader itself 4e7 18b2789af5fb4736
+free_trader vs sloan 4e7 bb79b96e1d5ba6a4
+free_trader sloan vs 4e7 99532764f6911e93
+gazelle itself 5e3 92c1cfd713b1ef3c
+gazelle vs sloan 5e3 35b0853e32af727e
+gazelle sloan vs 5e3 ec2d7ae7ab313555
+gazelle itself 5e5 5ca8c5704f000140
+gazelle vs sloan 5e5 8a062296c4a7da12
+gazelle sloan vs 5e5 9c48e1bfa9425141
+gazelle itself 5e6 5aa3fd4b3042128a
+gazelle vs sloan 5e6 bb92a7f1b657f968
+gazelle sloan vs 5e6 fada8abe3823e967
+gazelle itself 2e7 a4f27ecb85597101
+gazelle vs sloan 2e7 850b01652018f9b7
+gazelle sloan vs 2e7 f2365f9571ed4030
+gazelle itself 4e7 103682446b1cee71
+gazelle vs sloan 4e7 2d8eb42dd34dacc7
+gazelle sloan vs 4e7 2e87d6e3362e1e10
+gazulin itself 5e3 b5507aa728b686ef
+gazulin vs sloan 5e3 deef30786ac96a3a
+gazulin sloan vs 5e3 488022469fdd6293
+gazulin itself 5e5 4a53e900beb2b923
+gazulin vs sloan 5e5 ba8dec91bffa8546
+gazulin sloan vs 5e5 45b0ae4ff743025f
+gazulin itself 5e6 d6c401424a7e66cd
+gazulin vs sloan 5e6 098285dd57d944ec
+gazulin sloan vs 5e6 0cae8b4211fe300d
+gazulin itself 2e7 0562cb4bea39bcee
+gazulin vs sloan 2e7 eda3232c0d4f8087
+gazulin sloan vs 2e7 5d5f2155e40cb2ee
+gazulin itself 4e7 1e4b7c9cc7ea098e
+gazulin vs sloan 4e7 511c8d71401a1147
+gazulin sloan vs 4e7 ac46d58180ad8736
+gunship_fiery itself 5e3 1693e7f355c97760
+gunship_fiery vs sloan 5e3 5e93a3c469186dc5
+gunship_fiery sloan vs 5e3 e722a2ca0d9d4adb
+gunship_fiery itself 5e5 257740e629fa6318
+gunship_fiery vs sloan 5e5 c9565dea6e7674e9
+gunship_fiery sloan vs 5e5 6bddb098d955d253
+gunship_fiery itself 5e6 ec617bc0e4ba3112
+gunship_fiery vs sloan 5e6 082af4f6ac07f877
+gunship_fiery sloan vs 5e6 a5851e05d0d09cdd
+gunship_fiery itself 2e7 7bbfdac320d4bfe5
+gunship_fiery vs sloan 2e7 cbfc803dad1f919c
+gunship_fiery sloan vs 2e7 8a4a29be566df88a
+gunship_fiery itself 4e7 8ea7ecd190693ed5
+gunship_fiery vs sloan 4e7 3709492e827e739c
+gunship_fiery sloan vs 4e7 a5b399d49dc3a632
+harrier itself 5e3 48bfdf2acf5f0f65
+harrier vs sloan 5e3 ecc85d79a12fa070
+harrier sloan vs 5e3 c03248eaff2c9102
+harrier itself 5e5 6f332c91c1a5e649
+harrier vs sloan 5e5 99a630e8c9a1b934
+harrier sloan vs 5e5 ff22362eaeac9bee
+harrier itself 5e6 d466eaedd2907f43
+harrier vs sloan 5e6 66054aa0eaae51c2
+harrier sloan vs 5e6 06d4eaee7d4d28a4
+harrier itself 2e7 7384483363bdd59c
+harrier vs sloan 2e7 b0073d3a29d8ffc5
+harrier sloan vs 2e7 373e6c16af508f87
+harrier itself 4e7 9343f4c7fdaba884
+harrier vs sloan 4e7 43b85f492fae8b0d
+harrier sloan vs 4e7 1310bd49d808ce17
+heavy_fighter itself 5e3 832bcbe6d784ae54
+heavy_fighter vs sloan 5e3 152d782d7ca52832
+heavy_fighter sloan vs 5e3 aa739117661032a1
+heavy_fighter itself 5e5 f34de14c027ea2d4
+heavy_fighter vs sloan 5e5 31dd74fb3ca9f676
+heavy_fighter sloan vs 5e5 5037c5d12f1a9e09
+heavy_fighter itself 5e6 3f5f4df90e8ec31e
+heavy_fighter vs sloan 5e6 a52a3de206c87df4
+heavy_fighter sloan vs 5e6 9d6c12a26589c9c7
+heavy_fighter itself 2e7 1ac3f9ceb0011c9d
+heavy_fighter vs sloan 2e7 9b4e5b110bb9872f
+heavy_fighter sloan vs 2e7 cf39a605e8a95330
+heavy_fighter itself 4e7 396f25b9a3989145
+heavy_fighter vs sloan 4e7 ab4d3defdbcfba07
+heavy_fighter sloan vs 4e7 faaea759b90df610
+herald_fast_messenger itself 5e3 e4f930174a863e42
+herald_fast_messenger vs sloan 5e3 db7e19a8ea303128
+herald_fast_messenger sloan vs 5e3 b2198b40626db717
+herald_fast_messenger itself 5e5 27442d24c43264b2
+herald_fast_messenger vs sloan 5e5 3e4f5d66552f91ec
+herald_fast_messenger sloan vs 5e5 0ab79ce67f1c2e3f
+herald_fast_messenger itself 5e6 ad99dd8536efdc3c
+herald_fast_messenger vs sloan 5e6 57a9cfccbe89edea
+herald_fast_messenger sloan vs 5e6 64a27cbb51289965
+herald_fast_messenger itself 2e7 011ce757c7a1b307
+herald_fast_messenger vs sloan 2e7 4a77b47bb8385f79
+herald_fast_messenger sloan vs 2e7 dfb3518bed3fcfce
+herald_fast_messenger itself 4e7 a44f43dc8a5422d7
+herald_fast_messenger vs sloan 4e7 a569a0cdac9d61e1
+herald_fast_messenger sloan vs 4e7 145557b7976ea28e
+indigo_pirate_carrier itself 5e3 f986b6e2458473fb
+indigo_pirate_carrier vs sloan 5e3 b895b27d654cecf0
+indigo_pirate_carrier sloan vs 5e3 38197dda87cb334c
+indigo_pirate_carrier itself 5e5 e3e4f5d76c52e8fb
+indigo_pirate_carrier vs sloan 5e5 d245a39e98c5ca84
+indigo_pirate_carrier sloan vs 5e5 c956e0e26192933c
+indigo_pirate_carrier itself 5e6 cb0cb7ed6ac5dccd
+indigo_pirate_carrier vs sloan 5e6 e9ab58276bf3a39a
+indigo_pirate_carrier sloan vs 5e6 91682d094c369326
+indigo_pirate_carrier itself 2e7 c4d0965cd8d0cd9a
+indigo_pirate_carrier vs sloan 2e7 282a6a5bed8013c5
+indigo_pirate_carrier sloan vs 2e7 21870cbffb72edb5
+indigo_pirate_carrier itself 4e7 2e87e6c4ef288f52
+indigo_pirate_carrier vs sloan 4e7 3356e116f1145fad
+indigo_pirate_carrier sloan vs 4e7 e223ed9bc1a8002d
+jump_shuttle itself 5e3 b6409dfcc1cbdf20
+jump_shuttle vs sloan 5e3 77148f16a840df50
+jump_shuttle sloan vs 5e3 d5d6930a1b18a106
+jump_shuttle itself 5e5 40ea39d25c71cd04
+jump_shuttle vs sloan 5e5 8f73d1675b6362cc
+jump_shuttle sloan vs 5e5 cb9d0368b54ef7fa
+jump_shuttle itself 5e6 7fbe177b01303b22
+jump_shuttle vs sloan 5e6 9b01c0c5196f8e16
+jump_shuttle sloan vs 5e6 8b7231636f3ee40c
+jump_shuttle itself 2e7 fd888c0219bb334d
+jump_shuttle vs sloan 2e7 a38f23c06d8c85d5
+jump_shuttle sloan vs 2e7 2731a25ecc00ac1b
+jump_shuttle itself 4e7 a0e079e82c203ba5
+jump_shuttle vs sloan 4e7 116bd964fe10f65d
+jump_shuttle sloan vs 4e7 076f90e0ecaaeb3b
+laboratory_ship_type_l itself 5e3 c16461ae300da690
+laboratory_ship_type_l vs sloan 5e3 eea95ada9e6c7be3
+laboratory_ship_type_l sloan vs 5e3 ddea1899c0ae592a
+laboratory_ship_type_l itself 5e5 5ee684ed3df6c2b4
+laboratory_ship_type_l vs sloan 5e5 b675667606509b77
+laboratory_ship_type_l sloan vs 5e5 a32f2eebd7b10406
+laboratory_ship_type_l itself 5e6 1e74ccf7e65f168a
+laboratory_ship_type_l vs sloan 5e6 0effa0ae56bef0e1
+laboratory_ship_type_l sloan vs 5e6 2c1da16be4492080
+laboratory_ship_type_l itself 2e7 5b72feddc5f76ccd
+laboratory_ship_type_l vs sloan 2e7 89bf7dd443606436
+laboratory_ship_type_l sloan vs 2e7 e5cb8430daecbe17
+laboratory_ship_type_l itself 4e7 84238f19ea4e6ae5
+laboratory_ship_type_l vs sloan 4e7 547ecbc788258bfe
+laboratory_ship_type_l sloan vs 4e7 958323ef46f7c7c7
+launch itself 5e3 21120895cc6cd462
+launch vs sloan 5e3 2e9fa265be81caf2
+launch sloan vs 5e3 7e9efb0d9fd51191
+launch itself 5e5 86c5e90ddc367456
+launch vs sloan 5e5 59e942a9a6b81a46
+launch sloan vs 5e5 2c3074f7402ba39d
+launch itself 5e6 ae240ab625d60334
+launch vs sloan 5e6 ede7e6c4c4c2dd10
+launch sloan vs 5e6 089ab56f5b0d340f
+launch itself 2e7 f015b6aec2726db3
+launch vs sloan 2e7 6ebbf0110ec6ee27
+launch sloan vs 2e7 505c0fc8ccc14f00
+launch itself 4e7 bb9fb39651ac8cb3
+launch vs sloan 4e7 8b901e6376ce016f
+launch sloan vs 4e7 b76cd0ab9642fff0
+light_fighter itself 5e3 b5ab1af5194bffcc
+light_fighter vs sloan 5e3 acc43c393f43c922
+light_fighter sloan vs 5e3 042581f3e2465ae9
+light_fighter itself 5e5 dcb4963b3042d054
+light_fighter vs sloan 5e5 85aefa8cb32a5f86
+light_fighter sloan vs 5e5 54801c96ca4b3531
+light_fighter itself 5e6 3a630bd9e8614572
+light_fighter vs sloan 5e6 95239e75e0ba4040
+light_fighter sloan vs 5e6 4dd80147843b6aaf
+light_fighter itself 2e7 5fcb0ab884165701
+light_fighter vs sloan 2e7 80e85d5169b604ef
+light_fighter sloan vs 2e7 8dfd41c85699db7c
+light_fighter itself 4e7 ca0afcfab785cab9
+light_fighter vs sloan 4e7 b189c6ee08045a27
+light_fighter sloan vs 4e7 84f2308d13ff4714
+light_trader_aoa_iw itself 5e3 671f35793ca453f1
+light_trader_aoa_iw vs sloan 5e3 a952b7e0be350d7b
+light_trader_aoa_iw sloan vs 5e3 375310f928a22029
+light_trader_aoa_iw itself 5e5 2ea703522ce56715
+light_trader_aoa_iw vs sloan 5e5 7837114c40508f57
+light_trader_aoa_iw sloan vs 5e5 dab4203a551501cd
+light_trader_aoa_iw itself 5e6 8a7aaacd0d93e137
+light_trader_aoa_iw vs sloan 5e6 383a90a70d74a9c9
+light_trader_aoa_iw sloan vs 5e6 98619e0e32bb4f47
+light_trader_aoa_iw itself 2e7 9058ba30118821b4
+light_trader_aoa_iw vs sloan 2e7 2d89fce3228a270e
+light_trader_aoa_iw sloan vs 2e7 ab75bae8ccc2c848
+light_trader_aoa_iw itself 4e7 e7f04aba7f4f60dc
+light_trader_aoa_iw vs sloan 4e7 33b4ef43cc74f84e
+light_trader_aoa_iw sloan vs 4e7 69415afb8ddff418
+liner_queen_elizabeth itself 5e3 4425d31799d72ab5
+liner_queen_elizabeth vs sloan 5e3 cc794d4171f4f89b
+liner_queen_elizabeth sloan vs 5e3 dbf2dee65f4d7439
+liner_queen_elizabeth itself 5e5 6b1e062e063c9ca9
+liner_queen_elizabeth vs sloan 5e5 1a142950bfca87e7
+liner_queen_elizabeth sloan vs 5e5 169a954b99cf6ed5
+liner_queen_elizabeth itself 5e6 784b1d48c32f1993
+liner_queen_elizabeth vs sloan 5e6 829882af9acf9e15
+liner_queen_elizabeth sloan vs 5e6 6a533673555dcf43
+liner_queen_elizabeth itself 2e7 f47a61ca96013eb0
+liner_queen_elizabeth vs sloan 2e7 8177b47e5ff12c8e
+liner_queen_elizabeth sloan vs 2e7 89fae168223db21c
+liner_queen_elizabeth itself 4e7 41256ba9031d0288
+liner_queen_elizabeth vs sloan 4e7 7829ba2b06019c1e
+liner_queen_elizabeth sloan vs 4e7 294d850cec27bf14
+mercenary_cruiser_type_c itself 5e3 224a15c7f93dd1d6
+mercenary_cruiser_type_c vs sloan 5e3 8ad60341b8ac1b9d
+mercenary_cruiser_type_c sloan vs 5e3 05d9d6711bd9795c
+mercenary_cruiser_type_c itself 5e5 99134288ab278abe
+mercenary_cruiser_type_c vs sloan 5e5 c3d3c9a2d1d52219
+mercenary_cruiser_type_c sloan vs 5e5 b2f0282d6ac34cec
+mercenary_cruiser_type_c itself 5e6 06752936fd3676fc
+mercenary_cruiser_type_c vs sloan 5e6 49b05201764d84cb
+mercenary_cruiser_type_c sloan vs 5e6 db5ba7735f74be56
+mercenary_cruiser_type_c itself 2e7 515990ba16d88d73
+mercenary_cruiser_type_c vs sloan 2e7 03cae9cc4fbe97e4
+mercenary_cruiser_type_c sloan vs 2e7 e67b01474a813719
+mercenary_cruiser_type_c itself 4e7 f3ae90379e11e8f3
+mercenary_cruiser_type_c vs sloan 4e7 c7e6befcac3f034c
+mercenary_cruiser_type_c sloan vs 4e7 624ce7cb4b8bced9
+mercenary_cruiser_type_c_armed itself 5e3 77c792fd7609f870
+mercenary_cruiser_type_c_armed vs sloan 5e3 6594a5670d6409dc
+mercenary_cruiser_type_c_armed sloan vs 5e3 ecbce16aece05c0b
+mercenary_cruiser_type_c_armed itself 5e5 df795189f4b8b5c8
+mercenary_cruiser_type_c_armed vs sloan 5e5 a5a15852fbec1cb8
+mercenary_cruiser_type_c_armed sloan vs 5e5 2cec3e56bd0f3f3b
+mercenary_cruiser_type_c_armed itself 5e6 ab5257e158931e4a
+mercenary_cruiser_type_c_armed vs sloan 5e6 11a719f5d6885dc6
+mercenary_cruiser_type_c_armed sloan vs 5e6 f220b27e5ca393dd
+mercenary_cruiser_type_c_armed itself 2e7 23bffd5247172055
+mercenary_cruiser_type_c_armed vs sloan 2e7 b2fa1346d2901295
+mercenary_cruiser_type_c_armed sloan vs 2e7 9c51499c67f0961e
+mercenary_cruiser_type_c_armed itself 4e7 5925efa0f9bd7a55
+mercenary_cruiser_type_c_armed vs sloan 4e7 0966d261a7ee0ced
+mercenary_cruiser_type_c_armed sloan vs 4e7 6745c0005d24c55e
+merchant_cruiser_leviathan itself 5e3 a5c53dfd56cfe213
+merchant_cruiser_leviathan vs sloan 5e3 a9c9c5907492085b
+merchant_cruiser_leviathan sloan vs 5e3 189291d4e34c7d06
+merchant_cruiser_leviathan itself 5e5 a6793de6762e93e7
+merchant_cruiser_leviathan vs sloan 5e5 c12ec1505f4d940f
+merchant_cruiser_leviathan sloan vs 5e5 eb482e66310603ba
+merchant_cruiser_leviathan itself 5e6 6127b8891cacadc5
+merchant_cruiser_leviathan vs sloan 5e6 7effd3ce732e99dd
+merchant_cruiser_leviathan sloan vs 5e6 ae5f944c3233d928
+merchant_cruiser_leviathan itself 2e7 7e9341efd2aafe0e
+merchant_cruiser_leviathan vs sloan 2e7 d6d5faa2ba01a566
+merchant_cruiser_leviathan sloan vs 2e7 6ae243401b2d3173
+merchant_cruiser_leviathan itself 4e7 3e66426682a82506
+merchant_cruiser_leviathan vs sloan 4e7 523d5ff011e6a12e
+merchant_cruiser_leviathan sloan vs 4e7 2a4eebf4212ad9cb
+messenger_iyeliy itself 5e3 90a692c75111e681
+messenger_iyeliy vs sloan 5e3 5ca543c10b5d4bec
+messenger_iyeliy sloan vs 5e3 521efe679443a367
+messenger_iyeliy itself 5e5 ca93a7fac2bb17ed
+messenger_iyeliy vs sloan 5e5 cfcf98e31cf441e0
+messenger_iyeliy sloan vs 5e5 ef18b3b7b18a0ee3
+messenger_iyeliy itself 5e6 56ee232cc0a94d87
+messenger_iyeliy vs sloan 5e6 930a4a8361c29066
+messenger_iyeliy sloan vs 5e6 fd477271150f8901
+messenger_iyeliy itself 2e7 b73acdca906ba274
+messenger_iyeliy vs sloan 2e7 8de7dae3e6e24379
+messenger_iyeliy sloan vs 2e7 d3bc443ec5ede216
+messenger_iyeliy itself 4e7 86f6455946cecf64
+messenger_iyeliy vs sloan 4e7 37d137220c3e7849
+messenger_iyeliy sloan vs 4e7 8e2e0ca0c7530b46
+midu_agasham itself 5e3 4c41f1f94c7e65b1
+midu_agasham vs sloan 5e3 df0c0e8fc6adee86
+midu_agasham sloan vs 5e3 bd49851caa90c013
+midu_agasham itself 5e5 b1330add53bfafb5
+midu_agasham vs sloan 5e5 841c7250064b4e7a
+midu_agasham sloan vs 5e5 3030949bf8908d67
+midu_agasham itself 5e6 d8affb13348c9af7
+midu_agasham vs sloan 5e6 f0f5975324fb45a0
+midu_agasham sloan vs 5e6 f618a6b81cc894f1
+midu_agasham itself 2e7 d4aa58b05f912874
+midu_agasham vs sloan 2e7 c6ae107488cfd03b
+midu_agasham sloan vs 2e7 94d9628b61cde26e
+midu_agasham itself 4e7 fd43f0b1d797d9f4
+midu_agasham vs sloan 4e7 48beeef2695e7923
+midu_agasham sloan vs 4e7 e5f97557f2dec996
+military_gig_close_escort_variant itself 5e3 fd817983fb5ffe49
+military_gig_close_escort_variant vs sloan 5e3 a665d93bec6cbd22
+military_gig_close_escort_variant sloan vs 5e3 c03248eaff2c9102
+military_gig_close_escort_variant itself 5e5 3c8f2185fc6c6d2d
+military_gig_close_escort_variant vs sloan 5e5 8c0aa40df960d1ce
+military_gig_close_escort_variant sloan vs 5e5 ff22362eaeac9bee
+military_gig_close_escort_variant itself 5e6 bd80ade5d65b6b4f
+military_gig_close_escort_variant vs sloan 5e6 5386bc673699de74
+military_gig_close_escort_variant sloan vs 5e6 06d4eaee7d4d28a4
+military_gig_close_escort_variant itself 2e7 dc08b5c0ca0a8488
+military_gig_close_escort_variant vs sloan 2e7 5844fcc13588b7ab
+military_gig_close_escort_variant sloan vs 2e7 373e6c16af508f87
+military_gig_close_escort_variant itself 4e7 2283a30a7e529620
+military_gig_close_escort_variant vs sloan 4e7 b52da793e3e1fc63
+military_gig_close_escort_variant sloan vs 4e7 1310bd49d808ce17
+modular_cutter itself 5e3 7ad725787fb4e3d2
+modular_cutter vs sloan 5e3 dbe349fd7d8c2021
+modular_cutter sloan vs 5e3 16c442c10f42f9be
+modular_cutter itself 5e5 7692fc10ccd0b42e
+modular_cutter vs sloan 5e5 e394dae81740a2a5
+modular_cutter sloan vs 5e5 38bacec8255d0982
+modular_cutter itself 5e6 e4aca18c7bebaef8
+modular_cutter vs sloan 5e6 2085b3308e0a9353
+modular_cutter sloan vs 5e6 040c11efac02925c
+modular_cutter itself 2e7 9eae5a208f213c5b
+modular_cutter vs sloan 2e7 ad2c31a5807d01f8
+modular_cutter sloan vs 2e7 c45efbbf15e250c3
+modular_cutter itself 4e7 189497b0ed89448b
+modular_cutter vs sloan 4e7 1b54a2080fed52b0
+modular_cutter sloan vs 4e7 ac83148e26c1d6e3
+passenger_shuttle itself 5e3 6ea3fb7c10119e65
+passenger_shuttle vs sloan 5e3 b7f39e1a0dc5a8e0
+passenger_shuttle sloan vs 5e3 873164eefe8b3028
+passenger_shuttle itself 5e5 abcb1091a2d32355
+passenger_shuttle vs sloan 5e5 64e8932b8ab6bd74
+passenger_shuttle sloan vs 5e5 1a3006c4962e9560
+passenger_shuttle itself 5e6 54e70030ae8fa057
+passenger_shuttle vs sloan 5e6 99f8696c36491b9e
+passenger_shuttle sloan vs 5e6 6c3f740343a55116
+passenger_shuttle itself 2e7 db4f935f9a78bd38
+passenger_shuttle vs sloan 2e7 6d91da807178b5b9
+passenger_shuttle sloan vs 2e7 8d30f473b418ffa1
+passenger_shuttle itself 4e7 5e59c99ba752d1d8
+passenger_shuttle vs sloan 4e7 01322054096dc581
+passenger_shuttle sloan vs 4e7 49e7375753fa5959
+patrol_corvette_type_t itself 5e3 d716f03031f0381b
+patrol_corvette_type_t vs sloan 5e3 a65e02069356ae99
+patrol_corvette_type_t sloan vs 5e3 d5b71aa591536f0b
+patrol_corvette_type_t itself 5e5 229b1e9dbeb91b1f
+patrol_corvette_type_t vs sloan 5e5 375536377e292c4d
+patrol_corvette_type_t sloan vs 5e5 39d7cacf0fc2982f
+patrol_corvette_type_t itself 5e6 1fde8481c02d74cd
+patrol_corvette_type_t vs sloan 5e6 d7f2da6955d6b7b7
+patrol_corvette_type_t sloan vs 5e6 986c2f0d120506c9
+patrol_corvette_type_t itself 2e7 7501722331b2cf22
+patrol_corvette_type_t vs sloan 2e7 eaa2c701adb69d80
+patrol_corvette_type_t sloan vs 2e7 412d9546cf76e9aa
+patrol_corvette_type_t itself 4e7 15845d97adcc7672
+patrol_corvette_type_t vs sloan 4e7 d272e8ef3bedf5a8
+patrol_corvette_type_t sloan vs 4e7 2b83c2f6fb080e1a
+patrol_tender itself 5e3 f7b091cd19c795ae
+patrol_tender vs sloan 5e3 b5a6ecd1503770f7
+patrol_tender sloan vs 5e3 37c05e2f68732fec
+patrol_tender itself 5e5 6dd50f8cc73445e2
+patrol_tender vs sloan 5e5 a77177d8fee2b103
+patrol_tender sloan vs 5e5 c442b575d896d068
+patrol_tender itself 5e6 8319c018a330aacc
+patrol_tender vs sloan 5e6 b5d6d484fb71fb65
+patrol_tender sloan vs 5e6 f78810bb3081a97a
+patrol_tender itself 2e7 05b51b6ed5b4638b
+patrol_tender vs sloan 2e7 a95d6107f827df1e
+patrol_tender sloan vs 2e7 8db98241967069e1
+patrol_tender itself 4e7 547253a876e1485b
+patrol_tender vs sloan 4e7 28be0512a88ab436
+patrol_tender sloan vs 4e7 0754105c41e645e1
+pinnace itself 5e3 a0b5567968a1c12c
+pinnace vs sloan 5e3 7810ce13809c855d
+pinnace sloan vs 5e3 427ae8f75650b028
+pinnace itself 5e5 ef2d41a76c43d448
+pinnace vs sloan 5e5 14aadd8040edd441
+pinnace sloan vs 5e5 030bedbd251b1e0c
+pinnace itself 5e6 6fc83865eeef7aaa
+pinnace vs sloan 5e6 3768ff1c7c51b407
+pinnace sloan vs 5e6 ea22ced0c16589c6
+pinnace itself 2e7 37f0755d438a2ec1
+pinnace vs sloan 2e7 5e725ca34782887c
+pinnace sloan vs 2e7 b99396383991acd1
+pinnace itself 4e7 9645111408564af9
+pinnace vs sloan 4e7 fe9f838a12a3c6d4
+pinnace sloan vs 4e7 48cd0b722cfeb589
+pocket_warship_halaheike itself 5e3 586619215d9d77ce
+pocket_warship_halaheike vs sloan 5e3 0f4070b60c1b4540
+pocket_warship_halaheike sloan vs 5e3 c0efa14540e890a4
+pocket_warship_halaheike itself 5e5 f25e539e0ce19ea2
+pocket_warship_halaheike vs sloan 5e5 920e06d6aeeeb41c
+pocket_warship_halaheike sloan vs 5e5 0743e4360ef1f9d0
+pocket_warship_halaheike itself 5e6 db6904fb10156654
+pocket_warship_halaheike vs sloan 5e6 7ae105f466cdbfe2
+pocket_warship_halaheike sloan vs 5e6 358bdfc346fb1cda
+pocket_warship_halaheike itself 2e7 474c21a5b1b1d383
+pocket_warship_halaheike vs sloan 2e7 1b2ca23c7993a961
+pocket_warship_halaheike sloan vs 2e7 3d4baf661c273b4d
+pocket_warship_halaheike itself 4e7 a5244d471b0b8053
+pocket_warship_halaheike vs sloan 4e7 78b9ebb730aac851
+pocket_warship_halaheike sloan vs 4e7 def768343726c0cd
+repair_ship_magenta itself 5e3 3edf9cfc297c5aac
+repair_ship_magenta vs sloan 5e3 29645269eae6f7af
+repair_ship_magenta sloan vs 5e3 cf19e358e74c1bbf
+repair_ship_magenta itself 5e5 19960f55a85f6810
+repair_ship_magenta vs sloan 5e5 fac32f3d763a1f7b
+repair_ship_magenta sloan vs 5e5 502e7cc6df1a924b
+repair_ship_magenta itself 5e6 405eea58cc549a4a
+repair_ship_magenta vs sloan 5e6 b4cf3723228fa77d
+repair_ship_magenta sloan vs 5e6 afd30a47e68f5375
+repair_ship_magenta itself 2e7 e1b02ac7b936efa1
+repair_ship_magenta vs sloan 2e7 621b8dd0fd2d704e
+repair_ship_magenta sloan vs 2e7 068dfb19761d4c3e
+repair_ship_magenta itself 4e7 0b3bc8635e715d89
+repair_ship_magenta vs sloan 4e7 290f400e313bc1fe
+repair_ship_magenta sloan vs 4e7 dd3183c3134a1e66
+researcher_hkiyrerao itself 5e3 b3cc183d5ac45b18
+researcher_hkiyrerao vs sloan 5e3 47ae96198524c8cd
+researcher_hkiyrerao sloan vs 5e3 5e21edf3910b2423
+researcher_hkiyrerao itself 5e5 b36a96d1662c0988
+researcher_hkiyrerao vs sloan 5e5 e5c7e6798a572891
+researcher_hkiyrerao sloan vs 5e5 8b8cf7b0578d597b
+researcher_hkiyrerao itself 5e6 7ba960aafba027ca
+researcher_hkiyrerao vs sloan 5e6 a1fdf00a8a2757bf
+researcher_hkiyrerao sloan vs 5e6 dfe39bec054b8659
+researcher_hkiyrerao itself 2e7 80cd7fc30e322a05
+researcher_hkiyrerao vs sloan 2e7 f22b892053beb134
+researcher_hkiyrerao sloan vs 2e7 58da1ff4153e0dde
+researcher_hkiyrerao itself 4e7 13f7eedc59feaf7d
+researcher_hkiyrerao vs sloan 4e7 7ae44fbae200a78c
+researcher_hkiyrerao sloan vs 4e7 485cdc5c3c25351e
+safari_ship_type_k itself 5e3 e1298c26fe958064
+safari_ship_type_k vs sloan 5e3 f0258b7248e34efb
+safari_ship_type_k sloan vs 5e3 f1ef35c4f0ab8bca
+safari_ship_type_k itself 5e5 cc4d260425578970
+safari_ship_type_k vs sloan 5e5 26daf33a2cd7ab3f
+safari_ship_type_k sloan vs 5e5 cf4bb1761580f82e
+safari_ship_type_k itself 5e6 771a6ed57e2b8f4e
+safari_ship_type_k vs sloan 5e6 870534a499739a55
+safari_ship_type_k sloan vs 5e6 451d1b44d85386d4
+safari_ship_type_k itself 2e7 521cfe8109ed24f5
+safari_ship_type_k vs sloan 2e7 033e5b89ef6248b6
+safari_ship_type_k sloan vs 2e7 9124d5c4777dc8f3
+safari_ship_type_k itself 4e7 abdcdf3cf7ee6f05
+safari_ship_type_k vs sloan 4e7 d47a66d156e3f386
+safari_ship_type_k sloan vs 4e7 5fce3590e4494ca3
+salvage_hauler_vulture itself 5e3 6735dbb1283b1eb4
+salvage_hauler_vulture vs sloan 5e3 0d754780e1cc3cd8
+salvage_hauler_vulture sloan vs 5e3 29276e6061001d26
+salvage_hauler_vulture itself 5e5 c750b9301623b7dc
+salvage_hauler_vulture vs sloan 5e5 2535f744703e5d5c
+salvage_hauler_vulture sloan vs 5e5 742c489dcfa9ebae
+salvage_hauler_vulture itself 5e6 548d9ff7dffcdc4a
+salvage_hauler_vulture vs sloan 5e6 46475f9ea0365e8e
+salvage_hauler_vulture sloan vs 5e6 4f106ce3458c5858
+salvage_hauler_vulture itself 2e7 586d9a6e3ee06141
+salvage_hauler_vulture vs sloan 2e7 dcb0363e07f0be6d
+salvage_hauler_vulture sloan vs 2e7 2bf56cda58ba8b73
+salvage_hauler_vulture itself 4e7 03beeb260fda8e51
+salvage_hauler_vulture vs sloan 4e7 5a237e3afe7dc3fd
+salvage_hauler_vulture sloan vs 4e7 62812f146df5f1b3
+scout_courier itself 5e3 50d300242a74685e
+scout_courier vs sloan 5e3 37a604b1e3e830d2
+scout_courier sloan vs 5e3 0eaf96f88d499159
+scout_courier itself 5e5 3cf3195e7e6432c2
+scout_courier vs sloan 5e5 d283b8ec7d56108e
+scout_courier sloan vs 5e5 854fce738b294dc5
+scout_courier itself 5e6 368c4ae9acaac460
+scout_courier vs sloan 5e6 0e0557ad6b2c3088
+scout_courier sloan vs 5e6 31578e8dd9d8e983
+scout_courier itself 2e7 6ce7db7401926693
+scout_courier vs sloan 2e7 a88ceda80017a1ab
+scout_courier sloan vs 2e7 a39c16eb3d5f4814
+scout_courier itself 4e7 af17fc918e2ba3ab
+scout_courier vs sloan 4e7 61b16c760e5f629b
+scout_courier sloan vs 4e7 50a88ce18996a30c
+scout_hraye itself 5e3 037ebf79f8548b87
+scout_hraye vs sloan 5e3 3f31d73cb3266345
+scout_hraye sloan vs 5e3 a379730f513db75c
+scout_hraye itself 5e5 c15b8c3f8a2bc713
+scout_hraye vs sloan 5e5 af4fb975047c2b29
+scout_hraye sloan vs 5e5 863f7e0f212e7f78
+scout_hraye itself 5e6 a1777c94bf1b8249
+scout_hraye vs sloan 5e6 57e5a3e8450e1177
+scout_hraye sloan vs 5e6 dce3948e94a9b8c2
+scout_hraye itself 2e7 11c81f054d62fe0a
+scout_hraye vs sloan 2e7 e263648d3883feb4
+scout_hraye sloan vs 2e7 84926d39fe30b9d1
+scout_hraye itself 4e7 81a8f35f52277f92
+scout_hraye vs sloan 4e7 0163818ac622ed4c
+scout_hraye sloan vs 4e7 fae75402326d5669
+scout_ihateisho itself 5e3 f70bfe980ebc87ed
+scout_ihateisho vs sloan 5e3 f1a2896365240abb
+scout_ihateisho sloan vs 5e3 a142625004cb8555
+scout_ihateisho itself 5e5 138e953e5480bc71
+scout_ihateisho vs sloan 5e5 d61f4f19c2607467
+scout_ihateisho sloan vs 5e5 9fbb535d8672f581
+scout_ihateisho itself 5e6 4964bb5712bf744f
+scout_ihateisho vs sloan 5e6 ae558a9685f1729d
+scout_ihateisho sloan vs 5e6 14017fb0803613f3
+scout_ihateisho itself 2e7 939c3ac9a17c31d4
+scout_ihateisho vs sloan 2e7 ee48b0f00899bbee
+scout_ihateisho sloan vs 2e7 77bdf50bb812e05c
+scout_ihateisho itself 4e7 c04522ee8cc11ebc
+scout_ihateisho vs sloan 4e7 a38b2c5c1fd896ae
+scout_ihateisho sloan vs 4e7 a377e34251437544
+scout_serpent itself 5e3 8fa5c1e13b509bd7
+scout_serpent vs sloan 5e3 32ae74731afbbe74
+scout_serpent sloan vs 5e3 8455bcc62a281c2d
+scout_serpent itself 5e5 2551ee4736a76fab
+scout_serpent vs sloan 5e5 88be73facb6e7fb8
+scout_serpent sloan vs 5e5 014352747ef424b1
+scout_serpent itself 5e6 005fdca479d02fe5
+scout_serpent vs sloan 5e6 cc0b30dae1b479f6
+scout_serpent sloan vs 5e6 195e4b3c7a737a3f
+scout_serpent itself 2e7 41989eec2ea61b76
+scout_serpent vs sloan 2e7 dc42ab71f988fa8d
+scout_serpent sloan vs 2e7 aac00202e8061ddc
+scout_serpent itself 4e7 3f723bfde119755e
+scout_serpent vs sloan 4e7 4ef0712091c56bc5
+scout_serpent sloan vs 4e7 6192f06dcb61a304
+seeker_kteiroa itself 5e3 04a3e057e1f95ca5
+seeker_kteiroa vs sloan 5e3 0678d88b68650acb
+seeker_kteiroa sloan vs 5e3 e57acd3235d64fff
+seeker_kteiroa itself 5e5 423c1b5e2290d055
+seeker_kteiroa vs sloan 5e5 e02670bf3c80e47f
+seeker_kteiroa sloan vs 5e5 6958eeb4382556a7
+seeker_kteiroa itself 5e6 a611d68e19531103
+seeker_kteiroa vs sloan 5e6 871b647d5205dff9
+seeker_kteiroa sloan vs 5e6 4444cd0dd0d729d9
+seeker_kteiroa itself 2e7 47f885c79d35148c
+seeker_kteiroa vs sloan 2e7 02033320fd87868e
+seeker_kteiroa sloan vs 2e7 4fe0532716ddd07e
+seeker_kteiroa itself 4e7 20f402f942cc26fc
+seeker_kteiroa vs sloan 4e7 79dbe7151a98c516
+seeker_kteiroa sloan vs 4e7 862bb07e5e07d03e
+seeker_mining_ship_type_j itself 5e3 8fa5c1e13b509bd7
+seeker_mining_ship_type_j vs sloan 5e3 15adb4eb42571b03
+seeker_mining_ship_type_j sloan vs 5e3 8455bcc62a281c2d
+seeker_mining_ship_type_j itself 5e5 2551ee4736a76fab
+seeker_mining_ship_type_j vs sloan 5e5 573d9771ff66de97
+seeker_mining_ship_type_j sloan vs 5e5 014352747ef424b1
+seeker_mining_ship_type_j itself 5e6 005fdca479d02fe5
+seeker_mining_ship_type_j vs sloan 5e6 802add0949b7e4c1
+seeker_mining_ship_type_j sloan vs 5e6 195e4b3c7a737a3f
+seeker_mining_ship_type_j itself 2e7 41989eec2ea61b76
+seeker_mining_ship_type_j vs sloan 2e7 a15d4a06ce761b16
+seeker_mining_ship_type_j sloan vs 2e7 aac00202e8061ddc
+seeker_mining_ship_type_j itself 4e7 3f723bfde119755e
+seeker_mining_ship_type_j vs sloan 4e7 1261f2fa2368815e
+seeker_mining_ship_type_j sloan vs 4e7 6192f06dcb61a304
+ship_s_boat itself 5e3 4d73cb7a2d2372d4
+ship_s_boat vs sloan 5e3 c8fceaa9ab9f27b4
+ship_s_boat sloan vs 5e3 913c52047f538f51
+ship_s_boat itself 5e5 2b972d3330aa95a8
+ship_s_boat vs sloan 5e5 be6209865d55e658
+ship_s_boat sloan vs 5e5 f50e9ef9d96ff19d
+ship_s_boat itself 5e6 c75f616334e5b696
+ship_s_boat vs sloan 5e6 fb09ba394297875a
+ship_s_boat sloan vs 5e6 731bc82f2bab6f17
+ship_s_boat itself 2e7 43aaf2267f7556f9
+ship_s_boat vs sloan 2e7 6534bf6b60d152ad
+ship_s_boat sloan vs 2e7 9538bcf800258cb8
+ship_s_boat itself 4e7 4b358bcfbf835e61
+ship_s_boat vs sloan 4e7 f64e7ef2f214172d
+ship_s_boat sloan vs 4e7 23214dab71545158
+shuttle itself 5e3 3eb8b5716fd04412
+shuttle vs sloan 5e3 fcc9c09afec96240
+shuttle sloan vs 5e3 8f97e74d13132cff
+shuttle itself 5e5 c59c9c7fd6236052
+shuttle vs sloan 5e5 d54d4ba2445de2a4
+shuttle sloan vs 5e5 428e2cf2e4ce0d07
+shuttle itself 5e6 59b9d5c8666b29bc
+shuttle vs sloan 5e6 467f09c4ddfcb59e
+shuttle sloan vs 5e6 09ca3790a0354985
+shuttle itself 2e7 ac1d3c1a44b526fb
+shuttle vs sloan 2e7 c8e67e1be18c7061
+shuttle sloan vs 2e7 40f3c9707e631be2
+shuttle itself 4e7 6fd9c5231f2fa43b
+shuttle vs sloan 4e7 22156fcbfb8cd2b1
+shuttle sloan vs 4e7 219be6c6c37331aa
+slaver_hkisyeleaa itself 5e3 389afc02fbe6aa6a
+slaver_hkisyeleaa vs sloan 5e3 6c68ec74b2661adc
+slaver_hkisyeleaa sloan vs 5e3 c391b4d7dbacd583
+slaver_hkisyeleaa itself 5e5 a24df225801f236e
+slaver_hkisyeleaa vs sloan 5e5 18242232e4e05ae8
+slaver_hkisyeleaa sloan vs 5e5 7d2fa09e81095177
+slaver_hkisyeleaa itself 5e6 8204c34c4d4c5de4
+slaver_hkisyeleaa vs sloan 5e6 a454322c1e93229e
+slaver_hkisyeleaa sloan vs 5e6 d318e5788c0d1305
+slaver_hkisyeleaa itself 2e7 bec8dd532e44bdbf
+slaver_hkisyeleaa vs sloan 2e7 3900397c47af8129
+slaver_hkisyeleaa sloan vs 2e7 2186f3b92450c7a2
+slaver_hkisyeleaa itself 4e7 167e83bc4ca4edbf
+slaver_hkisyeleaa vs sloan 4e7 89173191c05c0399
+slaver_hkisyeleaa sloan vs 4e7 9b2181d3cfc6a3a2
+slow_boat itself 5e3 961e26bfb7b02817
+slow_boat vs sloan 5e3 6fa241083656d670
+slow_boat sloan vs 5e3 016cef534c5acc52
+slow_boat itself 5e5 5df6c18de061336f
+slow_boat vs sloan 5e5 a57260d7c5875f14
+slow_boat sloan vs 5e5 8c87dd3172116e42
+slow_boat itself 5e6 7d8c448938e6270d
+slow_boat vs sloan 5e6 c83fcc686b4b5f6e
+slow_boat sloan vs 5e6 b7b191354d27b1ac
+slow_boat itself 2e7 9f1cf1d71bb62e6a
+slow_boat vs sloan 2e7 eb6fcd33be0b7f31
+slow_boat sloan vs 2e7 bb7eab6f3d83a8e3
+slow_boat itself 4e7 efd6ee71f4a0f342
+slow_boat vs sloan 4e7 d7cdcefe642c68c1
+slow_boat sloan vs 4e7 cb51b6d6540bd3b3
+slow_pinnace itself 5e3 00fa3db9f84a5cdf
+slow_pinnace vs sloan 5e3 b1f27d571e366dc1
+slow_pinnace sloan vs 5e3 875d9280b6176f7b
+slow_pinnace itself 5e5 6a31fa88e3d5f00f
+slow_pinnace vs sloan 5e5 8b36a40b244d3ac5
+slow_pinnace sloan vs 5e5 f6493f55d7c28733
+slow_pinnace itself 5e6 74f37edcaa6bf621
+slow_pinnace vs sloan 5e6 4ea8f2a0d11208b3
+slow_pinnace sloan vs 5e6 612522405bd626e5
+slow_pinnace itself 2e7 af80552f69f021f2
+slow_pinnace vs sloan 2e7 5f258e5708c0f758
+slow_pinnace sloan vs 2e7 9129418a97d88aa2
+slow_pinnace itself 4e7 0e030fc0e776cdaa
+slow_pinnace vs sloan 4e7 f9355b54cda10610
+slow_pinnace sloan vs 4e7 1570a8016499ac4a
+star_ray_interceptor itself 5e3 96ac17ed462de122
+star_ray_interceptor vs sloan 5e3 49f2e98f5ba44df4
+star_ray_interceptor sloan vs 5e3 110d16463902feeb
+star_ray_interceptor itself 5e5 fad9cfabb8a13c56
+star_ray_interceptor vs sloan 5e5 19d02bc019ce2c90
+star_ray_interceptor sloan vs 5e5 2c88bf34f8402faf
+star_ray_interceptor itself 5e6 747d0c27f63e5cec
+star_ray_interceptor vs sloan 5e6 0490039ed468b06e
+star_ray_interceptor sloan vs 5e6 ad45f567f6bb9fbd
+star_ray_interceptor itself 2e7 d1377484ec0903cf
+star_ray_interceptor vs sloan 2e7 7ef7415526960781
+star_ray_interceptor sloan vs 2e7 c4177af034cdc4da
+star_ray_interceptor itself 4e7 95bdefb17b2ec1a7
+star_ray_interceptor vs sloan 4e7 15d1cde300425681
+star_ray_interceptor sloan vs 4e7 c263b44f1e3016ba
+stretched_trader itself 5e3 7ffd49518353a3b5
+stretched_trader vs sloan 5e3 bd58c73455108642
+stretched_trader sloan vs 5e3 86280ea3105edf58
+stretched_trader itself 5e5 61b057b313635705
+stretched_trader vs sloan 5e5 9cf51584f14b197e
+stretched_trader sloan vs 5e5 9700a3c220993340
+stretched_trader itself 5e6 6a38b6a713a91687
+stretched_trader vs sloan 5e6 47f9122d68ce6f28
+stretched_trader sloan vs 5e6 237ae60cc727ed52
+stretched_trader itself 2e7 1f0da618e8875d6c
+stretched_trader vs sloan 2e7 79342a5a4c47be47
+stretched_trader sloan vs 2e7 70a8506906c7a16d
+stretched_trader itself 4e7 e2dd6f1f77774d74
+stretched_trader vs sloan 4e7 23ce44eaa83a5e4f
+stretched_trader sloan vs 4e7 49c34ecff1108dad
+subsidised_liner_type_m itself 5e3 3f6444c6eaba3d35
+subsidised_liner_type_m vs sloan 5e3 69fec79e7ecff407
+subsidised_liner_type_m sloan vs 5e3 e6d04d30d6432cd7
+subsidised_liner_type_m itself 5e5 eb378b8be040b189
+subsidised_liner_type_m vs sloan 5e5 ea2940f07b94822b
+subsidised_liner_type_m sloan vs 5e5 903261f88e78cbf3
+subsidised_liner_type_m itself 5e6 5258202694620ac3
+subsidised_liner_type_m vs sloan 5e6 5d0c15215d14c0b9
+subsidised_liner_type_m sloan vs 5e6 62d825194009f67d
+subsidised_liner_type_m itself 2e7 f94fb8b9a56a12b0
+subsidised_liner_type_m vs sloan 2e7 dfbca78ae59b730a
+subsidised_liner_type_m sloan vs 2e7 a911e46ca71a82fa
+subsidised_liner_type_m itself 4e7 4bef6fb64d502158
+subsidised_liner_type_m vs sloan 4e7 1248696a1c83859a
+subsidised_liner_type_m sloan vs 4e7 7843cfc2ba0939c2
+subsidised_merchant_type_r itself 5e3 616986d3ce547275
+subsidised_merchant_type_r vs sloan 5e3 a716841ec972354a
+subsidised_merchant_type_r sloan vs 5e3 0f5f584e1186090a
+subsidised_merchant_type_r itself 5e5 e16811267a824a85
+subsidised_merchant_type_r vs sloan 5e5 e1e78194f57833fe
+subsidised_merchant_type_r sloan vs 5e5 6e52caf4c55b6bc2
+subsidised_merchant_type_r itself 5e6 380136be097c0c33
+subsidised_merchant_type_r vs sloan 5e6 b82dc9b4a0cab3b8
+subsidised_merchant_type_r sloan vs 5e6 6b1c04b296608374
+subsidised_merchant_type_r itself 2e7 18b07ef39c7d3aec
+subsidised_merchant_type_r vs sloan 2e7 3e461f47a06a588f
+subsidised_merchant_type_r sloan vs 2e7 31bce48522a8a843
+subsidised_merchant_type_r itself 4e7 5f28cedbb7d1ffa4
+subsidised_merchant_type_r vs sloan 4e7 e92ebd819994d097
+subsidised_merchant_type_r sloan vs 4e7 183d6b6311926383
+subsidised_merchant_type_rq itself 5e3 de9bdf0fb52ada21
+subsidised_merchant_type_rq vs sloan 5e3 a5e8393a75c36e91
+subsidised_merchant_type_rq sloan vs 5e3 b768205050aadac7
+subsidised_merchant_type_rq itself 5e5 da1663170d7649fd
+subsidised_merchant_type_rq vs sloan 5e5 037af1108e38d36d
+subsidised_merchant_type_rq sloan vs 5e5 fd448e47d14c782b
+subsidised_merchant_type_rq itself 5e6 1309edd35063ae37
+subsidised_merchant_type_rq vs sloan 5e6 69fe9d873eeb73c3
+subsidised_merchant_type_rq sloan vs 5e6 f0100cb541f1c451
+subsidised_merchant_type_rq itself 2e7 8599f559ca19985c
+subsidised_merchant_type_rq vs sloan 2e7 cdb77bf68bce9418
+subsidised_merchant_type_rq sloan vs 2e7 fbb49b89596ec3da
+subsidised_merchant_type_rq itself 4e7 f83e492ba02f122c
+subsidised_merchant_type_rq vs sloan 4e7 c87f8642e978f210
+subsidised_merchant_type_rq sloan vs 4e7 b672ef9887477e0a
+survey_scout_donosev itself 5e3 6f649cc9f00c8051
+survey_scout_donosev vs sloan 5e3 628ae4342772c9a8
+survey_scout_donosev sloan vs 5e3 7480b671ac04aa7f
+survey_scout_donosev itself 5e5 a6550d7850b8d101
+survey_scout_donosev vs sloan 5e5 e7c7f5e1665a0b7c
+survey_scout_donosev sloan vs 5e5 792be9885dd0d64f
+survey_scout_donosev itself 5e6 2f2727702e047813
+survey_scout_donosev vs sloan 5e6 415a9a63d412ec62
+survey_scout_donosev sloan vs 5e6 2cea225782f26385
+survey_scout_donosev itself 2e7 35d872ffa502f744
+survey_scout_donosev vs sloan 2e7 3e364db90aa9a2a9
+survey_scout_donosev sloan vs 2e7 4e7c182a39a3b482
+survey_scout_donosev itself 4e7 fe3173da2637e804
+survey_scout_donosev vs sloan 4e7 39fed2c3947d8e71
+survey_scout_donosev sloan vs 4e7 f6942ea93ba8648a
+system_defence_boat_dragon itself 5e3 1c3112c10bf5c573
+system_defence_boat_dragon vs sloan 5e3 8fcc44fe794ef7be
+system_defence_boat_dragon sloan vs 5e3 c03248eaff2c9102
+system_defence_boat_dragon itself 5e5 520ef8be584cce37
+system_defence_boat_dragon vs sloan 5e5 8be3e72a1d4aaa02
+system_defence_boat_dragon sloan vs 5e5 ff22362eaeac9bee
+system_defence_boat_dragon itself 5e6 87da14ed358e299d
+system_defence_boat_dragon vs sloan 5e6 acd8a33a2a59fbdc
+system_defence_boat_dragon sloan vs 5e6 06d4eaee7d4d28a4
+system_defence_boat_dragon itself 2e7 fb9d9574c102a576
+system_defence_boat_dragon vs sloan 2e7 571e8720d6cf7daf
+system_defence_boat_dragon sloan vs 2e7 373e6c16af508f87
+system_defence_boat_dragon itself 4e7 5cefcff07dff609e
+system_defence_boat_dragon vs sloan 4e7 d6868e910e361d5f
+system_defence_boat_dragon sloan vs 4e7 1310bd49d808ce17
+system_defense_boat itself 5e3 856335323232d6a9
+system_defense_boat vs sloan 5e3 2971f6641b65f112
+system_defense_boat sloan vs 5e3 799eb7f852e11a60
+system_defense_boat itself 5e5 ce2efd63a25fc019
+system_defense_boat vs sloan 5e5 91c6c3083df99b56
+system_defense_boat sloan vs 5e5 a9627371cc25ab68
+system_defense_boat itself 5e6 813a5dff2a245567
+system_defense_boat vs sloan 5e6 134c532b49a23298
+system_defense_boat sloan vs 5e6 eb6208798c293b62
+system_defense_boat itself 2e7 6abf59a224d3b088
+system_defense_boat vs sloan 2e7 760dc8116e24b15b
+system_defense_boat sloan vs 2e7 070f24b5252bce65
+system_defense_boat itself 4e7 713d6ad4f203aa78
+system_defense_boat vs sloan 4e7 ff58e62ea9d8965b
+system_defense_boat sloan vs 4e7 49482ba904094645
+tai_ao itself 5e3 9587162805798b82
+tai_ao vs sloan 5e3 7cd8f1fec17d937e
+tai_ao sloan vs 5e3 4b7c6528f2d914bd
+tai_ao itself 5e5 ed4924bf74f1dc2a
+tai_ao vs sloan 5e5 a2e175aa7db7a4d2
+tai_ao sloan vs 5e5 8d1a5fce60d7b4a5
+tai_ao itself 5e6 ea18513177c601c0
+tai_ao vs sloan 5e6 24c29fa8822bb6e0
+tai_ao sloan vs 5e6 d9b01a5c7c9f6513
+tai_ao itself 2e7 5eb78f2c8f9c62f3
+tai_ao vs sloan 2e7 a28e32700ca1cb27
+tai_ao sloan vs 2e7 09e87b487794d630
+tai_ao itself 4e7 9d1cfec077aecb43
+tai_ao vs sloan 4e7 31dd809ccd4972f7
+tai_ao sloan vs 4e7 ea3a5644eb7911f0
+tender_owatarl itself 5e3 c1449e002a2b5370
+tender_owatarl vs sloan 5e3 cd2ace70eedf3f49
+tender_owatarl sloan vs 5e3 1c029a91b1d8bf53
+tender_owatarl itself 5e5 5d362054463d37e4
+tender_owatarl vs sloan 5e5 de1d7e2f1f3a4685
+tender_owatarl sloan vs 5e5 abe88abe199a035f
+tender_owatarl itself 5e6 901a0b73e9d76de2
+tender_owatarl vs sloan 5e6 77ec9defd94da61b
+tender_owatarl sloan vs 5e6 6382bc44d2738a59
+tender_owatarl itself 2e7 92a3415cd2fe6089
+tender_owatarl vs sloan 2e7 d362a616163bed4c
+tender_owatarl sloan vs 2e7 980616a8ef296d5e
+tender_owatarl itself 4e7 5686d4cae687e1a1
+tender_owatarl vs sloan 4e7 4909cce54c26043c
+tender_owatarl sloan vs 4e7 99b596dcb988526e
+the_ghost_of_the_reach itself 5e3 e5840d7ba0354f68
+the_ghost_of_the_reach vs sloan 5e3 f4358ee588d5b4a2
+the_ghost_of_the_reach sloan vs 5e3 c03248eaff2c9102
+the_ghost_of_the_reach itself 5e5 4bc0c8ed81146e3c
+the_ghost_of_the_reach vs sloan 5e5 7543360402af6bde
+the_ghost_of_the_reach sloan vs 5e5 ff22362eaeac9bee
+the_ghost_of_the_reach itself 5e6 5115b9272343ab62
+the_ghost_of_the_reach vs sloan 5e6 72473cf516d59308
+the_ghost_of_the_reach sloan vs 5e6 06d4eaee7d4d28a4
+the_ghost_of_the_reach itself 2e7 8ad63660e6f59b59
+the_ghost_of_the_reach vs sloan 2e7 eb9046d1c95d5383
+the_ghost_of_the_reach sloan vs 2e7 373e6c16af508f87
+the_ghost_of_the_reach itself 4e7 dcccb383b52c1731
+the_ghost_of_the_reach vs sloan 4e7 1d71539d6662855b
+the_ghost_of_the_reach sloan vs 4e7 1310bd49d808ce17
+threshing_oar itself 5e3 0263ec7700d95b6a
+threshing_oar vs sloan 5e3 27d22de44760b8aa
+threshing_oar sloan vs 5e3 c03248eaff2c9102
+threshing_oar itself 5e5 4758459834a0f89e
+threshing_oar vs sloan 5e5 13819f35881b3b26
+threshing_oar sloan vs 5e5 ff22362eaeac9bee
+threshing_oar itself 5e6 03a5991a87065538
+threshing_oar vs sloan 5e6 4f3b330e44d9e39c
+threshing_oar sloan vs 5e6 06d4eaee7d4d28a4
+threshing_oar itself 2e7 0e0a9a581b0652bf
+threshing_oar vs sloan 2e7 75bd8ef41f4d2a03
+threshing_oar sloan vs 2e7 373e6c16af508f87
+threshing_oar itself 4e7 058acf28133c5d07
+threshing_oar vs sloan 4e7 c827f8453dd8c7d3
+threshing_oar sloan vs 4e7 1310bd49d808ce17
+torpedo_boat itself 5e3 dfe6d62e42b23682
+torpedo_boat vs sloan 5e3 a6e3185a6c7d12d1
+torpedo_boat sloan vs 5e3 0509a1018e6b6f69
+torpedo_boat itself 5e5 44971d1680d6d842
+torpedo_boat vs sloan 5e5 37934681fc20ebbd
+torpedo_boat sloan vs 5e5 9aaf3f1c27ec6fb1
+torpedo_boat itself 5e6 6e27cb8546354758
+torpedo_boat vs sloan 5e6 3df88b155a7af17b
+torpedo_boat sloan vs 5e6 e209737132f794d7
+torpedo_boat itself 2e7 91c365d0fcc458a7
+torpedo_boat vs sloan 2e7 edb78179209a689c
+torpedo_boat sloan vs 2e7 d907da1c358dfb94
+torpedo_boat itself 4e7 273657e48ed14587
+torpedo_boat vs sloan 4e7 4f7b5e1fb440f234
+torpedo_boat sloan vs 4e7 afdb4ad064a169ac
+trader_eakhau itself 5e3 616986d3ce547275
+trader_eakhau vs sloan 5e3 a716841ec972354a
+trader_eakhau sloan vs 5e3 0f5f584e1186090a
+trader_eakhau itself 5e5 e16811267a824a85
+trader_eakhau vs sloan 5e5 e1e78194f57833fe
+trader_eakhau sloan vs 5e5 6e52caf4c55b6bc2
+trader_eakhau itself 5e6 380136be097c0c33
+trader_eakhau vs sloan 5e6 b82dc9b4a0cab3b8
+trader_eakhau sloan vs 5e6 6b1c04b296608374
+trader_eakhau itself 2e7 18b07ef39c7d3aec
+trader_eakhau vs sloan 2e7 3e461f47a06a588f
+trader_eakhau sloan vs 2e7 31bce48522a8a843
+trader_eakhau itself 4e7 5f28cedbb7d1ffa4
+trader_eakhau vs sloan 4e7 e92ebd819994d097
+trader_eakhau sloan vs 4e7 183d6b6311926383
+troop_transport itself 5e3 ef93d867429bab86
+troop_transport vs sloan 5e3 1da8097efbce50b7
+troop_transport sloan vs 5e3 c03248eaff2c9102
+troop_transport itself 5e5 3618471bdede578a
+troop_transport vs sloan 5e5 bd6bf79818997f73
+troop_transport sloan vs 5e5 ff22362eaeac9bee
+troop_transport itself 5e6 ad7f80758c9706dc
+troop_transport vs sloan 5e6 0729ea119135e1e5
+troop_transport sloan vs 5e6 06d4eaee7d4d28a4
+troop_transport itself 2e7 8c24daea918e90e3
+troop_transport vs sloan 2e7 5f64a333a3f9bf12
+troop_transport sloan vs 2e7 373e6c16af508f87
+troop_transport itself 4e7 80f8e3049792d96b
+troop_transport vs sloan 4e7 0348bb6551a00e82
+troop_transport sloan vs 4e7 1310bd49d808ce17
+ultralight_fighter itself 5e3 ea7e48020eaa5a39
+ultralight_fighter vs sloan 5e3 d2bdbca5358f657f
+ultralight_fighter sloan vs 5e3 c03248eaff2c9102
+ultralight_fighter itself 5e5 1e663a97eacf65ed
+ultralight_fighter vs sloan 5e5 885ee175709447ab
+ultralight_fighter sloan vs 5e5 ff22362eaeac9bee
+ultralight_fighter itself 5e6 922de43d1f1b4047
+ultralight_fighter vs sloan 5e6 146b2d053ae9cef9
+ultralight_fighter sloan vs 5e6 06d4eaee7d4d28a4
+ultralight_fighter itself 2e7 39d32fed1d7f08f0
+ultralight_fighter vs sloan 2e7 b0f747ee7988d0c2
+ultralight_fighter sloan vs 2e7 373e6c16af508f87
+ultralight_fighter itself 4e7 d011d1428b3c95b8
+ultralight_fighter vs sloan 4e7 3d63c895bd996ab2
+ultralight_fighter sloan vs 4e7 1310bd49d808ce17
+void_trader itself 5e3 8699785c3a9834d9
+void_trader vs sloan 5e3 5b49df7a75d72d7d
+void_trader sloan vs 5e3 272d0b615e208319
+void_trader itself 5e5 d89bec7f06b7c3fd
+void_trader vs sloan 5e5 6c0c83c218fb1369
+void_trader sloan vs 5e5 d18381014c091815
+void_trader itself 5e6 c58cea905b4eb4ff
+void_trader vs sloan 5e6 c8d20486d1271ec3
+void_trader sloan vs 5e6 e95260158a67e49b
+void_trader itself 2e7 e70564b6b1755294
+void_trader vs sloan 2e7 40e280a5490c3c3c
+void_trader sloan vs 2e7 60696b5fb383b3ac
+void_trader itself 4e7 6ff797bd7b34b03c
+void_trader vs sloan 4e7 555a334c53991a3c
+void_trader sloan vs 4e7 c38a49f2ca9530bc
+x_boat_tender_xt itself 5e3 95a77045a4c77038
+x_boat_tender_xt vs sloan 5e3 9c5bfba4834d2b1a
+x_boat_tender_xt sloan vs 5e3 d08564780d77752c
+x_boat_tender_xt itself 5e5 f21bec26a51571f0
+x_boat_tender_xt vs sloan 5e5 bac0596fb9cd2c8e
+x_boat_tender_xt sloan vs 5e5 96b16bcc193f9f0c
+x_boat_tender_xt itself 5e6 e83ae3ff8c86edaa
+x_boat_tender_xt vs sloan 5e6 c95a3feef6d86aa0
+x_boat_tender_xt sloan vs 5e6 11eda60c666ce876
+x_boat_tender_xt itself 2e7 74b15a57abc1bc75
+x_boat_tender_xt vs sloan 2e7 c126cd3b69fc1367
+x_boat_tender_xt sloan vs 2e7 a05f60309a3ac2bd
+x_boat_tender_xt itself 4e7 c07749a0036edfdd
+x_boat_tender_xt vs sloan 4e7 a836d53eb7e6820f
+x_boat_tender_xt sloan vs 4e7 dec7c18788af5d2d
+yacht_type_y itself 5e3 e1298c26fe958064
+yacht_type_y vs sloan 5e3 f0258b7248e34efb
+yacht_type_y sloan vs 5e3 f1ef35c4f0ab8bca
+yacht_type_y itself 5e5 cc4d260425578970
+yacht_type_y vs sloan 5e5 26daf33a2cd7ab3f
+yacht_type_y sloan vs 5e5 cf4bb1761580f82e
+yacht_type_y itself 5e6 771a6ed57e2b8f4e
+yacht_type_y vs sloan 5e6 870534a499739a55
+yacht_type_y sloan vs 5e6 451d1b44d85386d4
+yacht_type_y itself 2e7 521cfe8109ed24f5
+yacht_type_y vs sloan 2e7 033e5b89ef6248b6
+yacht_type_y sloan vs 2e7 9124d5c4777dc8f3
+yacht_type_y itself 4e7 abdcdf3cf7ee6f05
+yacht_type_y vs sloan 4e7 d47a66d156e3f386
+yacht_type_y sloan vs 4e7 5fce3590e4494ca3

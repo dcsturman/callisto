@@ -269,6 +269,7 @@ mod tests {
       missiles: 2,
       torpedoes: 0,
       sand: 5,
+      rounds: 0,
     };
     let (plan, _) = assign(&ship, &reloads(&[0]));
     let line = apply(&mut ship, &plan)[0].rendered();
@@ -277,7 +278,8 @@ mod tests {
       Magazine {
         missiles: 12,
         torpedoes: 0,
-        sand: 20
+        sand: 20,
+        rounds: 0
       }
     );
     assert_eq!(
@@ -285,7 +287,8 @@ mod tests {
       Magazine {
         missiles: 10,
         torpedoes: 0,
-        sand: 15
+        sand: 15,
+        rounds: 0
       }
     );
     assert!(

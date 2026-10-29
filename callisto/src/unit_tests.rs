@@ -471,6 +471,7 @@ async fn test_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
+             "held_still":true,
              "sensor_locks": [],
              "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -493,6 +494,7 @@ async fn test_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
+             "held_still":true,
              "sensor_locks": [],
              "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -1065,6 +1067,7 @@ async fn test_big_fight() {
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
+   "held_still":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
    "crit_level": [0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0],
@@ -1082,6 +1085,7 @@ async fn test_big_fight() {
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
+   "held_still":true,
    "sensor_locks": [],
    "contacts": ["ship1"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0]
@@ -1209,6 +1213,7 @@ async fn test_fight_with_crew() {
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":false,
+   "held_still":true,
    "sensor_locks": [],
    "contacts": ["ship1"],
    "crit_level": [0, 0, 1, 3, 0, 0, 1, 1, 2, 1, 0]

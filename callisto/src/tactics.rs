@@ -403,7 +403,12 @@ fn dice_distribution(dice: u8) -> Vec<f64> {
 /// `combat::attack` does, over every way the damage dice can fall. Armour
 /// clips low rolls to nothing, which is why this is not the average roll
 /// minus armour: a weak gun against a heavy hull is nearly harmless.
-fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32, multiple: u32) -> f64 {
+///
+/// `percent` is the share armour lets through for a weapon that loses a
+/// percentage a point (a particle or railgun spinal), and 100 for the rest,
+/// which subtract `armour` instead; it is taken with the multiple, as
+/// `combat::attack` takes it.
+fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32, multiple: u32, percent: u32) -> f64 {
   dice
     .iter()
     .enumerate()
@@ -414,9 +419,11 @@ fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32
       let damage = if through == 0 {
         0
       } else {
-        (through + turret_bonus) * multiple
+        u64::from(through + turret_bonus) * u64::from(multiple) * u64::from(percent) / 100
       };
-      chance * f64::from(damage)
+      #[allow(clippy::cast_precision_loss)]
+      let damage = damage as f64;
+      chance * damage
     })
     .sum()
 }
@@ -430,6 +437,11 @@ fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32
 /// Dodging is not assumed: these are the odds against a ship flying straight.
 #[must_use]
 pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i32, armour: u32) -> Vec<BandOdds> {
+  let actual = band_between(attacker, defender);
+  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  let metres = (attacker.get_position() - defender.get_position())
+    .magnitude()
+    .clamp(0.0, f64::from(u32::MAX)) as u32;
   BANDS
     .iter()
     .map(|band| {
@@ -437,6 +449,9 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
       let mut best_chance: f64 = 0.0;
       let mut expected = 0.0;
       let mut launchers = 0;
+      // Mounts that can attack: a spinal bears on a fighter but cannot lay
+      // on her (`combat::attack_terms`).
+      let mut engaged = 0;
       let mut by_mount = Vec::with_capacity(bearing.len());
       for (index, kind) in &bearing {
         let weapon = &attacker.weapons()[*index];
@@ -451,14 +466,18 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
           firing: &firing,
           profile: &profile,
           range_band: *band,
+          // Where they really are, for the band they are really in.
+          distance: (actual == *band).then_some(metres),
           called_shot: false,
         };
         let Some(terms) = attack_terms(&situation, 0, 0) else {
           continue;
         };
+        engaged += 1;
         let dm: i32 = terms.iter().map(|(_, value)| value).sum();
         let dice = dice_distribution(profile.damage_dice);
-        let armour = armour.saturating_sub(u32::from(profile.ap));
+        let percent = profile.armour_through(armour);
+        let armour = profile.armour_subtracted(armour);
         let (count, turret_bonus, multiple) = match profile.salvo {
           Some(Salvo::PerGun) => (f64::from(firing.count), 0, 1),
           Some(Salvo::Fixed(missiles)) => (f64::from(missiles), 0, 1),
@@ -496,7 +515,11 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
             } else {
               total - STANDARD_ROLL_THRESHOLD
             };
-            expected_hit_damage(&dice, effect, armour, turret_bonus, multiple)
+            if percent == 0 {
+              0.0
+            } else {
+              expected_hit_damage(&dice, effect, armour, turret_bonus, multiple, percent)
+            }
           };
           (chance + p, damage + p * hit)
         });
@@ -510,8 +533,8 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
         band: *band,
         best_chance,
         expected_damage: expected,
-        mounts: bearing.len(),
-        missiles_only: !bearing.is_empty() && launchers == bearing.len(),
+        mounts: engaged,
+        missiles_only: engaged > 0 && launchers == engaged,
         by_mount,
       }
     })
@@ -981,12 +1004,14 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
     let Some(target) = world.ships.get(&engage.target) else {
       continue;
     };
-    let range = band_between(&own, &target.read().unwrap());
+    let target = target.read().unwrap();
+    let range = band_between(&own, &target);
     // A called shot is only offered at Short range, as the gunner's console
     // offers it; further out the gun fires as an ordinary shot.
     let called = engage.called.filter(|_| range == Range::Short);
     for (weapon_id, kind) in weapons_that_bear(&own, range) {
-      let chosen = engage.weapons.is_empty() || engage.weapons.contains(&weapon_id);
+      let chosen = (engage.weapons.is_empty() || engage.weapons.contains(&weapon_id))
+        && can_engage(&own, weapon_id, kind, &target);
       // A mount fires once a round, at whoever asked for it first.
       if chosen && committed.insert(weapon_id) {
         actions.push(ShipAction::FireAction {
@@ -1041,6 +1066,19 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
   Ok(requests)
 }
 
+/// Whether mount `weapon_id`, firing `kind`, can be laid on `target` at all,
+/// beyond bearing on her: a spinal mount cannot attack a ship under 2,000
+/// tons that manoeuvred last round (High Guard p. 34), nor fire with its
+/// rounds spent. Left out, a spinal stays free for a target it can hit.
+fn can_engage(own: &Ship, weapon_id: usize, kind: WeaponType, target: &Ship) -> bool {
+  if own.get_weapon(weapon_id).mount.spinal_multiple().is_none() {
+    return true;
+  }
+  let big_enough = crate::rules_tables::spinal_size_dm(target.design.displacement).is_some() || target.held_still;
+  let loaded = !crate::ship::spinal_uses_rounds(kind) || own.magazine.rounds > 0;
+  big_enough && loaded
+}
+
 /// The mounts `intent`'s fire orders would use, each with the gun it fires:
 /// the first engagement to claim a mount has it, as [`orders`] gives them.
 fn engaged_mounts(world: &Entities, own: &Ship, intent: &Intent) -> Vec<(usize, WeaponType)> {
@@ -1052,9 +1090,11 @@ fn engaged_mounts(world: &Entities, own: &Ship, intent: &Intent) -> Vec<(usize, 
     let Some(target) = world.ships.get(&engage.target) else {
       continue;
     };
-    let range = band_between(own, &target.read().unwrap());
+    let target = target.read().unwrap();
+    let range = band_between(own, &target);
     for (weapon_id, kind) in weapons_that_bear(own, range) {
-      let chosen = engage.weapons.is_empty() || engage.weapons.contains(&weapon_id);
+      let chosen =
+        (engage.weapons.is_empty() || engage.weapons.contains(&weapon_id)) && can_engage(own, weapon_id, kind, &target);
       if chosen && engaged.iter().all(|(id, _)| *id != weapon_id) {
         engaged.push((weapon_id, kind));
       }
@@ -1215,6 +1255,7 @@ fn spend_fire_control(own: &Ship, actions: &mut [ShipAction]) {
 mod tests {
   use super::*;
   use crate::ship::{config_test_ship_templates, get_ship_template};
+  use std::sync::Arc;
 
   const KM: f64 = 1000.0;
 
@@ -2141,6 +2182,125 @@ mod tests {
 
     let racks = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3).times(4);
     assert_eq!(launch_size(&racks, WeaponType::Missile), Some((12, 1)));
+  }
+
+  /// A spinal-armed design for these tests: a 30,000-ton monitor with a 2×
+  /// meson and one triple beam turret.
+  fn monitor() -> Arc<crate::ship::ShipDesignTemplate> {
+    Arc::new(crate::ship::ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      hull: 15_000,
+      maneuver: 1,
+      power: 10_000,
+      tl: 15,
+      weapons: vec![
+        Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 2, tl: None }),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      ],
+      ..crate::ship::ShipDesignTemplate::default()
+    })
+  }
+
+  /// A spinal is priced like any gun, at ×1,000 and with its size DMs: a
+  /// cruiser takes thousands from it, and a fighter that is manoeuvring
+  /// takes nothing, since it cannot be attacked at all.
+  #[tokio::test]
+  async fn a_spinal_prices_at_a_thousand_and_not_against_a_fighter() {
+    config_test_ship_templates().await;
+    let design = monitor();
+    let attacker = Ship::new("Monitor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut cruiser = Ship::new(
+      "Cruiser".to_string(),
+      Vec3::new(5_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let skill = |_: usize| 2;
+    let medium = at(&engagement(&attacker, &cruiser, &skill, 10), Range::Medium).clone();
+    let spinal = medium.by_mount.iter().find(|(mount, _)| *mount == 0).unwrap().1;
+    assert!(spinal > 10_000.0, "12D ×1,000, through any armour: {spinal}");
+    // Past its Long reach it does not bear.
+    assert_eq!(
+      at(&engagement(&attacker, &cruiser, &skill, 10), Range::VeryLong).by_mount,
+      vec![]
+    );
+
+    let fighter = |still: bool| {
+      let mut fighter = ship_of("Light Fighter", 5_000.0 * KM);
+      fighter.held_still = still;
+      at(&engagement(&attacker, &fighter, &skill, 0), Range::Medium).clone()
+    };
+    let moving = fighter(false);
+    assert!(moving.by_mount.iter().all(|(mount, _)| *mount != 0), "{moving:?}");
+    assert_eq!(moving.mounts, 1, "only the turret can attack");
+    // Held still, she can be attacked, at DM-8: with gunner 2 at Medium it
+    // needs a 14 on two dice, so it is priced, at nothing.
+    let still = fighter(true);
+    assert!(still.by_mount.iter().any(|(mount, _)| *mount == 0), "{still:?}");
+    assert_eq!(still.mounts, 2);
+
+    // A ship of 5,000 tons or less is DM-8, so it expects less than the
+    // cruiser.
+    cruiser.design = Arc::new(crate::ship::ShipDesignTemplate {
+      displacement: 5_000,
+      ..(*design).clone()
+    });
+    let small = at(&engagement(&attacker, &cruiser, &skill, 10), Range::Medium).clone();
+    let small_spinal = small.by_mount.iter().find(|(mount, _)| *mount == 0).unwrap().1;
+    assert!(small_spinal < spinal / 4.0, "{small_spinal} against {spinal}");
+  }
+
+  /// Fire orders leave a spinal off a target it cannot attack, so it is free
+  /// for the next one.
+  #[tokio::test]
+  async fn a_spinal_is_not_wasted_on_a_fighter() {
+    config_test_ship_templates().await;
+    let design = monitor();
+    let mut world = Entities::new();
+    world.add_ship("Monitor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let fighter = get_ship_template("Light Fighter").unwrap();
+    world.add_ship(
+      "Fighter".to_string(),
+      Vec3::new(5_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &fighter,
+      None,
+      None,
+    );
+    world.add_ship(
+      "Cruiser".to_string(),
+      Vec3::new(6_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    world.ships["Monitor"].write().unwrap().contacts = vec!["Fighter".to_string(), "Cruiser".to_string()];
+    let intent = Intent {
+      fire: vec![
+        Engage {
+          target: "Fighter".to_string(),
+          ..Engage::default()
+        },
+        Engage {
+          target: "Cruiser".to_string(),
+          ..Engage::default()
+        },
+      ],
+      ..Intent::default()
+    };
+    let fired: Vec<(usize, String)> = fire_actions(&orders(&world, "Monitor", &intent).unwrap())
+      .into_iter()
+      .filter_map(|action| match action {
+        ShipAction::FireAction { weapon_id, target, .. } => Some((weapon_id, target)),
+        _ => None,
+      })
+      .collect();
+    assert!(fired.contains(&(1, "Fighter".to_string())), "{fired:?}");
+    assert!(fired.contains(&(0, "Cruiser".to_string())), "{fired:?}");
   }
 
   #[tokio::test]

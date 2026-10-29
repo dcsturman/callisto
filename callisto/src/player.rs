@@ -19,7 +19,9 @@ use crate::payloads::{
 };
 use crate::reload::{self, Reload};
 use crate::server::Server;
-use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
+use crate::ship::{
+  get_ship_templates_snapshot, spinal_problems, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount,
+};
 use crate::{debug, info, warn};
 
 /// Most weapons we will accept on a single ship.  It exists only so a client
@@ -48,7 +50,11 @@ fn validate_weapons(weapons: &[Weapon]) -> Result<(), String> {
       // A turret's size is now the number of guns in it.
       WeaponMount::Turret if !(1..=3).contains(&weapon.guns.len()) => Some(weapon.guns.len()),
       // Every other mount holds exactly one weapon.
-      WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_)
+      WeaponMount::Barbette
+      | WeaponMount::Bay(_)
+      | WeaponMount::FixedMount
+      | WeaponMount::Battery(_)
+      | WeaponMount::Spinal { .. }
         if weapon.guns.len() != 1 =>
       {
         Some(weapon.guns.len())
@@ -383,6 +389,10 @@ impl PlayerManager {
 
     if let Some(weapons) = &ship.weapons {
       validate_weapons(weapons)?;
+      // A spinal is sized against the hull it is fitted to.
+      if let Some(problem) = spinal_problems(weapons, design.displacement, design.tl).first() {
+        return Err(format!("(PlayerManager.add_ship) {problem}"));
+      }
     }
 
     let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();

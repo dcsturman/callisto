@@ -13,6 +13,7 @@ pub const fn damage_multiple(mount: MountClass) -> u32 {
     MountClass::SmallBay => 10,
     MountClass::MediumBay => 20,
     MountClass::LargeBay => 100,
+    MountClass::Spinal => 1_000,
     // Turrets and fixed mounts genuinely have no multiple.  A battery shares
     // the identity value because it never rolls damage at all, so this is never
     // consulted for one.
@@ -38,7 +39,11 @@ pub const fn damage_multiple(mount: MountClass) -> u32 {
 /// times this. The mount's own draw is [`mount_power`].
 #[must_use]
 pub fn weapon_power(kind: WeaponType, mount: MountClass) -> Option<u32> {
-  use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Turret};
+  use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Spinal, Turret};
+  // A spinal draws its table's Power for every multiple (High Guard p. 35).
+  if mount == MountClass::Spinal {
+    return spinal_spec(kind).map(|spec| spec.power);
+  }
   Some(match kind {
     // Launchers draw nothing in a turret or barbette: the rack is a rack.
     WeaponType::Missile => match mount {
@@ -46,7 +51,7 @@ pub fn weapon_power(kind: WeaponType, mount: MountClass) -> Option<u32> {
       SmallBay => 5,
       MediumBay => 10,
       LargeBay => 20,
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     WeaponType::Torpedo => match mount {
       // A barbette and a small bay happen to draw the same 2.
@@ -75,7 +80,7 @@ pub fn weapon_power(kind: WeaponType, mount: MountClass) -> Option<u32> {
       SmallBay => 10,
       MediumBay => 15,
       LargeBay => 25,
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     WeaponType::Fusion => match mount {
       Turret | Fixed => 12,
@@ -83,7 +88,7 @@ pub fn weapon_power(kind: WeaponType, mount: MountClass) -> Option<u32> {
       SmallBay => 50,
       MediumBay => 80,
       LargeBay => 100,
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     WeaponType::Plasma => match mount {
       Turret | Fixed => 6,
@@ -96,7 +101,7 @@ pub fn weapon_power(kind: WeaponType, mount: MountClass) -> Option<u32> {
       SmallBay => 30,
       MediumBay => 50,
       LargeBay => 80,
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     WeaponType::Ion => match mount {
       Barbette => 10,
@@ -146,8 +151,12 @@ pub fn mount_power(mount: MountClass) -> u32 {
 #[must_use]
 #[allow(clippy::match_same_arms)]
 pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfile> {
-  use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Turret};
+  use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Spinal, Turret};
   type P = WeaponProfile;
+
+  if mount == MountClass::Spinal {
+    return spinal_profile(kind);
+  }
 
   Some(match kind {
     // Lasers are turret and barbette weapons only; the book sells no laser bay.
@@ -173,7 +182,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::launcher(7, 4, Salvo::Fixed(12)),
       MediumBay => P::launcher(7, 4, Salvo::Fixed(24)),
       LargeBay => P::launcher(7, 4, Salvo::Fixed(120)),
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     // Torpedoes are treated in every way like missiles but hit far harder, and
     // are too large to fit a turret.  The barbette holds three and fires one at
@@ -191,7 +200,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::gun(11, 6, Range::VeryLong).rad(),
       MediumBay => P::gun(12, 8, Range::VeryLong).rad(),
       LargeBay => P::gun(13, 10, Range::Distant).rad(),
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     WeaponType::Fusion => match mount {
       Turret | Fixed => P::gun(14, 4, Range::Medium).rad(),
@@ -199,7 +208,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::gun(12, 6, Range::Medium).ap(6).rad(),
       MediumBay => P::gun(12, 7, Range::Medium).ap(6).rad(),
       LargeBay => P::gun(12, 10, Range::Long).ap(8).rad(),
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     WeaponType::Plasma => match mount {
       Turret | Fixed => P::gun(11, 3, Range::Medium),
@@ -212,7 +221,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::gun(10, 3, Range::Short).ap(10),
       MediumBay => P::gun(10, 5, Range::Short).ap(10),
       LargeBay => P::gun(10, 6, Range::Medium).ap(10),
-      Battery => return None,
+      Battery | Spinal => return None,
     },
     // Meson guns are bay-and-up weapons that ignore armour outright.
     WeaponType::Meson => match mount {
@@ -221,10 +230,12 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       LargeBay => P::gun(13, 6, Range::Long).ap(AP_INFINITE).rad(),
       _ => return None,
     },
+    // Mass drivers are bombardment weapons, all but useless against anything
+    // that can manoeuvre (High Guard pp. 30, 32-33).
     WeaponType::MassDriver => match mount {
-      SmallBay => P::gun(8, 3, Range::Short),
-      MediumBay => P::gun(8, 4, Range::Short),
-      LargeBay => P::gun(8, 6, Range::Medium),
+      SmallBay => P::gun(8, 3, Range::Short).bombardment(),
+      MediumBay => P::gun(8, 4, Range::Short).bombardment(),
+      LargeBay => P::gun(8, 6, Range::Medium).bombardment(),
       _ => return None,
     },
     // The book gives repulsors "Special" damage: they deflect rather than
@@ -260,9 +271,202 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
 }
 
 /// Convenience wrapper for the common case of holding a real [`WeaponMount`].
+///
+/// A spinal mount's dice are its table's per multiple, times the multiple
+/// (High Guard p. 35): a 3× meson is 18D.
 #[must_use]
 pub fn profile_for(kind: WeaponType, mount: &WeaponMount) -> Option<WeaponProfile> {
-  weapon_profile(kind, MountClass::from(mount))
+  let profile = weapon_profile(kind, MountClass::from(mount))?;
+  Some(match mount.spinal_multiple() {
+    Some(multiple) => WeaponProfile {
+      damage_dice: profile.damage_dice.saturating_mul(multiple),
+      ..profile
+    },
+    None => profile,
+  })
+}
+
+/// One row of the Spinal Mount Weapons table (High Guard p. 35).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpinalSpec {
+  /// The weapon's Tech Level, where its Base Size is the smallest it comes.
+  pub tl: u8,
+  /// Tons a multiple at that TL.
+  pub base_tons: u32,
+  /// Power drawn per multiple.
+  pub power: u32,
+  /// Damage dice per multiple.
+  pub dice: u8,
+  /// Millions of credits per multiple.
+  pub cost_mcr: u32,
+  /// The largest mount, in tons.
+  pub max_tons: u32,
+}
+
+/// The Spinal Mount Weapons table (High Guard p. 35), or `None` for a weapon
+/// that comes in no spinal mount.
+#[must_use]
+pub fn spinal_spec(kind: WeaponType) -> Option<SpinalSpec> {
+  let spec = |tl, base_tons, power, dice, cost_mcr, max_tons| SpinalSpec {
+    tl,
+    base_tons,
+    power,
+    dice,
+    cost_mcr,
+    max_tons,
+  };
+  Some(match kind {
+    WeaponType::MassDriver => spec(10, 5_000, 250, 4, 1_500, 100_000),
+    WeaponType::Meson => spec(12, 7_500, 1_000, 6, 2_000, 75_000),
+    WeaponType::Particle => spec(11, 3_500, 1_000, 8, 1_000, 28_000),
+    WeaponType::Railgun => spec(10, 3_500, 500, 4, 500, 21_000),
+    _ => return None,
+  })
+}
+
+/// A spinal mount at a multiple of one: its range and traits, and its dice
+/// per multiple (High Guard pp. 35-36).
+fn spinal_profile(kind: WeaponType) -> Option<WeaponProfile> {
+  type P = WeaponProfile;
+  let spec = spinal_spec(kind)?;
+  Some(match kind {
+    WeaponType::MassDriver => P::gun(spec.tl, spec.dice, Range::Short).ap(15).bombardment(),
+    // "Meson spinal mounts ignore all armour and radiation shielding".
+    WeaponType::Meson => P::gun(spec.tl, spec.dice, Range::Long).ap(AP_INFINITE).rad(),
+    // "Reduced by 3% per point of armour ... before applying the Damage
+    // Multiple" (p. 36).
+    WeaponType::Particle => P::gun(spec.tl, spec.dice, Range::VeryLong).rad().armour_percent(3),
+    // 2% a point, after its AP 20 (see `WeaponProfile::armour_through`).
+    WeaponType::Railgun => P::gun(spec.tl, spec.dice, Range::Medium).ap(20).armour_percent(2),
+    _ => return None,
+  })
+}
+
+/// The Spinal Mounts Improvement table (High Guard p. 35): the percentage of
+/// its tons, and of its cost, a spinal takes at `levels` TL above its own.
+/// Three levels is the most the table gives, and further ones buy nothing.
+#[must_use]
+pub const fn spinal_improvement(levels: u8) -> (u32, u32) {
+  match levels {
+    0 => (100, 100),
+    1 => (90, 110),
+    2 => (85, 120),
+    _ => (80, 130),
+  }
+}
+
+/// A spinal mount's tonnage: its Base Size times its multiple, less the
+/// improvement for building it above the weapon's TL (High Guard p. 35).
+/// `None` for a weapon with no spinal mount, or a TL below the weapon's.
+///
+/// A TL15 meson at 3× is 3 × 7,500 × 80% = 18,000 tons, the Wind-class's
+/// (High Guard p. 266); a TL14 particle at 1× is 2,800, the Ghalalk's (p. 243).
+#[must_use]
+pub fn spinal_tons(kind: WeaponType, multiple: u8, tl: u8) -> Option<u32> {
+  let spec = spinal_spec(kind)?;
+  let levels = tl.checked_sub(spec.tl)?;
+  let (tons, _) = spinal_improvement(levels);
+  Some(spec.base_tons * u32::from(multiple) * tons / 100)
+}
+
+/// What is wrong with a spinal mount on a hull of `displacement` tons built
+/// at `design_tl`, if anything: a weapon with no spinal mount, a TL below
+/// the weapon's, or a mount over its type's largest or over half the hull
+/// (High Guard pp. 34-35). `None` for a sound spinal, or for any other mount.
+#[must_use]
+pub fn spinal_problem(weapon: &crate::ship::Weapon, displacement: u32, design_tl: u8) -> Option<String> {
+  let WeaponMount::Spinal { multiple, tl } = weapon.mount else {
+    return None;
+  };
+  let kind = weapon.primary_kind();
+  let name = crate::ship::spinal_name(kind);
+  let Some(spec) = spinal_spec(kind) else {
+    return Some(format!("{} cannot be a spinal mount.", String::from(&kind)));
+  };
+  if weapon.guns.len() != 1 || weapon.mounts() != 1 {
+    return Some(format!("A {name} is one weapon, never several or a battery."));
+  }
+  if multiple == 0 {
+    return Some(format!("A {name} is at least one multiple of its Base Size."));
+  }
+  let tl = tl.unwrap_or(design_tl);
+  let Some(tons) = spinal_tons(kind, multiple, tl) else {
+    return Some(format!("A {name} needs TL{}; this one is TL{tl}.", spec.tl));
+  };
+  if tons > spec.max_tons {
+    return Some(format!(
+      "A {multiple}× {name} at TL{tl} is {tons} tons, over the largest of {} tons.",
+      spec.max_tons
+    ));
+  }
+  if u64::from(tons) * 2 > u64::from(displacement) {
+    return Some(format!(
+      "A {multiple}× {name} at TL{tl} is {tons} tons, more than half of a {displacement}-ton hull."
+    ));
+  }
+  None
+}
+
+/// The Hardpoints a spinal mount takes: one per 100 tons, rounding up
+/// (High Guard p. 34).
+#[must_use]
+pub fn spinal_hardpoints(tons: u32) -> u32 {
+  tons.div_ceil(100)
+}
+
+/// The spinal's DM against a target of `tons`: DM-4 at 10,000 tons or less
+/// and DM-8 at 5,000 or less (High Guard p. 34). `None` under 2,000 tons,
+/// which "cannot attack targets of less than 2,000 tons unless they are
+/// stationary"; such a target takes the DM-8 when it is.
+#[must_use]
+pub fn spinal_size_dm(tons: u32) -> Option<i32> {
+  match tons {
+    0..2_000 => None,
+    2_000..=5_000 => Some(-8),
+    5_001..=10_000 => Some(-4),
+    _ => Some(0),
+  }
+}
+
+/// Where in the Short band a shot is, for the spinal's close-range DMs. The
+/// CRB's own bands: Adjacent under 1 km, Close to 10 km, Short beyond.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShortBand {
+  Adjacent,
+  Close,
+  Short,
+}
+
+impl ShortBand {
+  /// The part of the Short band `distance` metres falls in.
+  #[must_use]
+  pub const fn of(distance: u32) -> Self {
+    match distance {
+      0..1_000 => ShortBand::Adjacent,
+      1_000..=10_000 => ShortBand::Close,
+      _ => ShortBand::Short,
+    }
+  }
+}
+
+/// Spinal Weapon Range Adjustments (High Guard p. 35): the DM a spinal on a
+/// ship of `attacker_tons` takes at Adjacent, Close and Short, growing with
+/// the attacker's size. The table's columns meet at 50,000 tons, which is
+/// read as the lower column's, and at 250,000, the "50,000-250,000" column's.
+#[must_use]
+pub const fn spinal_range_dm(attacker_tons: u32, band: ShortBand) -> i32 {
+  let column = match attacker_tons {
+    0..10_000 => 0,
+    10_000..=50_000 => 1,
+    50_001..=250_000 => 2,
+    _ => 3,
+  };
+  let row = match band {
+    ShortBand::Adjacent => [-4, -6, -8, -10],
+    ShortBand::Close => [-2, -4, -6, -8],
+    ShortBand::Short => [-1, -2, -4, -6],
+  };
+  row[column]
 }
 
 // Range bands for Short, Medium, Long, Very Long
@@ -580,6 +784,7 @@ mod tests {
       MountClass::MediumBay => "MediumBay",
       MountClass::LargeBay => "LargeBay",
       MountClass::Battery => "Battery",
+      MountClass::Spinal => "Spinal",
     };
 
     let mut generated = String::from("{\n");
@@ -852,5 +1057,156 @@ mod tests {
       .detection_dm(),
       13
     );
+  }
+}
+
+/// The Spinal Mount Weapons and Spinal Mounts Improvement tables (High Guard
+/// p. 35), and the published designs built from them.
+#[cfg(test)]
+mod spinal_tests {
+  use super::*;
+  use crate::ship::{weapon_mount_power, Weapon};
+  use strum::IntoEnumIterator;
+
+  fn spinal(kind: WeaponType, multiple: u8, tl: Option<u8>) -> Weapon {
+    Weapon::single(kind, WeaponMount::Spinal { multiple, tl })
+  }
+
+  /// Each type at 1× and 3×: its range, traits, dice and Power per multiple.
+  #[test]
+  fn profiles_follow_the_table() {
+    // (kind, TL, range, AP, dice a multiple, Power a multiple, armour %)
+    let table = [
+      (WeaponType::MassDriver, 10, Range::Short, 15, 4, 250, 0),
+      (WeaponType::Meson, 12, Range::Long, AP_INFINITE, 6, 1_000, 0),
+      (WeaponType::Particle, 11, Range::VeryLong, 0, 8, 1_000, 3),
+      (WeaponType::Railgun, 10, Range::Medium, 20, 4, 500, 2),
+    ];
+    for (kind, tl, range, ap, dice, power, percent) in table {
+      for multiple in [1_u8, 3] {
+        let weapon = spinal(kind, multiple, None);
+        let profile = profile_for(kind, &weapon.mount).unwrap();
+        assert_eq!(profile.tl, tl, "{kind:?}");
+        assert_eq!(profile.max_range, Some(range), "{kind:?}");
+        assert_eq!(profile.ap, ap, "{kind:?}");
+        assert_eq!(profile.damage_dice, dice * multiple, "{kind:?} at {multiple}×");
+        assert_eq!(profile.armour_percent, percent, "{kind:?}");
+        assert!(profile.use_multiple && profile.salvo.is_none(), "{kind:?}");
+        assert_eq!(
+          weapon_mount_power(&weapon),
+          power * u32::from(multiple),
+          "{kind:?} at {multiple}×"
+        );
+      }
+    }
+    assert!(
+      profile_for(WeaponType::Meson, &spinal(WeaponType::Meson, 1, None).mount)
+        .unwrap()
+        .radiation
+    );
+    assert!(
+      profile_for(WeaponType::Particle, &spinal(WeaponType::Particle, 1, None).mount)
+        .unwrap()
+        .radiation
+    );
+    assert!(
+      profile_for(WeaponType::MassDriver, &spinal(WeaponType::MassDriver, 1, None).mount)
+        .unwrap()
+        .bombardment
+    );
+    assert_eq!(damage_multiple(MountClass::Spinal), 1_000);
+    // The book's own example: "a 15,000-ton meson spinal mount consumes 2,000
+    // Power, deals 12D damage".
+    let example = spinal(WeaponType::Meson, 2, Some(12));
+    assert_eq!(spinal_tons(WeaponType::Meson, 2, 12), Some(15_000));
+    assert_eq!(profile_for(WeaponType::Meson, &example.mount).unwrap().damage_dice, 12);
+    assert_eq!(weapon_mount_power(&example), 2_000);
+  }
+
+  /// Only the four types come in a spinal mount.
+  #[test]
+  fn nothing_else_is_a_spinal() {
+    for kind in WeaponType::iter() {
+      let legal = matches!(
+        kind,
+        WeaponType::MassDriver | WeaponType::Meson | WeaponType::Particle | WeaponType::Railgun
+      );
+      assert_eq!(weapon_profile(kind, MountClass::Spinal).is_some(), legal, "{kind:?}");
+    }
+  }
+
+  /// "+1: -10%, +2: -15%, +3: -20%" of the tons, and the published designs
+  /// come out at their stated tonnage.
+  #[test]
+  fn published_spinals_have_their_tonnage() {
+    assert_eq!(spinal_improvement(0), (100, 100));
+    assert_eq!(spinal_improvement(1), (90, 110));
+    assert_eq!(spinal_improvement(2), (85, 120));
+    assert_eq!(spinal_improvement(3), (80, 130));
+    assert_eq!(spinal_improvement(5), (80, 130), "three levels is the most");
+    for (design, kind, multiple, tl, tons) in [
+      // Wind-class, as the HG FAQ corrects it: meson TL15 3× (HG p. 266).
+      ("Wind", WeaponType::Meson, 3, 15, 18_000),
+      // Ghalalk: particle TL14 1× (HG p. 243).
+      ("Ghalalk", WeaponType::Particle, 1, 14, 2_800),
+      // Azhanti High Lightning, as the HG FAQ corrects it: particle TL12 2×
+      // on a TL14 hull (HG p. 258).
+      ("Azhanti High Lightning", WeaponType::Particle, 2, 12, 6_300),
+      // Atlantic: meson TL14 1× (HG p. 262).
+      ("Atlantic", WeaponType::Meson, 1, 14, 6_375),
+      // Tigress: meson TL15 11× (HG p. 284, HG FAQ).
+      ("Tigress", WeaponType::Meson, 11, 15, 66_000),
+    ] {
+      assert_eq!(spinal_tons(kind, multiple, tl), Some(tons), "{design}");
+    }
+    assert_eq!(spinal_tons(WeaponType::Meson, 1, 11), None, "a meson spinal needs TL12");
+    assert_eq!(spinal_tons(WeaponType::Beam, 1, 15), None);
+  }
+
+  /// One Hardpoint per 100 tons, rounding up (High Guard p. 34).
+  #[test]
+  fn hardpoints_round_up() {
+    assert_eq!(spinal_hardpoints(18_000), 180);
+    assert_eq!(spinal_hardpoints(6_375), 64);
+    assert_eq!(spinal_hardpoints(2_800), 28);
+  }
+
+  /// A design is refused a spinal over its type's largest, over half its
+  /// hull, below the weapon's TL, of a weapon with no spinal, or as several.
+  #[test]
+  fn spinal_designs_are_checked() {
+    let check = |weapon: &Weapon, tons, tl| spinal_problem(weapon, tons, tl);
+    // The Wind: 18,000 tons on a 75,000-ton hull.
+    assert_eq!(check(&spinal(WeaponType::Meson, 3, None), 75_000, 15), None);
+    // Exactly half the hull is allowed; a ton more is not.
+    assert_eq!(check(&spinal(WeaponType::Meson, 3, None), 36_000, 15), None);
+    let over_half = check(&spinal(WeaponType::Meson, 3, None), 35_999, 15).unwrap();
+    assert!(over_half.contains("half"), "{over_half}");
+    // A TL15 meson tops out at 12× (72,000 of a 75,000 limit); 13× is over.
+    assert_eq!(check(&spinal(WeaponType::Meson, 12, None), 1_000_000, 15), None);
+    let too_big = check(&spinal(WeaponType::Meson, 13, None), 1_000_000, 15).unwrap();
+    assert!(too_big.contains("largest"), "{too_big}");
+    // The weapon's own TL rules where it is stated.
+    let low = check(&spinal(WeaponType::Meson, 1, Some(11)), 100_000, 15).unwrap();
+    assert!(low.contains("TL12"), "{low}");
+    assert!(
+      check(&spinal(WeaponType::Meson, 1, None), 100_000, 11).is_some(),
+      "design TL too low"
+    );
+    assert!(check(&spinal(WeaponType::Beam, 1, None), 100_000, 15).is_some());
+    assert!(check(&spinal(WeaponType::Meson, 0, None), 100_000, 15).is_some());
+    assert!(check(&spinal(WeaponType::Meson, 1, None).times(2), 100_000, 15).is_some());
+    // Any other mount is none of this check's business.
+    assert_eq!(check(&Weapon::single(WeaponType::Meson, WeaponMount::Barbette), 10, 7), None);
+  }
+
+  #[test]
+  fn short_band_splits_at_one_and_ten_kilometres() {
+    assert_eq!(ShortBand::of(0), ShortBand::Adjacent);
+    assert_eq!(ShortBand::of(999), ShortBand::Adjacent);
+    assert_eq!(ShortBand::of(1_000), ShortBand::Close);
+    assert_eq!(ShortBand::of(10_000), ShortBand::Close);
+    assert_eq!(ShortBand::of(10_001), ShortBand::Short);
+    assert_eq!(ShortBand::of(1_250_000), ShortBand::Short);
   }
 }

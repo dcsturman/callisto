@@ -310,6 +310,14 @@ pub struct Ship {
   #[serde(skip)]
   dodge_spent: u8,
 
+  /// She spent no Thrust and took no evasive action in the last round flown,
+  /// which opens a ship under 2,000 tons to spinal fire (High Guard p. 34).
+  /// Set as each round's movement is flown, so a ship fresh from a scenario
+  /// has not yet held still. Written only when true.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub held_still: bool,
+
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   assist_gunners: bool,
@@ -833,9 +841,10 @@ impl Weapon {
   }
 
   /// Whether this kind of mount can be grouped into a battery: turrets and
-  /// barbettes (Imperial Navy p. 113) and bays (p. 99). A fixed mount is a
-  /// single weapon, and a point-defence battery is already a battery of its
-  /// own; an entry of several of those is that many separate weapons.
+  /// barbettes (Imperial Navy p. 113) and bays (p. 99). A fixed mount and a
+  /// spinal mount are single weapons, and a point-defence battery is already
+  /// a battery of its own; an entry of several of those is that many separate
+  /// weapons.
   #[must_use]
   pub fn can_be_battery(&self) -> bool {
     matches!(self.mount, WeaponMount::Turret | WeaponMount::Barbette | WeaponMount::Bay(_))
@@ -937,6 +946,18 @@ pub enum WeaponMount {
   /// of batteries (the book also sells gauss ones) is a single new `WeaponType`
   /// reusing these same mounts.
   Battery(u8),
+  /// A spinal mount (High Guard pp. 34-36): one weapon the length of the
+  /// ship, built as a whole `multiple` of its type's Base Size. Damage, Power
+  /// and cost scale with the multiple; range and traits are the type's.
+  ///
+  /// `tl` is the weapon's own Tech Level when it is not the design's: the
+  /// Azhanti High Lightning is a TL14 hull with a TL12 particle spinal
+  /// (High Guard p. 257). It only decides the tonnage (see
+  /// [`crate::rules_tables::spinal_tons`]), never how the weapon fires.
+  Spinal {
+    multiple: u8,
+    tl: Option<u8>,
+  },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -991,6 +1012,9 @@ pub enum MountClass {
   /// all batteries are 20 tons -- but it has to be distinct so the profile
   /// table can refuse to put a gun in one.
   Battery,
+  /// A spinal mount at a multiple of one. [`crate::rules_tables::profile_for`]
+  /// scales the dice for the real multiple.
+  Spinal,
 }
 
 impl From<&WeaponMount> for MountClass {
@@ -1003,6 +1027,18 @@ impl From<&WeaponMount> for MountClass {
       WeaponMount::Bay(BaySize::Medium) => MountClass::MediumBay,
       WeaponMount::Bay(BaySize::Large) => MountClass::LargeBay,
       WeaponMount::Battery(_) => MountClass::Battery,
+      WeaponMount::Spinal { .. } => MountClass::Spinal,
+    }
+  }
+}
+
+impl WeaponMount {
+  /// The multiple of a spinal mount, or `None` for any other mount.
+  #[must_use]
+  pub fn spinal_multiple(&self) -> Option<u8> {
+    match self {
+      WeaponMount::Spinal { multiple, .. } => Some((*multiple).max(1)),
+      _ => None,
     }
   }
 }
@@ -1049,6 +1085,13 @@ pub struct WeaponProfile {
   /// Damage suppresses the target's Power instead of harming its hull
   /// (High Guard p. 30).  Nothing is permanently destroyed.
   pub ion: bool,
+  /// Armour takes this percentage off the damage per point, rather than
+  /// being subtracted from it: 3 for a particle spinal and 2 for a railgun
+  /// spinal (High Guard p. 36). Zero for every other weapon, which subtracts.
+  pub armour_percent: u8,
+  /// The Orbital Bombardment trait: DM-12 against anything that can
+  /// manoeuvre (High Guard p. 30).
+  pub bombardment: bool,
 }
 
 // --- Weapon wire format ---------------------------------------------------
@@ -1069,6 +1112,21 @@ enum MountWire {
   Bay(BaySize),
   FixedMount,
   Battery(u8),
+  Spinal(SpinalWire),
+}
+
+/// A spinal mount on the wire: `{"Spinal": 3}` for a 3× mount at the design's
+/// Tech Level, `{"Spinal": {"multiple": 2, "tl": 12}}` when the weapon's own
+/// TL differs.
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum SpinalWire {
+  Multiple(u8),
+  Stated {
+    multiple: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tl: Option<u8>,
+  },
 }
 
 impl MountWire {
@@ -1079,6 +1137,14 @@ impl MountWire {
       MountWire::Bay(size) => WeaponMount::Bay(*size),
       MountWire::FixedMount => WeaponMount::FixedMount,
       MountWire::Battery(grade) => WeaponMount::Battery(*grade),
+      MountWire::Spinal(SpinalWire::Multiple(multiple)) => WeaponMount::Spinal {
+        multiple: *multiple,
+        tl: None,
+      },
+      MountWire::Spinal(SpinalWire::Stated { multiple, tl }) => WeaponMount::Spinal {
+        multiple: *multiple,
+        tl: *tl,
+      },
     }
   }
 
@@ -1089,6 +1155,11 @@ impl MountWire {
       WeaponMount::Bay(size) => MountWire::Bay(*size),
       WeaponMount::FixedMount => MountWire::FixedMount,
       WeaponMount::Battery(grade) => MountWire::Battery(*grade),
+      WeaponMount::Spinal { multiple, tl: None } => MountWire::Spinal(SpinalWire::Multiple(*multiple)),
+      WeaponMount::Spinal { multiple, tl } => MountWire::Spinal(SpinalWire::Stated {
+        multiple: *multiple,
+        tl: *tl,
+      }),
     }
   }
 }
@@ -1311,6 +1382,8 @@ impl WeaponProfile {
       use_multiple: true,
       salvo: None,
       ion: false,
+      armour_percent: 0,
+      bombardment: false,
     }
   }
 
@@ -1330,6 +1403,8 @@ impl WeaponProfile {
       use_multiple: false,
       salvo: Some(salvo),
       ion: false,
+      armour_percent: 0,
+      bombardment: false,
     }
   }
 
@@ -1359,6 +1434,47 @@ impl WeaponProfile {
   pub const fn rad(mut self) -> Self {
     self.radiation = true;
     self
+  }
+
+  /// Armour costs this weapon `percent` of its damage per point instead of
+  /// being subtracted (High Guard p. 36).
+  #[must_use]
+  pub const fn armour_percent(mut self, percent: u8) -> Self {
+    self.armour_percent = percent;
+    self
+  }
+
+  /// The Orbital Bombardment trait (High Guard p. 30).
+  #[must_use]
+  pub const fn bombardment(mut self) -> Self {
+    self.bombardment = true;
+    self
+  }
+
+  /// The share of the damage, in percent, that armour of `armour` lets
+  /// through, after AP. 100 for a weapon that subtracts armour instead, which
+  /// [`Self::armour_subtracted`] then handles.
+  ///
+  /// "Reduced by 3% per point of armour possessed by the target before
+  /// applying the Damage Multiple" (High Guard p. 36). A railgun spinal also
+  /// has AP 20, which Callisto takes off the armour first: against armour 20
+  /// or less it loses nothing, as AP means anywhere else, and past that each
+  /// point costs 2%. Never below nothing.
+  #[must_use]
+  pub fn armour_through(&self, armour: u32) -> u32 {
+    let armour = armour.saturating_sub(u32::from(self.ap));
+    100_u32.saturating_sub(armour.saturating_mul(u32::from(self.armour_percent)))
+  }
+
+  /// The armour this weapon subtracts from its damage, after AP: none for a
+  /// weapon that loses a percentage instead.
+  #[must_use]
+  pub fn armour_subtracted(&self, armour: u32) -> u32 {
+    if self.armour_percent > 0 {
+      0
+    } else {
+      armour.saturating_sub(u32::from(self.ap))
+    }
   }
 
   /// Mark this as an ion weapon: it drains Power rather than damaging the hull,
@@ -1723,6 +1839,13 @@ pub struct Magazine {
   /// Sandcaster barrels, one spent per cloud dispersed.
   #[serde(default)]
   pub sand: u32,
+  /// Rounds for railgun and mass driver spinal mounts, one spent per attack.
+  /// A railgun spinal comes with five and a stated magazine adds to them
+  /// (High Guard p. 36); a mass driver's are 50 tons each and come only as
+  /// stated (p. 35). They feed the spinal straight from stores, so no mount
+  /// holds any. Omitted from the wire at zero.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub rounds: u32,
 }
 
 impl Magazine {
@@ -1738,10 +1861,19 @@ impl Magazine {
   /// what [`Magazine::for_weapons`] gives its armament.
   #[must_use]
   pub fn for_design(design: &ShipDesignTemplate) -> Magazine {
-    if !design.magazine.is_empty() {
-      return design.magazine;
+    Magazine::stated_or_usual(design.magazine, &design.weapons, design.displacement)
+  }
+
+  /// `stated` with the rounds every railgun spinal comes with, or the usual
+  /// load for `weapons` when nothing is stated.
+  fn stated_or_usual(stated: Magazine, weapons: &[Weapon], displacement: u32) -> Magazine {
+    if stated.is_empty() {
+      return Magazine::for_weapons(weapons, displacement);
     }
-    Magazine::for_weapons(&design.weapons, design.displacement)
+    Magazine {
+      rounds: stated.rounds + weapons.iter().map(built_in_rounds).sum::<u32>(),
+      ..stated
+    }
   }
 
   /// What an armament carries when its design's write-up does not say.
@@ -1764,6 +1896,7 @@ impl Magazine {
           .torpedoes
           .max(3 * u32::from(weapon.count_of(WeaponType::Torpedo)) * mounts),
         sand: capacity.sand.max(20 * u32::from(weapon.count_of(WeaponType::Sand)) * mounts),
+        rounds: built_in_rounds(weapon),
       })
     })
   }
@@ -1797,6 +1930,7 @@ impl Magazine {
       missiles: self.missiles + other.missiles,
       torpedoes: self.torpedoes + other.torpedoes,
       sand: self.sand + other.sand,
+      rounds: self.rounds + other.rounds,
     }
   }
 
@@ -1807,6 +1941,7 @@ impl Magazine {
       missiles: self.missiles.min(other.missiles),
       torpedoes: self.torpedoes.min(other.torpedoes),
       sand: self.sand.min(other.sand),
+      rounds: self.rounds.min(other.rounds),
     }
   }
 
@@ -1816,8 +1951,27 @@ impl Magazine {
       missiles: self.missiles.saturating_sub(other.missiles),
       torpedoes: self.torpedoes.saturating_sub(other.torpedoes),
       sand: self.sand.saturating_sub(other.sand),
+      rounds: self.rounds.saturating_sub(other.rounds),
     }
   }
+}
+
+/// The rounds a mount comes with: five for a railgun spinal ("Railgun spinal
+/// mounts come equipped with five rounds", High Guard p. 36), none for
+/// anything else.
+fn built_in_rounds(weapon: &Weapon) -> u32 {
+  if weapon.mount.spinal_multiple().is_some() && weapon.has_kind(WeaponType::Railgun) {
+    5
+  } else {
+    0
+  }
+}
+
+/// Whether a spinal mount of this kind fires rounds from the magazine: the
+/// railgun and the mass driver. Energy spinals need only Power.
+#[must_use]
+pub fn spinal_uses_rounds(kind: WeaponType) -> bool {
+  matches!(kind, WeaponType::Railgun | WeaponType::MassDriver)
 }
 
 /// The munitions a gun of this kind fires: missiles, torpedoes or sand.
@@ -1863,24 +2017,29 @@ pub fn mount_capacity(weapon: &Weapon, displacement: u32) -> Magazine {
       missiles: turret_load(WeaponType::Missile, 12),
       torpedoes: 3 * u32::from(weapon.count_of(WeaponType::Torpedo)),
       sand: turret_load(WeaponType::Sand, 20),
+      rounds: 0,
     },
     WeaponMount::Barbette => Magazine {
       missiles: if weapon.has_kind(WeaponType::Missile) { 25 } else { 0 },
       torpedoes: if weapon.has_kind(WeaponType::Torpedo) { 3 } else { 0 },
       sand: 0,
+      rounds: 0,
     },
     WeaponMount::Bay(_) => Magazine {
       missiles: salvos(WeaponType::Missile),
       torpedoes: salvos(WeaponType::Torpedo),
       sand: 0,
+      rounds: 0,
     },
-    WeaponMount::Battery(_) => Magazine::default(),
+    // A spinal's rounds feed it from stores.
+    WeaponMount::Battery(_) | WeaponMount::Spinal { .. } => Magazine::default(),
   };
   let mounts = u32::from(weapon.mounts());
   Magazine {
     missiles: one.missiles * mounts,
     torpedoes: one.torpedoes * mounts,
     sand: one.sand * mounts,
+    rounds: 0,
   }
 }
 
@@ -2037,6 +2196,7 @@ impl Ship {
       crew: Some(crewed_or_default(crew, design, num_weapons)),
       dodge_thrust: 0,
       dodge_spent: 0,
+      held_still: false,
       assist_gunners: false,
       can_jump: false,
       temporary_maneuver: 0,
@@ -2072,11 +2232,7 @@ impl Ship {
   /// magazine, or what its armament carries when the design says nothing.
   #[must_use]
   pub fn full_stock(&self) -> Magazine {
-    if self.design.magazine.is_empty() {
-      Magazine::for_weapons(self.weapons(), self.design.displacement)
-    } else {
-      self.design.magazine
-    }
+    Magazine::stated_or_usual(self.design.magazine, self.weapons(), self.design.displacement)
   }
 
   /// Put `total` aboard: each mount filled in order, as far as it goes, and
@@ -2163,6 +2319,7 @@ impl Ship {
     self.attack_dm = 0;
     self.dodge_thrust = 0;
     self.dodge_spent = 0;
+    self.held_still = false;
   }
 
   pub fn fixup_current_values(&mut self) {
@@ -3401,9 +3558,13 @@ impl Entity for Ship {
       return Some(UpdateAction::ShipDestroyed);
     }
 
+    // Evasive action is thrust held back to dodge with (CRB p. 171), so a
+    // ship dodging is not holding still even if she burns nothing.
+    let evading = self.dodge_thrust > 0;
     if self.plan.empty() || !self.can_accelerate() {
       // Just move at current velocity. A ship that cannot fly its plan this
       // round keeps it, and picks it up again once the station is back.
+      self.held_still = !evading;
       self.position += self.velocity * DELTA_TIME_F64;
       debug!(
         "(Ship.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}",
@@ -3415,6 +3576,7 @@ impl Entity for Ship {
       let max_thrust = f64::from(self.max_acceleration());
       self.plan.ensure_thrust_limit(max_thrust * G);
       let moves = self.plan.advance_time(DELTA_TIME);
+      let mut thrust_spent = false;
 
       // left_over will be any time left after the last acceleration.  We apply last velocity only after the
       // last acceleration as otherwise the accelerations are applied back to back. i.e. when you take
@@ -3423,6 +3585,7 @@ impl Entity for Ship {
       for ap in moves.iter() {
         let old_velocity: Vec3 = self.velocity;
         let (accel, duration) = ap.into();
+        thrust_spent |= duration > 0 && accel.magnitude() > 0.0;
         #[allow(clippy::cast_precision_loss)]
         let duration: f64 = duration as f64;
         self.velocity += accel * duration;
@@ -3438,6 +3601,8 @@ impl Entity for Ship {
           self.name, self.velocity, self.position
         );
       }
+
+      self.held_still = !thrust_spent && !evading;
 
       // Don't compare just to zero as there will be round-off error.
       if left_over > 0.01 {
@@ -3520,7 +3685,12 @@ pub async fn load_ship_templates_from_dir(
           Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
             Ok(mut template) => {
               template.weapons = form_batteries(&template.weapons, template.displacement);
-              ShipTemplateFileOutcome::Loaded(Box::new(template))
+              // A spinal the book would not build is refused with the design,
+              // rather than fired at a size it cannot be.
+              match template.spinal_problems().first() {
+                Some(problem) => ShipTemplateFileOutcome::ParseError(path, problem.clone()),
+                None => ShipTemplateFileOutcome::Loaded(Box::new(template)),
+              }
             }
             Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
           },
@@ -3681,6 +3851,28 @@ pub fn sensor_power(sensors: Sensors) -> u32 {
   }
 }
 
+/// What is wrong with the spinal mounts in `weapons` on a hull of
+/// `displacement` tons at `tl`, one line each.
+#[must_use]
+pub fn spinal_problems(weapons: &[Weapon], displacement: u32, tl: u8) -> Vec<String> {
+  weapons
+    .iter()
+    .filter_map(|weapon| crate::rules_tables::spinal_problem(weapon, displacement, tl))
+    .collect()
+}
+
+/// The tons and Hardpoints of a spinal mount on a design at `design_tl`
+/// (High Guard pp. 34-35), or `None` for any other mount or a spinal that
+/// cannot be built.
+#[must_use]
+pub fn spinal_size(weapon: &Weapon, design_tl: u8) -> Option<(u32, u32)> {
+  let WeaponMount::Spinal { multiple, tl } = weapon.mount else {
+    return None;
+  };
+  let tons = crate::rules_tables::spinal_tons(weapon.primary_kind(), multiple, tl.unwrap_or(design_tl))?;
+  Some((tons, crate::rules_tables::spinal_hardpoints(tons)))
+}
+
 /// What one mount draws with everything in it running: the mount itself, plus
 /// each gun bolted into it.
 #[must_use]
@@ -3691,11 +3883,20 @@ pub fn weapon_mount_power(weapon: &Weapon) -> u32 {
     .iter()
     .map(|gun| crate::rules_tables::weapon_power(gun.kind, class).unwrap_or(0))
     .sum();
+  // A spinal draws for every multiple of its Base Size (High Guard p. 35).
+  let guns = guns * u32::from(weapon.mount.spinal_multiple().unwrap_or(1));
   // A battery draws for every mount in it.
   (guns + crate::rules_tables::mount_power(class)) * u32::from(weapon.mounts())
 }
 
 impl ShipDesignTemplate {
+  /// What is wrong with this design's spinal mounts, one line each: see
+  /// [`crate::rules_tables::spinal_problem`]. Empty for a design without any.
+  #[must_use]
+  pub fn spinal_problems(&self) -> Vec<String> {
+    spinal_problems(&self.weapons, self.displacement, self.tl)
+  }
+
   /// The Thrust a given amount of Power will drive, capped by what the drive
   /// is rated for: 10% of the hull's tonnage per point of Thrust (High Guard
   /// p. 16).
@@ -3752,6 +3953,10 @@ impl Ord for Weapon {
     // but seems more readable when expanded.
     #[allow(clippy::match_same_arms)]
     match (&self.mount, &other.mount) {
+      // A spinal mount is the ship's main armament, so it leads.
+      (WeaponMount::Spinal { .. }, WeaponMount::Spinal { .. }) => self.kinds().cmp(&other.kinds()),
+      (WeaponMount::Spinal { .. }, _) => std::cmp::Ordering::Less,
+      (_, WeaponMount::Spinal { .. }) => std::cmp::Ordering::Greater,
       (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Large), _) => std::cmp::Ordering::Less,
       (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => std::cmp::Ordering::Greater,
@@ -3878,6 +4083,17 @@ impl From<&WeaponType> for String {
   }
 }
 
+/// What a spinal mount of this kind is called: "meson spinal mount".
+#[must_use]
+pub fn spinal_name(kind: WeaponType) -> String {
+  let kind = match kind {
+    WeaponType::Meson => "meson".to_string(),
+    WeaponType::Particle => "particle".to_string(),
+    other => String::from(&other),
+  };
+  format!("{kind} spinal mount")
+}
+
 impl From<&Weapon> for String {
   fn from(w: &Weapon) -> Self {
     // A mixed turret is named by its contents rather than by a single kind:
@@ -3922,6 +4138,9 @@ impl From<&Weapon> for String {
         };
         format!("point defence battery (Type {numeral})")
       }
+      // "Spinal – meson (TL15) – 5x" on a record sheet (High Guard p. 35); the
+      // TL is the design's unless stated, which a weapon alone cannot know.
+      WeaponMount::Spinal { multiple, .. } => format!("{} ({multiple}×)", spinal_name(w.primary_kind())),
     };
     // "Particle barbette ×12 (battery)": the mount, how many of it, and
     // that they fire as one.
@@ -4454,6 +4673,7 @@ mod tests {
         missiles: 30,
         torpedoes: 0,
         sand: 0,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     });
@@ -4497,6 +4717,7 @@ mod tests {
       missiles: 33,
       torpedoes: 0,
       sand: 0,
+      rounds: 0,
     };
     ship.fixup_current_values();
     assert_eq!(
@@ -4557,7 +4778,8 @@ mod tests {
       Magazine {
         missiles: 12,
         torpedoes: 0,
-        sand: 20
+        sand: 20,
+        rounds: 0
       }
     );
     assert_eq!(mount_capacity(&rack(3).times(4), 3000).missiles, 48);
@@ -4602,6 +4824,7 @@ mod tests {
         missiles: 16,
         torpedoes: 0,
         sand: 0,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     });
@@ -4622,6 +4845,7 @@ mod tests {
         missiles: 240,
         torpedoes: 0,
         sand: 0,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     };
@@ -5642,6 +5866,7 @@ mod tests {
             missiles: 12 * u32::from(weapon.count_of(WeaponType::Missile)),
             torpedoes: 3 * u32::from(weapon.count_of(WeaponType::Torpedo)),
             sand: 20 * u32::from(weapon.count_of(WeaponType::Sand)),
+            rounds: 0,
           })
         });
         assert_eq!(ship.aboard(), before, "{}", design.name);
@@ -6006,5 +6231,156 @@ mod tests {
     ship.crit_level[0] = 2;
     ship.crit_level[5] = 3;
     assert_eq!(ship.total_crit_severity(), 5);
+  }
+}
+
+/// Spinal mounts in the design format, the magazine and the "held still"
+/// record.
+#[cfg(test)]
+mod spinal_tests {
+  use super::*;
+  use cgmath::Zero;
+
+  /// `{"Spinal": 3}` at the design's TL, or with the weapon's own TL, and
+  /// both written back as they were read.
+  #[test]
+  fn spinal_mounts_round_trip() {
+    for json in [
+      serde_json::json!({"kind": "Meson", "mount": {"Spinal": 3}}),
+      serde_json::json!({"kind": "Particle", "mount": {"Spinal": {"multiple": 2, "tl": 12}}}),
+    ] {
+      let weapon: Weapon = serde_json::from_value(json.clone()).unwrap();
+      assert!(weapon.mount.spinal_multiple().is_some());
+      assert_eq!(serde_json::to_value(&weapon).unwrap(), json);
+    }
+    let weapon: Weapon = serde_json::from_value(serde_json::json!({"kind": "Meson", "mount": {"Spinal": 3}})).unwrap();
+    assert_eq!(weapon.mount, WeaponMount::Spinal { multiple: 3, tl: None });
+    assert_eq!(String::from(&weapon), "meson spinal mount (3×)");
+    // A spinal is a single weapon: an entry of two is two spinals.
+    let two = form_batteries(&[weapon.clone().times(2)], 100_000);
+    assert_eq!(two.len(), 2);
+    assert!(two.iter().all(|weapon| weapon.mounts() == 1));
+  }
+
+  /// The tonnage and Hardpoints a design's spinal takes.
+  #[test]
+  fn spinal_size_uses_the_stated_tl_or_the_designs() {
+    let wind = Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 3, tl: None });
+    assert_eq!(spinal_size(&wind, 15), Some((18_000, 180)));
+    let azhanti = Weapon::single(
+      WeaponType::Particle,
+      WeaponMount::Spinal {
+        multiple: 2,
+        tl: Some(12),
+      },
+    );
+    assert_eq!(spinal_size(&azhanti, 14), Some((6_300, 63)));
+    assert_eq!(spinal_size(&Weapon::single(WeaponType::Meson, WeaponMount::Barbette), 15), None);
+  }
+
+  /// A spinal leads the armament.
+  #[test]
+  fn a_spinal_sorts_first() {
+    let mut weapons = [
+      Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
+      Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 1, tl: None }),
+    ];
+    weapons.sort();
+    assert!(weapons[0].mount.spinal_multiple().is_some());
+  }
+
+  /// Railgun spinals come with five rounds, and a stated magazine adds its
+  /// own; a mass driver has only what is stated (High Guard pp. 35-36).
+  #[test]
+  fn spinal_rounds_are_stores() {
+    let design = |weapons, magazine| ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      tl: 12,
+      weapons,
+      magazine,
+      ..ShipDesignTemplate::default()
+    };
+    let railgun = Weapon::single(WeaponType::Railgun, WeaponMount::Spinal { multiple: 1, tl: None });
+    let driver = Weapon::single(WeaponType::MassDriver, WeaponMount::Spinal { multiple: 1, tl: None });
+    assert_eq!(
+      Magazine::for_design(&design(vec![railgun.clone()], Magazine::default())).rounds,
+      5
+    );
+    let stated = Magazine {
+      rounds: 3,
+      ..Magazine::default()
+    };
+    assert_eq!(Magazine::for_design(&design(vec![railgun.clone()], stated)).rounds, 8);
+    assert_eq!(
+      Magazine::for_design(&design(vec![driver.clone()], Magazine::default())).rounds,
+      0
+    );
+    assert_eq!(Magazine::for_design(&design(vec![driver], stated)).rounds, 3);
+    let ship = Ship::new(
+      "Monitor".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &Arc::new(design(vec![railgun], stated)),
+      None,
+      None,
+    );
+    assert_eq!(ship.magazine.rounds, 8, "all of them in stores");
+    assert_eq!(ship.loaded(0), Magazine::default());
+    assert!(!ship.can_reload(0), "nothing to reload: they feed it from stores");
+    // No rounds on the wire for a ship that has none.
+    assert!(serde_json::to_value(Magazine::default()).unwrap().get("rounds").is_none());
+  }
+
+  /// A ship holds still for a round when she spends no Thrust and takes no
+  /// evasive action in it.
+  #[test]
+  fn held_still_is_last_rounds_burn_and_dodge() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      displacement: 10,
+      hull: 4,
+      maneuver: 6,
+      power: 100,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Fighter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert!(!ship.held_still, "nothing is known before a round is flown");
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    ship.update();
+    assert!(ship.held_still, "drifting");
+    ship.plan = FlightPlan::acceleration(Vec3::new(G, 0.0, 0.0));
+    ship.update();
+    assert!(!ship.held_still, "under thrust");
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    ship.update();
+    assert!(ship.held_still);
+    ship.set_pilot_actions(Some(2), None).unwrap();
+    ship.update();
+    assert!(!ship.held_still, "dodging is evasive action");
+  }
+
+  /// A design with a spinal it cannot carry is refused on load.
+  #[test]
+  fn an_impossible_spinal_is_a_design_problem() {
+    let design = ShipDesignTemplate {
+      name: "Overgunned".to_string(),
+      displacement: 20_000,
+      tl: 15,
+      weapons: vec![Weapon::single(
+        WeaponType::Meson,
+        WeaponMount::Spinal { multiple: 3, tl: None },
+      )],
+      ..ShipDesignTemplate::default()
+    };
+    let problems = design.spinal_problems();
+    assert_eq!(problems.len(), 1);
+    assert!(problems[0].contains("half"), "{problems:?}");
+    let fine = ShipDesignTemplate {
+      displacement: 75_000,
+      ..design
+    };
+    assert_eq!(fine.spinal_problems(), Vec::<String>::new());
   }
 }

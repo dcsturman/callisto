@@ -701,6 +701,7 @@ mod reload_tests {
         missiles: 120,
         torpedoes: 0,
         sand: 0,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     });
@@ -765,5 +766,143 @@ mod reload_tests {
     let spent = own_row(&world([3, 12], 30));
     assert_eq!(spent, own_row(&world([12, 12], 30)));
     assert_eq!(spent[42], 90.0 / 120.0);
+  }
+}
+
+/// What the trained network reads must not move for any design we ship,
+/// whatever the engine learns to do with new mounts. Every shipped design is
+/// put against itself and against the P.F. Sloan, both ways, at a spread of
+/// ranges, and the side's whole encoding -- own, foe, side and pair features
+/// and the masks -- is fingerprinted against a file written before spinal
+/// mounts existed.
+///
+/// Run with `UPDATE_SIDE_FINGERPRINTS=1` to rewrite the file, which should
+/// only ever happen alongside a retrain.
+#[cfg(test)]
+mod fingerprint_tests {
+  use super::*;
+  use crate::observation::observe;
+  use callisto::entity::Entities;
+  use callisto::ship::{form_batteries, ShipDesignTemplate, Team};
+  use cgmath::Zero;
+  use std::fmt::Write as _;
+  use std::path::Path;
+  use std::sync::Arc;
+
+  const FIXTURE: &str = "tests/fixtures/side_encoding_fingerprints.txt";
+
+  /// Close, Short, Medium, Long and Very Long.
+  const DISTANCES: [f64; 5] = [5.0e3, 5.0e5, 5.0e6, 2.0e7, 4.0e7];
+
+  fn designs() -> Vec<(String, Arc<ShipDesignTemplate>)> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../callisto/ship_templates");
+    let mut designs: Vec<(String, Arc<ShipDesignTemplate>)> = std::fs::read_dir(&dir)
+      .expect("ship_templates")
+      .filter_map(|entry| {
+        let path = entry.expect("entry").path();
+        (path.extension().and_then(|ext| ext.to_str()) == Some("json")).then_some(path)
+      })
+      .map(|path| {
+        let mut design: ShipDesignTemplate =
+          serde_json::from_str(&std::fs::read_to_string(&path).expect("read")).expect("design");
+        // As the loader does.
+        design.weapons = form_batteries(&design.weapons, design.displacement);
+        let file = path.file_stem().and_then(|stem| stem.to_str()).expect("name").to_string();
+        (file, Arc::new(design))
+      })
+      .collect();
+    designs.sort_by(|a, b| a.0.cmp(&b.0));
+    designs
+  }
+
+  fn fingerprint(blue: &Arc<ShipDesignTemplate>, red: &Arc<ShipDesignTemplate>, distance: f64) -> u64 {
+    let mut world = Entities::default();
+    world.add_ship("Blue".to_string(), Vec3::zero(), Vec3::zero(), blue, None, None);
+    world.add_ship("Red".to_string(), Vec3::new(distance, 0.0, 0.0), Vec3::zero(), red, None, None);
+    world.ships["Blue"].write().unwrap().team = Some(Team::Blue);
+    world.ships["Red"].write().unwrap().team = Some(Team::Red);
+    world.establish_initial_contacts();
+    let view = observe(&world, &["Blue".to_string()]);
+    let memory = Memory::default();
+    let history = History::default();
+    let ctx = SideContext {
+      view: &view,
+      memory: &memory,
+      history: &history,
+      round: 1,
+      max_rounds: 20,
+      own_hull_share: 1.0,
+      enemy_hull_share: 1.0,
+      goal: Goal::Destroy,
+      post: None,
+    };
+    let (mut own, mut foes, mut side, mut pairs, mut masks) = (
+      vec![0.0; OWN * OWN_FEATS],
+      vec![0.0; FOES * FOE_FEATS],
+      vec![0.0; SIDE_FEATS],
+      vec![0.0; OWN * FOES * PAIR_FEATS],
+      vec![false; OWN * MASK_LEN],
+    );
+    let _ = encode_side(
+      &ctx,
+      &mut Buffers {
+        own: &mut own,
+        foes: &mut foes,
+        side: &mut side,
+        pairs: &mut pairs,
+        masks: &mut masks,
+      },
+    );
+    // FNV-1a over every feature's bits, then every mask entry.
+    let bytes = [&own, &foes, &side, &pairs]
+      .into_iter()
+      .flat_map(|features| features.iter().flat_map(|value| value.to_bits().to_le_bytes()))
+      .chain(masks.iter().map(|open| u8::from(*open)));
+    bytes.fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+      (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+  }
+
+  #[test]
+  fn shipped_designs_encode_as_they_always_have() {
+    let designs = designs();
+    let (_, sloan) = designs
+      .iter()
+      .find(|(file, _)| file == "fleet_escort_p_f_sloan")
+      .expect("the P.F. Sloan");
+    let mut generated = String::new();
+    for (file, design) in &designs {
+      for distance in DISTANCES {
+        let pairs = [
+          ("itself", design, design),
+          ("vs sloan", design, sloan),
+          ("sloan vs", sloan, design),
+        ];
+        for (label, blue, red) in pairs {
+          writeln!(
+            generated,
+            "{file} {label} {distance:e} {:016x}",
+            fingerprint(blue, red, distance)
+          )
+          .unwrap();
+        }
+      }
+    }
+
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
+    if std::env::var("UPDATE_SIDE_FINGERPRINTS").is_ok() {
+      std::fs::write(&path, &generated).expect("could not write the fingerprints");
+      return;
+    }
+    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+    let changed: Vec<&str> = generated
+      .lines()
+      .filter(|line| !on_disk.lines().any(|known| known == *line))
+      .collect();
+    assert!(
+      changed.is_empty() && on_disk.lines().count() == generated.lines().count(),
+      "the network now sees these differently:\n  {}",
+      changed.join("\n  ")
+    );
   }
 }
