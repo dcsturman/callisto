@@ -2136,39 +2136,31 @@ async fn integration_multi_client_test() {
   )
   .await;
 
-  // Before we do our RPC, get rid of the extra two messages
-  debug!("(integration_multi_client_test) Draining extra messages (1).");
-  drain_entity_response(&mut stream3).await;
-  debug!("(integration_multi_client_test) Draining extra messages (2).");
-  drain_entity_response(&mut stream3).await;
-
-  rpc(
-    &mut stream3,
-    RequestMsg::AddShip(AddShipMsg {
-      name: "ship3".to_string(),
-      position: [0.0, 0.0, 0.0].into(),
-      velocity: [0.0, 0.0, 0.0].into(),
-      design: "Buccaneer".to_string(),
-      crew: None,
-      weapons: None,
-      active_sensors: None,
-      transmitting: None,
-      team: None,
-      contacts: None,
-      features_on: None,
-      controller: None,
-      orders: None,
-      software: None,
-    }),
-  )
-  .await;
-
-  // Should now be just the 1 entity response message (since we drained above)
-  let entities = drain_entity_response(&mut stream3).await;
-  if let ResponseMsg::EntityResponse(entities) = entities {
-    assert_eq!(entities.ships.len(), 3);
-  } else {
-    panic!("Expected EntityResponse");
+  // Each player is sent world updates as ships are added, but one queued
+  // behind a newer one is dropped, so how many stream3 sees depends on timing.
+  // Read them until one shows all three ships.
+  let request = RequestMsg::AddShip(AddShipMsg {
+    name: "ship3".to_string(),
+    position: [0.0, 0.0, 0.0].into(),
+    velocity: [0.0, 0.0, 0.0].into(),
+    design: "Buccaneer".to_string(),
+    crew: None,
+    weapons: None,
+    active_sensors: None,
+    transmitting: None,
+    team: None,
+    contacts: None,
+    features_on: None,
+    controller: None,
+    orders: None,
+    software: None,
+  });
+  stream3.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
+  loop {
+    let reply = next_response_with_timeout(&mut stream3, Duration::from_secs(10)).await;
+    if matches!(reply, ResponseMsg::EntityResponse(ref entities) if entities.ships.len() == 3) {
+      break;
+    }
   }
 
   send_quit(&mut stream1).await;
