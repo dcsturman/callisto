@@ -593,9 +593,10 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
 - **The ruling:** a reload refills one mount from stores, up to its capacity or what stores have, at the end of the round.
 - **Spare gunners reload for free.**
   - **Who counts:** the crew's `gunnery` list is index-aligned with the mounts, so entries beyond the number of mounts are gunners with no mount of their own.
-  - **How many:** each spare gunner reloads one mount a round, automatically, emptiest first. Nobody gives the order and no mount gives up its action.
+  - **How many:** each spare gunner reloads one mount a round, **when the gunnery station chooses Reload for it** (user, 2026-10-29). Nothing reloads by itself.
+  - **The order of the pool:** each Reload chosen takes a spare gunner while any are free. A mount reloaded by a spare gunner still fires (or defends) with its own gunner that round, so a mount can **fire and reload** in one round -- if Reload is chosen before it runs dry.
   - **The gunner card:** the card shows each mount's crew as one entry, even when the mount needs several gunners. "Spare" means gunners beyond those cards, which is what the `gunnery` list already records.
-- **With no spare gunner, reloading is the mount's action for the round.** The mount's gunner is given **Reload** instead of a target. That mount makes no attack that round, as CRB p. 172 says.
+- **With no spare gunner left, reloading is the mount's action for the round.** The Reload that finds the pool at 0 uses the mount's own gunner, so that mount makes no attack that round, as CRB p. 172 says.
   - **Assumption:** it makes no reaction either (sand, point defence). The gunner is busy with the reload, and one mount gets one use a round (FAQ, *Mixed turrets*).
 - **What can be reloaded:** only mounts with a launcher (missile, torpedo) or a sandcaster that are below capacity, on a ship with stores left. A mixed turret (say, laser and rack) that reloads gives up its laser shot.
 
@@ -605,16 +606,16 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
   - choosing it sends a `ShipAction::PointDefenseAction { weapon_id, protecting }` (`action.rs`) instead of a `FireAction`;
   - the merge in `action.rs` (the `FireAction` / `PointDefenseAction` arms around ll. 491–532) keeps one of the two per `weapon_id`.
 - **New:**
-  - **Gunner card:** a `"<Reload>"` pseudo-target, offered only on launcher and sandcaster mounts that are below capacity, on a ship with stores left. It shows "Reload (6 of 12 loaded; 30 in stores)".
-  - **Free reload:** where a spare gunner will do the reload this round, the card says "reloaded by spare crew" and does not offer the choice.
-  - **Wire:** `ShipAction::ReloadAction { weapon_id }`, mirroring `PointDefenseAction`. It joins the same per-`weapon_id` merge, so a mount has exactly one of Fire, Point Defence or Reload.
+  - **Gunner card:** a `"<Reload>"` choice, offered only on launcher and sandcaster mounts that are below capacity, on a ship with stores left. It shows "Reload (6 of 12 loaded; 30 in stores)".
+  - **The spare pool on the card:** the card heads the mounts with "Spare gunners: 2 of 3 free". Choosing Reload while any are free takes one, and the mount keeps its target ("reloaded by spare crew"). At 0 free, Reload replaces the mount's target ("reloads instead of firing"). Withdrawing a Reload gives its spare gunner back.
+  - **Wire:** `ShipAction::ReloadAction { weapon_id }`, mirroring `PointDefenseAction`. It is **not** in the one-per-`weapon_id` merge with Fire and Point Defence: the server gives spare gunners to Reloads in the order they were chosen, and only a Reload with none left drops that mount's Fire or Point Defence.
   - **Resolution:** reloads are applied after fire and before movement.
   - **Leadership:** boosts have nothing to apply to a reload, so it gets no `BoostTarget`.
 - **AI:**
   - `tactics::Intent` gains `reload: Vec<usize>`, like `defend: Vec<usize>`: the mounts to reload this round. `tactics::orders` turns it into `ReloadAction`s and leaves those mounts out of fire and defence.
   - **The heuristic in tactics:**
-    - an empty single-kind launcher or sandcaster is always reloaded, since it costs nothing;
-    - a partly empty one is reloaded when nothing it could fire on is in range;
+    - while spare gunners are free, reload below-capacity launchers and sandcasters, emptiest first, since it costs nothing;
+    - with none free, an empty single-kind mount is reloaded with its own gunner, and a partly empty one only when nothing it could fire on is in range;
     - a mixed mount is reloaded only when its other gun has no target.
   - **No new head.** The side network gets an own feature, the loaded share of launcher capacity, at retrain 1.
   - **The admiral** sees "racks 4/12, stores 30" in the design line.
