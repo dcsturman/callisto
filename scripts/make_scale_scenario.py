@@ -7,7 +7,8 @@ from the repo root:
 
     ./scripts/make_scale_scenario.py > "callisto/scenarios/Scale Test - 200 Ships.json"
 
-Pass a number to change the ships per side (squadrons are scaled to fit).
+Pass a number to change the ships per side. Squadrons are scaled with it, so
+above 100 a side they pass the 20-ship limit: such a file is for timing only.
 """
 import json
 import sys

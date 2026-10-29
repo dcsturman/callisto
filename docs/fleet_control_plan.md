@@ -235,3 +235,120 @@ With no orders at all it is never asked. If an answer cannot be read, the squadr
 - call me on new enemies, or 25% losses.
 
 Blue won.
+
+## Phase 3 results: the fleet commander at scale (2026-10-29)
+
+Branch `fleet-ux`, off `epic-fleet-control`.
+
+### The scale test
+
+**Setup.**
+- **Scenario:** `callisto/scenarios/Scale Test - 200 Ships.json`, written by `scripts/make_scale_scenario.py`. Two fleets of 100 start 100,000 km apart. Each fleet is six squadrons: Line (2 Kinunirs, 4 Fer-de-Lances, 4 Type Ts), Escort (6 Gazelles, 6 SDBs, 4 Torpedo Boats), three wings of 20 Light Fighters, and 14 Heavy Fighters. Pass a number to the script for another size; above 100 a side its squadrons pass 20, which loading does not check, so such a file is for timing only.
+- **Timing:** `ai-ships/examples/scale.rs` plays the scenario the way the harness does, in-process, on an M3 Pro. Each side is the squadron executor with no orders, which is one network pass per squadron. The example times each part of a round, and measures the world update and the round's results as serialised for the wire.
+
+**Results at 200 ships**, rounds 1–8 (the fleets come into range in round 3 and fight from round 5):
+
+| What | Measured |
+|---|---|
+| World update (`EntityResponse`) | 185 KB at the start, 413 KB at the height of the fight; about 2 KB a ship. Serialising it takes 0.3–1 ms. |
+| … of which `contacts` | 178 KB of 393 KB: every ship lists every contact by name |
+| Round results (`Effects`), before the fix | 0.9, 2.8, 2.2 and 1.6 MB in rounds 3–6: up to 9,857 lines, about 95% of them detection lines |
+| Round results, after | 0.2, 0.3, 0.5 and 0.7 MB: 315 to 2,478 lines, now mostly combat |
+| Resolving the round (`PlayerManager::update`) | 16–38 ms |
+| AI decision, per side | 150–230 ms: about 25 ms per squadron pass, times six. A single pass of the plain network takes 25 ms. |
+| AI observation, per side | 0.3 ms before contact, then 27–52 ms |
+
+Compressed with deflate, the 413 KB update is 21 KB, and the 0.7 MB of results is 31 KB.
+
+**How it grows.**
+
+| Ships | Resolve | Observe, per side | Update | Worst round's results |
+|---|---|---|---|---|
+| 100 | 4–7 ms | 6–14 ms | 177 KB | 0.3 MB |
+| 200 | 16–38 ms | 27–52 ms | 413 KB | 0.7 MB |
+| 400 | 60–106 ms | 53–137 ms | 676 KB | 1.6 MB |
+
+**What grows with the square of the ship count:**
+- **The detection pass:** every ordered pair of ships. It is still cheap: under 40 ms in all at 200 ships.
+- **The lines it reported (fixed):** one per pair for every acquisition check, and one per pair for every change of range band. That was most of the 2.8 MB.
+- **`contacts` on the wire:** each ship carries the name of each ship it holds, so 100 against 100 is 10,000 names.
+- **The AI's engagement and exposure tables** (`ai-ships/src/observation.rs`, `tables`): an engagement both ways and a detection-odds entry for every pair of our ship and contact. That is 20,000 calculations a side at 100 a side, and it is most of the observation's 50 ms. Replacing its list scans with sets made no measurable difference; the calculations are the cost.
+- **The client, which:**
+  - wrote every ship of every world update to the console as JSON;
+  - drew every result line at once;
+  - serialised the whole UI slice, results included, to session storage on every frame of a camera move;
+  - re-rendered every ship on every frame of a camera move. Each render rebuilt the ship's label geometry and checked each ship against every team-mate's contacts.
+
+  All four are fixed (see below).
+
+### Fixes
+
+- **Detection lines, collapsed** (`callisto/src/entity.rs`): when several of an observer's contacts make the same band move, they share one line. The same goes for her acquisition checks that pass even on a 2. Any check that could have failed keeps its own line and arithmetic. Tests: `contacts_that_move_band_together_share_a_line`, `checks_that_cannot_fail_share_a_line`.
+- **Console logging** (`lib/serverManager.ts`): entities and results are written out in full only up to 40; otherwise the log gives counts.
+- **Results window** (`components/space/Effects.tsx`): at most 400 lines are drawn, with a note of how many more the filter can find.
+- **Session storage** (`state/store.ts`): a round of more than 300 results is not kept across a reload. Test: `state/store.test.ts`.
+- **3D view** (`components/space/Ships.tsx`):
+  - `Ships` and `Missiles` are memoised, so a camera move no longer re-renders them;
+  - a label's geometry arguments are kept while its text stays the same (@react-three/fiber compares `args` elements by reference);
+  - the team's detection picture is gathered once per render (`undetectedTest`, tested against `isUndetectedBy`).
+
+### What was built
+
+- **Roster** (`SquadronRoster.tsx`, in the console for the referee and a fleet commander, above Squadrons): one line per squadron, grouped by team for the referee. Each line shows:
+  - the squadron's name, in its team's colour;
+  - its ship count and hull left;
+  - under it, the AI's current step, taken from the front of the ships' `ai_report.rationale` ("step 1 of 2: engage Light Fighter; …"), or "deciding…".
+
+  Each line folds open to its ships. Each ship has a tick box, a click that opens her console, her hull and her design. The line's actions:
+  - **Select** ticks the squadron's ships for Squadrons' Move, and points the Orders panel at the squadron (`ui.focusSquadron`).
+  - **Go** puts the camera over the squadron's centre.
+- **Squadron markers** (View panel, on by default): a squadron more than 60 scene units (60,000 km) from the camera draws as one wireframe marker labelled "Lance (20)" in its team's colour. It stays the same size on screen, and the labels of that squadron's ships are hidden. Clicking a marker selects the squadron, as Select does. The referee sees every squadron's marker; anyone else sees only their own side's.
+- **Box-select** (Shift-drag in the view, for the referee and a fleet commander): ticks every ship inside the box. Shift-Ctrl or Shift-⌘ adds to the ticks. A fleet commander ticks only their own side. A referee's box keeps the team it caught most of, and the Squadrons panel switches to that team. The ticks (`ui.fleetSelection`) are now shared by the roster, the view and the Squadrons panel, whose title shows "· N ticked".
+- **Add Ship, N at once** (builder and the referee's Add Ship): a Count box. Above 1, there are also Squadron and Spacing (km, default 250) boxes. The ships are named from the name given (Lance 01, Lance 02, …), laid out five abreast around the position, then put in the squadron. A batch that would take the squadron past 20 is refused before anything is sent.
+- **Tests:**
+  - `SquadronRoster.test.tsx`;
+  - `AddShip.test.tsx`;
+  - new cases in `SquadronsPanel.test.tsx` and `OrdersPanel.test.tsx`;
+  - `lib/boxSelect.test.ts`;
+  - new cases in `lib/squadrons.test.ts` (hull share, centre, AI step, batch names, grid) and `lib/contacts.test.ts`.
+
+### For the user to check by eye
+
+Nothing here was seen in a browser. Start the backend and frontend as usual, and join **Scale Test - 200 Ships** as the referee.
+
+1. **Frame rate.**
+   - Open Chrome DevTools, then Rendering, then Frame Rendering Stats.
+   - Fly the camera (WASD, drag to look) close in, with every label showing. Then fly it zoomed out (scroll back about 100 units), with Squadron Markers on and then off.
+   - Press Next Round with the Results window open. Note the frame rate and any pause. Rounds 3 to 6 are the heavy ones.
+   - For comparison, the same on `epic-fleet-control` would show what the render fixes bought.
+2. **Roster.**
+   - The console should show "Roster (12)", with Blue and Red sections, each listing six squadrons with 2 to 20 ships and 100%.
+   - Select a squadron. Squadrons should read "· 20 ticked", and Orders "To: Squadron …".
+   - Check that Go moves the camera, and the fold shows the ships.
+   - With AI crews on both sides, play a round. Each line should show its step.
+3. **Markers.**
+   - Zoom out until the markers appear. That squadron's ship labels should disappear, and the marker should stay readable.
+   - Click a marker: the roster line should highlight, and the Orders panel should switch to it.
+   - Take Fleet Command of Blue. Only Blue's markers should show.
+4. **Box-select.**
+   - Shift-drag over part of a wing. A dashed blue box should show, and the camera must not turn.
+   - Squadrons should tick those ships. Move them into a new squadron.
+   - Shift-Ctrl-drag should add more. A plain drag should still turn the view, and the Shift speed-up of the flight keys should still work.
+5. **Builder.**
+   - Add Ship with a name, Count 10, Squadron "Wing", Spacing 250, and a team.
+   - Ten ships should appear, named "<name> 01" to "<name> 10", in two rows of five, in Wing.
+6. **Results.** After round 4 the window should end with "… more lines", and the filter chips should reach them.
+
+### Known limits and what remains
+
+- **Enemy labels stay.** Enemy squadrons get no markers: their squadrons are not ours to know. A hundred detected enemies are still a hundred labels. Grouping detected enemies by design and position, as the admiral's situation does, would fix it.
+- **Marker distance:** fixed at 60 units from the squadron's centre, not chosen by the player.
+- **Shift-drag** now belongs to box-select for the referee and a fleet commander. It used to be a faster mouse-look.
+- **Wire size.** The world update is still 0.4 MB at 200 ships, and each ship's `contacts` is about 45% of it. Two options, either of which would fix most of it:
+  - **Compression:** deflate takes the update and results about 20× smaller. Check whether the tokio-tungstenite in use (0.26) or a newer release can negotiate permessage-deflate (browsers ask for it themselves).
+  - **A smaller update:** send each player only their side's picture, which also stops it leaking to the other side.
+- **AI observation:** grows with the square of the ship count, about 50 ms a side at 100 a side and 140 ms at 200. Recommendation: build the engagement and exposure tables only for the pairs a squadron's pass is shown (at most 20 by 20), or on demand.
+- **Not measured here:**
+  - the AI service over HTTP, as opposed to in-process;
+  - the browser's own frame rate (see above).
+- **The roster:** no sort or filter yet, and the AI step shown is the first report found in the squadron.
