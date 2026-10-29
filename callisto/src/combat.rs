@@ -310,16 +310,22 @@ const VOLLEY_ROLLS_LISTED: usize = 24;
 /// else an attack says beyond its own line are kept as they are.
 ///
 /// `title` names the volley in that line, "Missile salvo (12)", and is given
-/// whenever there is more than one of anything. With no title, each shot is reported exactly as [`attack`] reports it, which keeps
-/// a lone missile and a single mount reading as they always have.
-#[allow(clippy::too_many_arguments)]
+/// whenever there is more than one of anything. With no title, each shot is
+/// reported exactly as [`attack`] reports it, which keeps a lone missile and a
+/// single mount reading as they always have.
+///
+/// `damage_mods` is each shot's damage modifier in turn -- sand thrown at
+/// that shot -- and a shot past its end has none. `called` is the system
+/// every shot is aimed at, for a battery's called shot.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn volley(
-  hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>, shots: u16,
-  title: Option<&str>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+  hit: HitMods, damage_mods: &[i32], attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>, shots: u16,
+  title: Option<&str>, called: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
+  let damage_mod = |shot: usize| damage_mods.get(shot).copied().unwrap_or(0);
   let Some(title) = title else {
-    return (0..shots.max(1))
-      .flat_map(|_| attack(hit, damage_mod, attacker, defender, firing, None, boost_map, rng))
+    return (0..usize::from(shots.max(1)))
+      .flat_map(|shot| attack(hit, damage_mod(shot), attacker, defender, firing, called, boost_map, rng))
       .collect();
   };
 
@@ -328,9 +334,19 @@ pub fn volley(
   // landed, not how often.
   let mut visual: Option<EffectMsg> = None;
   let mut rest: Vec<EffectMsg> = Vec::new();
-  for _ in 0..shots {
+  for index in 0..usize::from(shots) {
     let mut shot = Shot::default();
-    let effects = resolve_attack(hit, damage_mod, attacker, defender, firing, None, boost_map, rng, &mut shot);
+    let effects = resolve_attack(
+      hit,
+      damage_mod(index),
+      attacker,
+      defender,
+      firing,
+      called,
+      boost_map,
+      rng,
+      &mut shot,
+    );
     if shot.rolled.is_none() {
       // It never got to a roll -- out of range, or a weapon that cannot be
       // fired from its mount -- and every other shot would say the same.
@@ -1727,12 +1743,15 @@ pub fn do_fire_actions<S: BuildHasher>(
         // Launched weapons don't attack when fired.  Each object comes back and
         // calls attack() on impact, carrying the weapon that threw it so a
         // torpedo resolves as a torpedo rather than as a missile.
-        let full_salvo = match salvo {
+        let per_mount = match salvo {
           // One object per launcher gun, which in a mixed turret is the number
           // of racks in it rather than the size of the turret.
           Salvo::PerGun => u16::from(firing.count),
           Salvo::Fixed(n) => n,
         };
+        // A missile battery's launchers throw one salvo together: 32 small
+        // bays are 384 missiles at one target.
+        let full_salvo = per_mount.saturating_mul(weapon.mounts());
         // Firing fewer is a choice; firing more is not on offer, and asking
         // for none would be an order to do nothing, so one is the floor.
         let count = firing.salvo_limit.map_or(full_salvo, |limit| limit.clamp(1, full_salvo));
@@ -1789,72 +1808,89 @@ pub fn do_fire_actions<S: BuildHasher>(
             target.get_name()
           );
 
-          let (sand_mod, mut effects) = match sand_counts.get_mut(target.get_name()) {
-            Some(sand_casters) if !sand_casters.is_empty() => {
-              // There is a serious error if after checking if the sand_casters list isn't empty
-              // it then cannot pop an element. So unwrap() is safe here.
-              let modifier = sand_casters.pop().unwrap();
-              // One barrel per cloud dispersed (Core Rulebook p. 166 prices
-              // them by the barrel, and a ship carries a finite number).
-              target.magazine.sand = target.magazine.sand.saturating_sub(1);
-              let dice = i32::from(roll_dice(2, rng));
-              let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
-              // Same compact shape as an attack line: sand is part of the same
-              // exchange, and the defender rolling it is the actor here.
-              let sand_line = "%s sand -> %t".to_string();
-              let sand_roll_line =
-                format!("{dice}{modifier:+}={} vs {STANDARD_ROLL_THRESHOLD}", dice + modifier);
-              if effect >= 0 {
-                debug!(
-                  "(Combat.do_fire_actions) {}'s sand (modifier = {})successfully deployed against {} with effect {}.",
-                  target.get_name(),
-                  modifier,
-                  attacker.get_name(),
-                  effect
-                );
-                let sand_roll = i32::from(roll(rng));
-                let sand_mod = effect + sand_roll;
-                (
-                  sand_mod,
-                  vec![EffectMsg::about(
+          // A battery is a shot per mount, and each can draw the defender's
+          // sand as a lone mount's shot would, while she has any to throw.
+          let shots = weapon.mounts();
+          let mut sand_mods: Vec<i32> = Vec::new();
+          let mut sand_lines: Vec<EffectMsg> = Vec::new();
+          for _ in 0..shots {
+            let (sand_mod, lines) = match sand_counts.get_mut(target.get_name()) {
+              Some(sand_casters) if !sand_casters.is_empty() => {
+                // There is a serious error if after checking if the sand_casters list isn't empty
+                // it then cannot pop an element. So unwrap() is safe here.
+                let modifier = sand_casters.pop().unwrap();
+                // One barrel per cloud dispersed (Core Rulebook p. 166 prices
+                // them by the barrel, and a ship carries a finite number).
+                target.magazine.sand = target.magazine.sand.saturating_sub(1);
+                let dice = i32::from(roll_dice(2, rng));
+                let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
+                // Same compact shape as an attack line: sand is part of the same
+                // exchange, and the defender rolling it is the actor here.
+                let sand_line = "%s sand -> %t".to_string();
+                let sand_roll_line =
+                  format!("{dice}{modifier:+}={} vs {STANDARD_ROLL_THRESHOLD}", dice + modifier);
+                if effect >= 0 {
+                  debug!(
+                    "(Combat.do_fire_actions) {}'s sand (modifier = {})successfully deployed against {} with effect {}.",
                     target.get_name(),
-                    MessageCategory::Damage,
-                    format!("{sand_line}: deployed, damage -{sand_mod}."),
+                    modifier,
+                    attacker.get_name(),
+                    effect
+                  );
+                  let sand_roll = i32::from(roll(rng));
+                  let sand_mod = effect + sand_roll;
+                  (
+                    sand_mod,
+                    vec![EffectMsg::about(
+                      target.get_name(),
+                      MessageCategory::Damage,
+                      format!("{sand_line}: deployed, damage -{sand_mod}."),
+                    )
+                    .at(attacker.get_name())
+                    .rolled(format!(
+                      "{sand_roll_line} · {effect} effect +1D {sand_roll} = -{sand_mod}"
+                    ))],
                   )
-                  .at(attacker.get_name())
-                  .rolled(format!(
-                    "{sand_roll_line} · {effect} effect +1D {sand_roll} = -{sand_mod}"
-                  ))],
-                )
-              } else {
-                debug!(
-                  "(Combat.do_fire_actions) {}'s sand (modifier = {}) failed to deploy against {} with effect {}.",
-                  target.get_name(),
-                  modifier,
-                  attacker.get_name(),
-                  effect
-                );
+                } else {
+                  debug!(
+                    "(Combat.do_fire_actions) {}'s sand (modifier = {}) failed to deploy against {} with effect {}.",
+                    target.get_name(),
+                    modifier,
+                    attacker.get_name(),
+                    effect
+                  );
 
-                (
-                  0,
-                  vec![EffectMsg::about(
-                    target.get_name(),
-                    MessageCategory::Damage,
-                    format!("{sand_line}: fails to deploy."),
+                  (
+                    0,
+                    vec![EffectMsg::about(
+                      target.get_name(),
+                      MessageCategory::Damage,
+                      format!("{sand_line}: fails to deploy."),
+                    )
+                    .at(attacker.get_name())
+                    .rolled(sand_roll_line.clone())],
                   )
-                  .at(attacker.get_name())
-                  .rolled(sand_roll_line.clone())],
-                )
+                }
               }
+              _ => {
+                debug!(
+                  "(Combat.do_fire_actions) {} has no sand to deploy against {}.",
+                  target.get_name(),
+                  attacker.get_name()
+                );
+                (0, vec![])
+              }
+            };
+            if lines.is_empty() {
+              break;
             }
-            _ => {
-              debug!(
-                "(Combat.do_fire_actions) {} has no sand to deploy against {}.",
-                target.get_name(),
-                attacker.get_name()
-              );
-              (0, vec![])
-            }
+            sand_mods.push(sand_mod);
+            sand_lines.extend(lines);
+          }
+          let mut effects = if sand_lines.len() > 1 {
+            vec![sand_summary(&target, attacker.get_name(), &sand_mods, shots)]
+          } else {
+            sand_lines
           };
 
           // Captain AssistGunner +1 applies to the FIRST actual fire roll
@@ -1879,12 +1915,15 @@ pub fn do_fire_actions<S: BuildHasher>(
             fire_control: fire_control_points,
           };
 
-          effects.append(&mut attack(
+          let sand: Vec<i32> = sand_mods.iter().map(|sand_mod| -sand_mod).collect();
+          effects.append(&mut volley(
             hit,
-            -sand_mod,
+            &sand,
             attacker,
             &mut target,
             &firing,
+            shots,
+            battery_title(weapon).as_deref(),
             called_shot_system.as_ref(),
             boost_map,
             rng,
@@ -1921,12 +1960,14 @@ pub fn do_fire_actions<S: BuildHasher>(
             fire_control: fire_control_points,
           };
 
-          attack(
+          volley(
             hit,
-            0,
+            &[],
             attacker,
             &mut target,
             &firing,
+            weapon.mounts(),
+            battery_title(weapon).as_deref(),
             called_shot_system.as_ref(),
             boost_map,
             rng,
@@ -1942,6 +1983,32 @@ pub fn do_fire_actions<S: BuildHasher>(
   }
 
   (new_missiles, effects)
+}
+
+/// What a battery is called in its volley's line, "particle barbette ×12
+/// (battery)"; a single mount has no title and reports shot by shot as it
+/// always has.
+fn battery_title(weapon: &Weapon) -> Option<String> {
+  (weapon.mounts() > 1).then(|| String::from(weapon))
+}
+
+/// Several sand clouds thrown at one battery's shots, as one line.
+fn sand_summary(defender: &Ship, attacker: &str, sand_mods: &[i32], shots: u16) -> EffectMsg {
+  let deployed: Vec<String> = sand_mods
+    .iter()
+    .filter(|sand_mod| **sand_mod > 0)
+    .map(|sand_mod| format!("-{sand_mod}"))
+    .collect();
+  let mut line = format!(
+    "%s sand -> %t: {} of {} clouds against {shots} shots deployed",
+    deployed.len(),
+    sand_mods.len()
+  );
+  if !deployed.is_empty() {
+    let _ = write!(line, ", damage {}", deployed.join(", "));
+  }
+  line.push('.');
+  EffectMsg::about(defender.get_name(), MessageCategory::Damage, line).at(attacker)
 }
 
 #[must_use]
@@ -2005,7 +2072,11 @@ pub fn create_sand_counts<S: BuildHasher>(
             } else {
               None
             }
+            .map(|modifier| (modifier, weapon.mounts()))
           })
+          // A sandcaster battery throws a cloud from every mount, as a
+          // point-defence battery adds every mount to the pool.
+          .flat_map(|(modifier, mounts)| std::iter::repeat_n(modifier, usize::from(mounts)))
           .collect::<Vec<i32>>(),
       )
     })
@@ -2124,10 +2195,13 @@ pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
       // Batteries intercept automatically and roll no check; repulsors deflect
       // on a Gunner (capital) check.  Both are once-per-round and neither costs
       // the crew an action, so both belong in this pass.
-      match battery_intercept_dice(weapon) {
-        Some(dice) => u32::from(roll_dice(dice, rng)),
-        None => roll_repulsor(weapon, ship.get_crew().get_gunnery(index), rng),
-      }
+      // Every mount of an entry of several rolls its own.
+      (0..weapon.mounts())
+        .map(|_| match battery_intercept_dice(weapon) {
+          Some(dice) => u32::from(roll_dice(dice, rng)),
+          None => roll_repulsor(weapon, ship.get_crew().get_gunnery(index), rng),
+        })
+        .sum::<u32>()
     })
     .sum()
 }
@@ -2211,7 +2285,12 @@ pub fn build_point_defense_tallies(
     // leadership boost for this specific (ship, weapon) point-defense action.
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let leadership_boost = boost_for_point_defense(boost_map, ship_name, *weapon_id).max(0) as u16;
-    point_defense_list.push((*weapon_id, weapon_scores[*weapon_id].saturating_sub(1) + leadership_boost));
+    // A laser battery on point defence defends as a unit: every mount in it
+    // makes its check, at its gunner's skill, and they all add to the pool.
+    let mounts = ship.weapons()[*weapon_id].mounts();
+    for _ in 0..mounts {
+      point_defense_list.push((*weapon_id, weapon_scores[*weapon_id].saturating_sub(1) + leadership_boost));
+    }
   }
 
   debug!(
@@ -2316,6 +2395,39 @@ impl PointDefenseCheck {
       None => message,
     }
   }
+}
+
+/// The checks as results lines: one a mount, except that a battery's mounts
+/// are reported together, "mount #3 (battery of 16) on point defence can stop
+/// 23 missiles this round", with every roll on the hover.
+#[must_use]
+pub fn point_defense_messages(checks: &[PointDefenseCheck], defender: &str, ward: Option<&str>) -> Vec<EffectMsg> {
+  checks
+    .chunk_by(|a, b| a.weapon == b.weapon)
+    .map(|group| {
+      let [check] = group else {
+        let mount = group[0].weapon;
+        let removed: u32 = group.iter().map(|check| check.removed).sum();
+        let whose = if ward.is_some() { " covering %t" } else { "" };
+        let content = format!(
+          "%s's mount #{mount} (battery of {}) on point defence{whose} can stop {removed} missile{} this round.",
+          group.len(),
+          if removed == 1 { "" } else { "s" }
+        );
+        let rolls: Vec<String> = group.iter().map(|check| check.roll.to_string()).collect();
+        let message = EffectMsg::outcome(defender, MessageCategory::Attack, content, removed > 0).rolled(format!(
+          "each roll + turret, gunner and leadership {} vs {STANDARD_ROLL_THRESHOLD}: {}",
+          group[0].bonus,
+          rolls.join(", ")
+        ));
+        return match ward {
+          Some(ward) => message.at(ward),
+          None => message,
+        };
+      };
+      check.message(defender, ward)
+    })
+    .collect()
 }
 
 /// Roll each gunner's point-defence check: see [`roll_point_defense_pool`],
@@ -3000,6 +3112,7 @@ mod battery_tests {
   fn modifiers_belong_to_the_weapon_not_the_mount() {
     let plain = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 3);
     let modified = Weapon {
+      count: 1,
       mount: WeaponMount::Turret,
       guns: (0..3)
         .map(|_| Gun::with_modifiers(WeaponType::Pulse, vec![WeaponModifier::LongRange, WeaponModifier::HighYield]))
@@ -3021,6 +3134,7 @@ mod battery_tests {
   /// plain sandcaster.
   fn mora_turret() -> Weapon {
     Weapon {
+      count: 1,
       mount: WeaponMount::Turret,
       guns: vec![
         Gun::with_modifiers(WeaponType::Pulse, vec![WeaponModifier::LongRange, WeaponModifier::HighYield]),
@@ -3120,6 +3234,7 @@ mod battery_tests {
   fn a_mount_on_point_defense_cannot_also_disperse_sand() {
     // A turret holding a laser and a sandcaster: it could do either.
     let turret = Weapon {
+      count: 1,
       mount: WeaponMount::Turret,
       guns: vec![Gun::new(WeaponType::Pulse), Gun::new(WeaponType::Sand)],
     };
@@ -3150,6 +3265,7 @@ mod battery_tests {
   #[test]
   fn attacking_leaves_the_sandcaster_available() {
     let ship = ship_with(vec![Weapon {
+      count: 1,
       mount: WeaponMount::Turret,
       guns: vec![Gun::new(WeaponType::Pulse), Gun::new(WeaponType::Sand)],
     }]);
@@ -5037,6 +5153,7 @@ mod tests {
       weapons: vec![
         Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
         Weapon {
+          count: 1,
           mount: WeaponMount::Turret,
           guns: vec![
             crate::ship::Gun::new(WeaponType::Missile),
@@ -5449,5 +5566,269 @@ mod tests {
     // Should complete without panic. The first FireAction is the one that
     // consumes the +1; the second runs at the base assist_bonus.
     let _ = do_fire_actions(&attacker, &mut ships, &mut sand_counts, &actions, &boost_map, &mut rng);
+  }
+}
+
+/// Weapon batteries (Imperial Navy p. 113): identical mounts grouped into one
+/// weapon with one gunner and one target, each mount rolling its own attack.
+#[cfg(test)]
+mod weapon_battery_tests {
+  use super::*;
+  use crate::crew::Crew;
+  use crate::entity::Vec3;
+  use crate::ship::{form_batteries, Magazine, PowerSystem, ShipDesignTemplate};
+  use cgmath::Zero;
+  use rand::rngs::StdRng;
+  use rand::SeedableRng;
+
+  fn ship_with(name: &str, weapons: Vec<Weapon>, gunners: usize, x: f64) -> Ship {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Battleship".to_string(),
+      displacement: 50_000,
+      hull: 100_000,
+      armor: 0,
+      power: 100_000,
+      magazine: Magazine {
+        missiles: 10_000,
+        torpedoes: 0,
+        sand: 100,
+      },
+      weapons,
+      ..ShipDesignTemplate::default()
+    });
+    let mut crew = Crew::default();
+    for _ in 0..gunners {
+      crew.add_gunnery(2);
+    }
+    let mut ship = Ship::new(
+      name.to_string(),
+      Vec3::new(x, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      Some(crew),
+      None,
+    );
+    ship.contacts.push("Target".to_string());
+    ship
+  }
+
+  fn fire(weapon_id: usize) -> ShipAction {
+    ShipAction::FireAction {
+      weapon_id,
+      target: "Target".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    }
+  }
+
+  /// Fire `actions` from `attacker` at a fresh target; the target's hull
+  /// after, the missiles launched, and every message.
+  fn shoot(attacker: &Ship, actions: &[ShipAction], seed: u64) -> (u32, Vec<LaunchMissileMsg>, Vec<String>) {
+    let target = ship_with("Target", vec![], 0, 1000.0);
+    let mut ships = HashMap::new();
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+    let mut sand_counts = HashMap::new();
+    let (missiles, effects) = do_fire_actions(
+      attacker,
+      &mut ships,
+      &mut sand_counts,
+      actions,
+      &BoostMap::default(),
+      &mut StdRng::seed_from_u64(seed),
+    );
+    let hull = ships["Target"].read().unwrap().get_current_hull_points();
+    let lines = effects
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { .. }))
+      .map(EffectMsg::rendered)
+      .collect();
+    (hull, missiles, lines)
+  }
+
+  fn barbette() -> Weapon {
+    Weapon::single(WeaponType::Particle, WeaponMount::Barbette)
+  }
+
+  #[test]
+  fn an_entry_without_a_count_reads_and_writes_as_before() {
+    let json = r#"{"kind":"Beam","mount":{"Turret":3}}"#;
+    let weapon: Weapon = serde_json::from_str(json).unwrap();
+    assert_eq!(weapon.mounts(), 1);
+    assert_eq!(serde_json::to_string(&weapon).unwrap(), json);
+  }
+
+  #[test]
+  fn a_count_reads_and_writes() {
+    let json = r#"{"kind":"Beam","mount":{"Turret":3},"count":200}"#;
+    let weapon: Weapon = serde_json::from_str(json).unwrap();
+    assert_eq!(weapon.mounts(), 200);
+    assert_eq!(weapon.guns.len(), 3);
+    assert_eq!(serde_json::to_string(&weapon).unwrap(), json);
+    let mixed = r#"{"mount":{"Turret":2},"guns":[{"kind":"Beam"},{"kind":"Sand"}],"count":4}"#;
+    let weapon: Weapon = serde_json::from_str(mixed).unwrap();
+    assert_eq!(weapon.mounts(), 4);
+    assert_eq!(serde_json::to_string(&weapon).unwrap(), mixed);
+  }
+
+  #[test]
+  fn batteries_are_split_by_the_hull() {
+    let beams = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3).times(200);
+    let sizes = |displacement| {
+      form_batteries(std::slice::from_ref(&beams), displacement)
+        .iter()
+        .map(Weapon::mounts)
+        .collect::<Vec<_>>()
+    };
+    // 75,000 tons: batteries of 16, then what is left.
+    let mut wind = vec![16; 12];
+    wind.push(8);
+    assert_eq!(sizes(75_000), wind);
+    assert_eq!(sizes(500).len(), 50, "fours on a small hull");
+    assert_eq!(sizes(5_000).len(), 25, "eights");
+    assert_eq!(sizes(500_000).iter().max(), Some(&32));
+    assert_eq!(sizes(500_000).iter().map(|n| u32::from(*n)).sum::<u32>(), 200);
+
+    // Point-defence batteries and fixed mounts are single weapons.
+    let pd = Weapon::single(WeaponType::PointDefense, WeaponMount::Battery(3)).times(8);
+    let formed = form_batteries(&[pd], 75_000);
+    assert_eq!(formed.len(), 8);
+    assert!(formed.iter().all(|w| w.mounts() == 1));
+
+    // Forming twice changes nothing, and a list without counts is untouched.
+    let once = form_batteries(&[beams.clone(), barbette()], 75_000);
+    assert_eq!(form_batteries(&once, 75_000), once);
+    let plain = vec![barbette(), Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2)];
+    assert_eq!(form_batteries(&plain, 75_000), plain);
+  }
+
+  /// IN p. 113's usual way: a separate attack roll for each mount. A
+  /// battery of four does exactly what four single mounts do, roll for roll,
+  /// and says so in one line.
+  #[test]
+  fn a_battery_rolls_each_mount_like_single_mounts() {
+    let battery = ship_with("Shooter", vec![barbette().times(4)], 1, 0.0);
+    let singles = ship_with("Shooter", vec![barbette(); 4], 4, 0.0);
+    for seed in 0..20 {
+      let (hull_battery, _, lines) = shoot(&battery, &[fire(0)], seed);
+      let (hull_singles, _, _) = shoot(&singles, &[fire(0), fire(1), fire(2), fire(3)], seed);
+      assert_eq!(hull_battery, hull_singles, "seed {seed}");
+      let summary: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains("particle beam barbette ×4 (battery)"))
+        .collect();
+      assert_eq!(summary.len(), 1, "{lines:?}");
+      assert!(summary[0].contains(" of 4 hit"), "{}", summary[0]);
+      let lost = 100_000 - hull_battery;
+      if lost > 0 {
+        assert!(summary[0].contains(&format!(", {lost} damage")), "{}", summary[0]);
+      }
+    }
+  }
+
+  #[test]
+  fn a_missile_battery_is_one_salvo_of_every_launcher() {
+    let bays = Weapon::single(WeaponType::Missile, WeaponMount::Bay(crate::ship::BaySize::Small)).times(16);
+    let ship = ship_with("Shooter", vec![bays], 1, 0.0);
+    let (_, missiles, _) = shoot(&ship, &[fire(0)], 1);
+    assert_eq!(missiles.iter().map(|m| m.count).collect::<Vec<_>>(), vec![16 * 12]);
+  }
+
+  #[test]
+  fn a_battery_draws_power_for_every_mount() {
+    let one = ship_with("Shooter", vec![barbette()], 1, 0.0);
+    let battery = ship_with("Shooter", vec![barbette().times(8)], 1, 0.0);
+    let draw = |ship: &Ship| ship.power_line(PowerSystem::Weapon(0)).map(|line| line.draw);
+    assert_eq!(draw(&battery), draw(&one).map(|d| d * 8));
+  }
+
+  /// A laser battery on point defence makes a check per mount, at its one
+  /// gunner's skill, and reports them as one line.
+  #[test]
+  fn a_laser_battery_defends_with_every_mount() {
+    let lasers = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 3).times(16);
+    let ship = ship_with("Shooter", vec![lasers], 1, 0.0);
+    let defend = [ShipAction::PointDefenseAction {
+      weapon_id: 0,
+      protecting: None,
+    }];
+    let tallies = build_point_defense_tallies(&ship, &defend, &BoostMap::default(), "Shooter");
+    assert_eq!(tallies.len(), 16);
+    let checks = roll_point_defense_checks(&tallies, &mut StdRng::seed_from_u64(3));
+    let lines = point_defense_messages(&checks, "Shooter", None);
+    assert_eq!(lines.len(), 1);
+    let removed: u32 = checks.iter().map(|c| c.removed).sum();
+    assert!(
+      lines[0]
+        .rendered()
+        .contains(&format!("(battery of 16) on point defence can stop {removed} missile")),
+      "{}",
+      lines[0].rendered()
+    );
+  }
+
+  /// Each shot of a laser battery can draw a sand cloud, while the target has
+  /// any to throw, and the clouds are reported in one line.
+  #[test]
+  fn sand_meets_a_laser_battery_shot_by_shot() {
+    let lasers = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1).times(3);
+    let attacker = ship_with("Shooter", vec![lasers], 1, 0.0);
+    let target = ship_with("Target", vec![], 0, 1000.0);
+    let mut ships = HashMap::new();
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+    let mut sand_counts = HashMap::new();
+    sand_counts.insert("Target".to_string(), vec![0, 0]);
+    let (_, effects) = do_fire_actions(
+      &attacker,
+      &mut ships,
+      &mut sand_counts,
+      &[fire(0)],
+      &BoostMap::default(),
+      &mut StdRng::seed_from_u64(5),
+    );
+    assert!(sand_counts["Target"].is_empty(), "both clouds thrown");
+    let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+    assert_eq!(
+      lines
+        .iter()
+        .filter(|l| l.contains("Target sand -> Shooter: ") && l.contains(" of 2 clouds against 3 shots"))
+        .count(),
+      1,
+      "{lines:?}"
+    );
+  }
+
+  /// A sandcaster battery throws a cloud from every mount.
+  #[test]
+  fn a_sand_battery_reacts_with_every_mount() {
+    let sand = Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 1).times(5);
+    let ship = ship_with("Target", vec![sand], 1, 0.0);
+    let mut snapshot = HashMap::new();
+    snapshot.insert("Target".to_string(), ship);
+    assert_eq!(create_sand_counts(&snapshot, &[])["Target"].len(), 5);
+  }
+
+  /// Every shipped design comes out of battery forming exactly as it went in.
+  #[test]
+  fn shipped_designs_have_no_batteries_yet() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ship_templates");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+      let path = entry.unwrap().path();
+      if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+        continue;
+      }
+      let design: ShipDesignTemplate = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+      assert_eq!(
+        form_batteries(&design.weapons, design.displacement),
+        design.weapons,
+        "{}",
+        path.display()
+      );
+      checked += 1;
+    }
+    assert!(checked > 40);
   }
 }

@@ -779,6 +779,12 @@ pub struct Firing<'a> {
 pub struct Weapon {
   pub mount: WeaponMount,
   pub guns: Vec<Gun>,
+  /// How many identical mounts this entry is: 1 for a single mount, more for
+  /// a battery (Imperial Navy p. 113). A battery is one weapon to the rest of
+  /// Callisto -- one index, one gunner, one target a round -- and each of its
+  /// mounts rolls its own attack. Written to the wire only when above 1, so
+  /// every design without batteries is unchanged. See [`form_batteries`].
+  pub count: u16,
 }
 
 impl Weapon {
@@ -788,6 +794,7 @@ impl Weapon {
     Weapon {
       mount,
       guns: (0..count.max(1)).map(|_| Gun::new(kind)).collect(),
+      count: 1,
     }
   }
 
@@ -797,7 +804,32 @@ impl Weapon {
     Weapon {
       mount,
       guns: vec![Gun::new(kind)],
+      count: 1,
     }
+  }
+
+  /// This mount `count` times over, as a battery.
+  #[must_use]
+  pub fn times(self, count: u16) -> Self {
+    Weapon {
+      count: count.max(1),
+      ..self
+    }
+  }
+
+  /// The mounts in this entry: one for a single mount, more for a battery.
+  #[must_use]
+  pub fn mounts(&self) -> u16 {
+    self.count.max(1)
+  }
+
+  /// Whether this kind of mount can be grouped into a battery: turrets and
+  /// barbettes (Imperial Navy p. 113) and bays (p. 99). A fixed mount is a
+  /// single weapon, and a point-defence battery is already a battery of its
+  /// own; an entry of several of those is that many separate weapons.
+  #[must_use]
+  pub fn can_be_battery(&self) -> bool {
+    matches!(self.mount, WeaponMount::Turret | WeaponMount::Barbette | WeaponMount::Bay(_))
   }
 
   /// True when every gun in this mount is the same type.
@@ -1061,15 +1093,37 @@ enum WeaponWire {
     mount: MountWire,
     #[serde(default)]
     modifiers: Vec<WeaponModifier>,
+    /// Mounts in a battery; absent for a single mount.
+    #[serde(default = "one_mount")]
+    count: u16,
   },
   /// A mount listing its guns, needed only when they differ.
-  Guns { mount: MountWire, guns: Vec<Gun> },
+  Guns {
+    mount: MountWire,
+    guns: Vec<Gun>,
+    #[serde(default = "one_mount")]
+    count: u16,
+  },
+}
+
+fn one_mount() -> u16 {
+  1
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one_mount(count: &u16) -> bool {
+  *count <= 1
 }
 
 impl<'de> Deserialize<'de> for Weapon {
   fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     Ok(match WeaponWire::deserialize(deserializer)? {
-      WeaponWire::Uniform { kind, mount, modifiers } => {
+      WeaponWire::Uniform {
+        kind,
+        mount,
+        modifiers,
+        count: mounts,
+      } => {
         // A turret's size becomes that many identical guns; everything else
         // holds exactly one.
         let count = match mount {
@@ -1084,11 +1138,13 @@ impl<'de> Deserialize<'de> for Weapon {
               modifiers: modifiers.clone(),
             })
             .collect(),
+          count: mounts.max(1),
         }
       }
-      WeaponWire::Guns { mount, guns } => Weapon {
+      WeaponWire::Guns { mount, guns, count } => Weapon {
         mount: mount.to_mount(),
         guns,
+        count: count.max(1),
       },
     })
   }
@@ -1104,12 +1160,14 @@ impl Serialize for Weapon {
         kind: first.map_or(WeaponType::Beam, |gun| gun.kind),
         mount,
         modifiers: first.map(|gun| gun.modifiers.clone()).unwrap_or_default(),
+        count: self.count,
       }
       .serialize(serializer)
     } else {
       WeaponGunsOut {
         mount,
         guns: &self.guns,
+        count: self.count,
       }
       .serialize(serializer)
     }
@@ -1122,12 +1180,57 @@ struct WeaponUniformOut {
   mount: MountWire,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   modifiers: Vec<WeaponModifier>,
+  #[serde(skip_serializing_if = "is_one_mount")]
+  count: u16,
 }
 
 #[derive(Serialize)]
 struct WeaponGunsOut<'a> {
   mount: MountWire,
   guns: &'a Vec<Gun>,
+  #[serde(skip_serializing_if = "is_one_mount")]
+  count: u16,
+}
+
+/// The most mounts a battery may hold on a hull of this size (Imperial Navy
+/// p. 113): 4 up to 999 tons, 8 to 9,999, 16 to 99,999, and 32 above. The
+/// table starts at 100 tons; anything smaller takes the first row.
+#[must_use]
+pub fn battery_limit(displacement: u32) -> u16 {
+  match displacement {
+    0..1_000 => 4,
+    1_000..10_000 => 8,
+    10_000..100_000 => 16,
+    _ => 32,
+  }
+}
+
+/// Split each entry of more than one mount into batteries no bigger than the
+/// hull allows: full batteries first, then what is left. An entry that cannot
+/// be a battery (see [`Weapon::can_be_battery`]) becomes that many single
+/// weapons. Entries of one mount are left exactly as they are, so a design
+/// without batteries comes out identical.
+///
+/// This is what the rest of Callisto addresses by index: gunners, targets,
+/// power and criticals are all by battery.
+#[must_use]
+pub fn form_batteries(weapons: &[Weapon], displacement: u32) -> Vec<Weapon> {
+  let limit = battery_limit(displacement);
+  weapons
+    .iter()
+    .flat_map(|weapon| {
+      let mounts = weapon.mounts();
+      let size = if weapon.can_be_battery() { limit } else { 1 };
+      let batteries = mounts.div_ceil(size);
+      (0..batteries).map(move |i| {
+        let in_this = size.min(mounts - i * size);
+        Weapon {
+          count: in_this,
+          ..weapon.clone()
+        }
+      })
+    })
+    .collect()
 }
 
 /// A directed defensive system that reduces the damage of a specific kind of
@@ -1738,6 +1841,7 @@ impl Ship {
     name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
     weapons: Option<Vec<Weapon>>,
   ) -> Self {
+    let weapons = weapons.map(|weapons| form_batteries(&weapons, design.displacement));
     let num_weapons = weapons.as_ref().map_or(design.weapons.len(), Vec::len);
     Ship {
       name,
@@ -1872,6 +1976,10 @@ impl Ship {
     if self.software.is_empty() {
       self.software.clone_from(&self.design.software);
       self.software_running = initial_running(&self.design);
+    }
+    // A scenario's own armament is split into batteries as a design's is.
+    if let Some(weapons) = self.weapons.take() {
+      self.weapons = Some(form_batteries(&weapons, self.design.displacement));
     }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
@@ -3187,7 +3295,10 @@ pub async fn load_ship_templates_from_dir(
       async move {
         match read_local_or_cloud_file(&path).await {
           Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
-            Ok(template) => ShipTemplateFileOutcome::Loaded(Box::new(template)),
+            Ok(mut template) => {
+              template.weapons = form_batteries(&template.weapons, template.displacement);
+              ShipTemplateFileOutcome::Loaded(Box::new(template))
+            }
             Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
           },
           Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
@@ -3357,7 +3468,8 @@ pub fn weapon_mount_power(weapon: &Weapon) -> u32 {
     .iter()
     .map(|gun| crate::rules_tables::weapon_power(gun.kind, class).unwrap_or(0))
     .sum();
-  guns + crate::rules_tables::mount_power(class)
+  // A battery draws for every mount in it.
+  (guns + crate::rules_tables::mount_power(class)) * u32::from(weapon.mounts())
 }
 
 impl ShipDesignTemplate {
@@ -3564,7 +3676,7 @@ impl From<&Weapon> for String {
         .join(", ")
     };
 
-    match &w.mount {
+    let name = match &w.mount {
       WeaponMount::Turret => match w.guns.len() {
         1 => format!("{contents} single turret"),
         2 => format!("{contents} double turret"),
@@ -3587,6 +3699,13 @@ impl From<&Weapon> for String {
         };
         format!("point defence battery (Type {numeral})")
       }
+    };
+    // "Particle barbette ×12 (battery)": the mount, how many of it, and
+    // that they fire as one.
+    if w.mounts() > 1 {
+      format!("{name} ×{} (battery)", w.mounts())
+    } else {
+      name
     }
   }
 }
@@ -3919,6 +4038,7 @@ mod tests {
       weapons: vec![
         Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
         Weapon {
+          count: 1,
           mount: WeaponMount::Turret,
           guns: vec![
             Gun::new(WeaponType::Missile),

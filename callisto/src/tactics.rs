@@ -246,6 +246,8 @@ pub fn launch_size(weapon: &Weapon, kind: WeaponType) -> Option<(u32, u32)> {
     Salvo::PerGun => u32::from(firing.count),
     Salvo::Fixed(missiles) => u32::from(missiles),
   };
+  // A missile battery throws every launcher's salvo as one.
+  let missiles = missiles * u32::from(weapon.mounts());
   Some((missiles, if kind == WeaponType::Torpedo { 2 } else { 1 }))
 }
 
@@ -492,6 +494,8 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
           (chance + p, damage + p * hit)
         });
         best_chance = best_chance.max(chance);
+        // A battery is one entry and an attack per mount in it.
+        let count = count * f64::from(weapon.mounts());
         expected += per_attack * count;
         by_mount.push((*index, per_attack * count));
       }
@@ -1885,6 +1889,35 @@ mod tests {
     // Twin pulse turrets: about 9 expected against armour 8, 29 against none.
     // The turret's bonus dice come after armour, which is why it is not less.
     assert!(armoured > 0.0 && armoured < bare / 2.0, "{armoured} against {bare}");
+  }
+
+  /// A battery is one entry worth all its mounts: the odds it carries are
+  /// the single mount's times the count, so sharing out fire assigns it
+  /// whole, with its whole weight. A missile battery's launch is every rack.
+  #[tokio::test]
+  async fn a_battery_prices_as_its_mounts() {
+    config_test_ship_templates().await;
+    let target = ship_of("Buccaneer", 5_000.0 * KM);
+    let barbette = Weapon::single(WeaponType::Particle, WeaponMount::Barbette);
+    let mut single = ship_of("Gazulin Trader", 0.0);
+    single.set_weapons(Some(vec![barbette.clone()]));
+    single.fixup_current_values();
+    let mut battery = single.clone();
+    battery.set_weapons(Some(vec![barbette.times(4)]));
+    battery.fixup_current_values();
+    let skill = |_: usize| 2;
+    let one = at(&engagement(&single, &target, &skill, 0), Range::Medium).by_mount[0].1;
+    let table = engagement(&battery, &target, &skill, 0);
+    let four = at(&table, Range::Medium);
+    assert_eq!(four.mounts, 1, "one entry");
+    assert!(
+      (four.by_mount[0].1 - 4.0 * one).abs() < 1e-9,
+      "{} against {one}",
+      four.by_mount[0].1
+    );
+
+    let racks = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3).times(4);
+    assert_eq!(launch_size(&racks, WeaponType::Missile), Some((12, 1)));
   }
 
   #[tokio::test]
