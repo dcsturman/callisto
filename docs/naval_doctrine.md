@@ -103,3 +103,26 @@ Callisto may be the first real test of them. Keelhaven's first runs suggest the
 Hadrian is near-immune to anything without a meson. Separate three causes
 before changing anything: a Callisto bug, the book's numbers, or the scenario.
 Tune scenarios first; change RAW only by deliberate decision.
+
+## Line ships fire their spinals every round
+
+**Finding.** High Guard suggests high-efficiency batteries "to allow a spinal
+weapon to be charged over time" (HG p. 34). None of Keelhaven's four capitals
+needs them. By their printed Power Requirements, each can drive at full thrust,
+run screens and sensors, and fire every weapon including the spinal, every
+round, with the jump drive idle:
+
+| Ship | Plant | Basic + M-drive + sensors + weapons + screens | Spare |
+|---|---|---|---|
+| Hadrian | 48,000 | 10,000 + 30,000 + 22 + 6,305 + 450 = 46,777 | 1,223 |
+| Jaellemo | 43,740 | 6,500 + 30,000 + 308 + 3,325 + 450 = 40,583 | 3,157 |
+| Wind | 78,000 | 15,000 + 45,000 + 22 + 7,340 + 450 = 67,812 | 10,188 |
+| Valiant | 24,000 | 6,000 + 15,000 + 22 + 2,015 + 180 = 23,217 | 783 |
+
+- **Doctrine:** a line ship's spinal is an every-round weapon. A plant hit
+  changes that: with little spare, losing Power forces a choice between thrust
+  and the spinal.
+- **Open:** a ship built small around an oversized spinal (batteries instead of
+  plant) would fire every few rounds. Callisto does not model high-efficiency
+  batteries; none of the shipped designs uses them.
+- **RAW** (printed Power Requirements, HG pp. 238, 247, 255, 266).
