@@ -21,9 +21,11 @@ use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
 use crate::{debug, info, warn};
 
-/// Most weapons we will accept on a single ship.  Generous compared to any real
-/// design; it exists only so a client cannot ask us to allocate without bound.
-const MAX_SHIP_WEAPONS: usize = 64;
+/// Most weapons we will accept on a single ship.  It exists only so a client
+/// cannot ask us to allocate without bound.  Capital ships need room: a
+/// Tigress-class dreadnought (High Guard p. 283) carries well over a hundred
+/// mounts even once identical weapons are grouped, and a large station more.
+const MAX_SHIP_WEAPONS: usize = 256;
 
 /// Check client-supplied armament before it reaches the entity table.
 ///
@@ -1454,5 +1456,16 @@ mod tests {
 
     // No connection established in this test, so there should be no session keys.
     assert_eq!(session_keys.lock().unwrap().len(), 0);
+  }
+
+  #[test]
+  fn test_validate_weapons_cap() {
+    let turret = Weapon::uniform(crate::ship::WeaponType::Beam, WeaponMount::Turret, 3);
+    // A capital ship's worth of mounts is accepted, up to the cap...
+    assert!(validate_weapons(&vec![turret.clone(); 200]).is_ok());
+    assert!(validate_weapons(&vec![turret.clone(); MAX_SHIP_WEAPONS]).is_ok());
+    // ...and one more is not.
+    let err = validate_weapons(&vec![turret; MAX_SHIP_WEAPONS + 1]).unwrap_err();
+    assert!(err.contains("more than the limit of 256"), "{err}");
   }
 }
