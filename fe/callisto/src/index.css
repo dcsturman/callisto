@@ -365,6 +365,110 @@ select.control-input,
     margin: 0;
 }
 
+/* The roster: a line a squadron, its AI step under it, its ships folded
+   away. A table so the counts and hull line up down the fleet. */
+.roster-team-name {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    margin: 4px 0 2px 0;
+}
+
+.roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.roster-table td {
+    padding: 1px 2px;
+    vertical-align: baseline;
+}
+
+.roster-name {
+    width: 46%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: bold;
+}
+
+.roster-ship .roster-name {
+    font-weight: normal;
+    padding-left: 18px;
+}
+
+.roster-ship label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.roster-count,
+.roster-hull {
+    width: 12%;
+    text-align: right;
+}
+
+.roster-actions {
+    width: 30%;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.roster-fold {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+}
+
+.roster-row-focus {
+    background: rgba(91, 160, 255, 0.15);
+}
+
+.roster-step {
+    padding-left: 18px;
+    font-size: var(--font-sm);
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.roster-design {
+    font-size: var(--font-sm);
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.roster-ship-name {
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The box a Shift-drag in the 3D view draws while ticking ships. */
+.box-select {
+    position: fixed;
+    z-index: 50;
+    pointer-events: none;
+    border: 1px dashed #5ba0ff;
+    background: rgba(91, 160, 255, 0.12);
+}
+
+.add-ship-count {
+    width: 4.5em;
+}
+
+.add-ship-squadron {
+    width: 8em;
+}
+
 /* Scenario-builder entity list (ships + planets) */
 .entity-list {
     margin-top: 8px;
@@ -1248,6 +1352,7 @@ h3.control-form {
    them that is what it is. Without this it kept the accordion's larger bold
    heading and sat in the column shouting over the instruments beside it. */
 #ship-computer > .accordion-header,
+#squadron-roster > .accordion-header,
 #squadrons > .accordion-header {
     font-size: var(--font-md);
     font-weight: 600;
@@ -1256,6 +1361,7 @@ h3.control-form {
 }
 
 #ship-computer > .accordion-header svg,
+#squadron-roster > .accordion-header svg,
 #squadrons > .accordion-header svg {
     opacity: 0.6;
     font-size: var(--font-sm);

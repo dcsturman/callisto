@@ -47,6 +47,7 @@ import { CiCircleQuestion } from "react-icons/ci";
 import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
 import { Team, TEAMS, TEAM_CSS } from "lib/teams";
+import { MAX_SQUADRON, batchNames, gridPositions, sizeAfterMove } from "lib/squadrons";
 import { samePowerSystem } from "lib/power";
 import {
   SOFTWARE,
@@ -173,11 +174,14 @@ function SoftwareEditor(args: {
   );
 }
 
-import { addShip, setOrders, setShipController } from "lib/serverManager";
+import { addShip, setOrders, setShipController, setSquadron } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
 import { aiCrewsSelector, entitiesSelector } from "state/serverSlice";
 
 type AddShipProps = unknown;
+
+/** The most ships one Add makes: five squadrons' worth. */
+const MAX_BATCH = 100;
 
 export const AddShip: React.FC<AddShipProps> = () => {
   const entities = useAppSelector(entitiesSelector);
@@ -260,6 +264,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
   }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
+  // Several of the design at once, laid out in rows and put in a squadron:
+  // a fleet of a hundred is not built one form at a time.
+  const [batch, setBatch] = useState({ count: "1", squadron: "", spacing: "250" });
+  const [batchProblem, setBatchProblem] = useState<string | null>(null);
+  const batchCount = Math.min(MAX_BATCH, Math.max(1, Math.floor(Number(batch.count) || 1)));
 
   useEffect(() => {
     const current =
@@ -403,11 +412,34 @@ export const AddShip: React.FC<AddShipProps> = () => {
         features_on: addShipData.featuresOn,
       };
 
-      addShip(revision);
+      setBatchProblem(null);
+      if (batchCount > 1 && !shipNames.includes(name)) {
+        const squadronName = batch.squadron.trim();
+        if (squadronName !== "") {
+          const size = sizeAfterMove(entities.ships, addShipData.team, squadronName, []) + batchCount;
+          if (size > MAX_SQUADRON) {
+            setBatchProblem(`A squadron holds at most ${MAX_SQUADRON} ships; ${squadronName} would have ${size}.`);
+            return;
+          }
+        }
+        const names = batchNames(name, batchCount, shipNames);
+        const spacing = Math.max(0, Number(batch.spacing) || 0) * POSITION_SCALE;
+        gridPositions(position, batchCount, spacing).forEach((at, i) =>
+          addShip({ ...revision, name: names[i], position: at }),
+        );
+        // After the ships exist: the server puts only ships it has in a
+        // squadron, and it takes requests in the order they were sent.
+        if (squadronName !== "") {
+          setSquadron(names, squadronName);
+        }
+      } else {
+        addShip(revision);
+      }
       setAddShipData(initialTemplate);
+      setBatch({ ...batch, count: "1" });
       shipNameRef.current!.style.color = "black";
     },
-    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates],
+    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates, batch, batchCount, shipNames],
   );
 
   // Changing the design changes the allowance, the default armament and, for a
@@ -440,10 +472,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
     [addShipData, setAddShipData],
   );
 
-  const updateOrAddLabel = useMemo(
-    () => (shipNames.includes(addShipData.name) ? "Update" : "Add"),
-    [addShipData.name, shipNames],
-  );
+  const updating = shipNames.includes(addShipData.name);
+  const updateOrAddLabel = updating ? "Update" : batchCount > 1 ? `Add ${batchCount}` : "Add";
 
   return (
     <Accordion id="add-ship-header" title="Add Ship" initialOpen={false} tutorial="builder-add-ship">
@@ -617,6 +647,51 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 ))}
               </select>
             </label>
+            {/* How many to add. A new ship only: an existing one is updated
+                alone. */}
+            {!updating && (
+              <label
+                className="emissions-toggle"
+                title="Add this many of the design at once, named from the name above (Lance 01, Lance 02, ...) and laid out five abreast around the position.">
+                Count
+                <input
+                  className="control-input add-ship-count"
+                  type="number"
+                  min={1}
+                  max={MAX_BATCH}
+                  aria-label="How many to add"
+                  value={batch.count}
+                  onChange={(event) => setBatch({ ...batch, count: event.target.value })}
+                />
+              </label>
+            )}
+            {!updating && batchCount > 1 && (
+              <>
+                <label className="emissions-toggle" title="Put them all in this squadron of their team. Blank for none.">
+                  Squadron
+                  <input
+                    className="control-input add-ship-squadron"
+                    type="text"
+                    maxLength={40}
+                    aria-label="Squadron for the new ships"
+                    placeholder="None"
+                    value={batch.squadron}
+                    onChange={(event) => setBatch({ ...batch, squadron: event.target.value })}
+                  />
+                </label>
+                <label className="emissions-toggle" title="How far apart they start, in km. Short range is 1,250 km.">
+                  Spacing (km)
+                  <input
+                    className="control-input add-ship-count"
+                    type="number"
+                    min={0}
+                    aria-label="Spacing in km"
+                    value={batch.spacing}
+                    onChange={(event) => setBatch({ ...batch, spacing: event.target.value })}
+                  />
+                </label>
+              </>
+            )}
             {/* A game without AI crews shows nothing about them. */}
             {aiCrews && (
               <>
@@ -665,6 +740,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
           type="submit"
           value={updateOrAddLabel}
         />
+        {batchProblem != null && <p className="squadrons-problem">{batchProblem}</p>}
       </form>
       {aiCrews && <AiTeams ships={entities.ships} />}
       <SideCosts ships={entities.ships} designs={shipDesignTemplates} />

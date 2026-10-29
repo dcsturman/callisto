@@ -4,7 +4,6 @@ import {
   SaveScenarioDialog,
 } from "components/scenarios/SaveScenarioDialog";
 import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
-import * as THREE from "three";
 import { CornerPanel } from "lib/CornerPanel";
 import { SideView } from "components/controls/SideView";
 import {
@@ -19,7 +18,7 @@ import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
 import { EntityList } from "./EntityList";
-import { POSITION_SCALE, SCALE } from "lib/universal";
+import { POSITION_SCALE } from "lib/universal";
 import {
   Ship,
   Entity,
@@ -38,6 +37,8 @@ import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { squadronShips } from "lib/squadrons";
 import { SquadronPicker } from "components/controls/SquadronPicker";
 import { SquadronsPanel } from "components/controls/SquadronsPanel";
+import { SquadronRoster } from "components/controls/SquadronRoster";
+import { moveCameraTo } from "lib/camera";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
@@ -46,13 +47,12 @@ import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { AppMode } from "state/tutorialSlice";
-import { store } from "state/store";
 import {
   setComputerShipName,
   setShowRange,
-  setCameraPos,
   setGravityWells,
   setJumpDistance,
+  setSquadronMarkers,
 } from "state/uiSlice";
 
 function ShipList(args: {
@@ -139,27 +139,7 @@ function moveCameraToShip(
   cameraQuaternion: [number, number, number, number],
   computerShip: Ship,
 ) {
-  const downCamera = new THREE.Vector3(0, 0, 40);
-  downCamera.applyQuaternion(
-    new THREE.Quaternion(
-      cameraQuaternion[0],
-      cameraQuaternion[1],
-      cameraQuaternion[2],
-      cameraQuaternion[3],
-    ),
-  );
-  const new_camera_pos = new THREE.Vector3(
-    computerShip.position[0] * SCALE,
-    computerShip.position[1] * SCALE,
-    computerShip.position[2] * SCALE,
-  ).add(downCamera);
-  store.dispatch(
-    setCameraPos({
-      x: new_camera_pos.x,
-      y: new_camera_pos.y,
-      z: new_camera_pos.z,
-    }),
-  );
+  moveCameraTo(cameraQuaternion, computerShip.position);
 }
 
 // Builder-mode panel: AddShip / AddPlanet plus a Save button at the bottom.
@@ -345,6 +325,10 @@ export function Controls() {
           fleet commander their own. */}
       {(isReferee(roles, shipName) || fleetTeam != null) && entities.ships.length > 0 && (
         <>
+          {/* The fleet at a glance, a line a squadron; then the editor that
+              makes the squadrons. */}
+          <SquadronRoster onlyTeam={fleetTeam} />
+          <hr />
           <SquadronsPanel onlyTeam={fleetTeam} />
           <hr />
         </>
@@ -627,6 +611,7 @@ export function ViewControls() {
   const [columns, setColumns] = useState<ConsoleColumns>(savedColumns);
   const gravityWells = useAppSelector((state) => state.ui.gravityWells);
   const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
+  const squadronMarkers = useAppSelector((state) => state.ui.squadronMarkers);
   const dispatch = useAppDispatch();
 
   return (
@@ -683,6 +668,17 @@ export function ViewControls() {
             <option value="3">3</option>
           </select>
         </label>
+        <label
+          className="view-option"
+          title="A squadron far from the camera draws as one marker with its name, instead of a label on every ship">
+          {" "}
+          <input
+            type="checkbox"
+            checked={squadronMarkers}
+            onChange={() => dispatch(setSquadronMarkers(!squadronMarkers))}
+          />{" "}
+          Squadron Markers
+        </label>
       </div>
       <SideView />
       {/* Collapsed by default: this is reference material, not a control, and
@@ -721,6 +717,10 @@ export function ViewControls() {
           <dd>faster</dd>
           <dt>drag</dt>
           <dd>look</dd>
+          <dt>
+            <kbd>Shift</kbd> drag
+          </dt>
+          <dd>tick the ships in a box, for Squadrons (referee, fleet commander)</dd>
           <dt>
             <kbd>Tab</kbd>
           </dt>

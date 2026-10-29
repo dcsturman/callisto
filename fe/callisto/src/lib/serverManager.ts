@@ -911,6 +911,10 @@ function releaseDepartedShip(entities: EntityList) {
   }
 }
 
+/** The most ships and missiles, or results, written out in full to the
+ *  console: enough for any ordinary scenario. */
+const LOG_EVERYTHING_UP_TO = 40;
+
 function handleEntities(json: object) {
   const entities = json as EntityList;
 
@@ -930,22 +934,28 @@ function handleEntities(json: object) {
     }
   });
 
-  console.groupCollapsed("Received Entities: ");
-  console.groupCollapsed("Ships: ");
-  for (const v of entities.ships) {
-    console.log(` ${JSON.stringify(v)}`);
+  console.groupCollapsed(
+    `Received Entities: ${entities.ships.length} ships, ${entities.missiles.length} missiles, ${entities.planets.length} planets`,
+  );
+  // Each entity written out only for a small scenario: with two hundred ships
+  // this was most of a megabyte of text on every update, kept by the console.
+  if (entities.ships.length + entities.missiles.length <= LOG_EVERYTHING_UP_TO) {
+    console.groupCollapsed("Ships: ");
+    for (const v of entities.ships) {
+      console.log(` ${JSON.stringify(v)}`);
+    }
+    console.groupEnd();
+    console.groupCollapsed("Missiles: ");
+    for (const v of entities.missiles) {
+      console.log(` ${JSON.stringify(v)}`);
+    }
+    console.groupEnd();
+    console.groupCollapsed("Planets: ");
+    for (const v of entities.planets) {
+      console.log(` ${JSON.stringify(v)}`);
+    }
+    console.groupEnd();
   }
-  console.groupEnd();
-  console.groupCollapsed("Missiles: ");
-  for (const v of entities.missiles) {
-    console.log(` ${JSON.stringify(v)}`);
-  }
-  console.groupEnd();
-  console.groupCollapsed("Planets: ");
-  for (const v of entities.planets) {
-    console.log(` ${JSON.stringify(v)}`);
-  }
-  console.groupEnd();
   console.groupEnd();
   store.dispatch(setEntities(entities));
   releaseDepartedShip(entities);
@@ -1006,8 +1016,10 @@ type EffectsBatch = { round: number; effects: object[] };
 
 function handleEffect(batch: EffectsBatch) {
   const json = batch.effects;
-  console.groupCollapsed("Received Effects: ");
-  console.log("(handleEffect) Received effects: " + JSON.stringify(json));
+  console.groupCollapsed(`Received Effects: ${json.length}`);
+  if (json.length <= LOG_EVERYTHING_UP_TO) {
+    console.log("(handleEffect) Received effects: " + JSON.stringify(json));
+  }
   console.groupEnd();
 
   // Every effect arrives the same way now: the server writes the sentence,

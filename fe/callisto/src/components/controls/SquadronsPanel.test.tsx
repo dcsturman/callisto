@@ -16,6 +16,7 @@ vi.mock("lib/serverManager", () => ({
 import { SquadronsPanel } from "components/controls/SquadronsPanel";
 import { store } from "state/store";
 import { setEntities } from "state/serverSlice";
+import { setFleetSelection } from "state/uiSlice";
 import { Ship } from "lib/entities";
 
 let container: HTMLDivElement;
@@ -83,6 +84,21 @@ describe("SquadronsPanel", () => {
     setValue(container.querySelector('input[aria-label="New squadron\'s name"]') as HTMLInputElement, "Spear");
     act(() => (Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Move") as HTMLElement).click());
     expect(sent.moves).toEqual([[["Lance 2", "Lance 3"], "Spear"]]);
+  });
+
+  it("moves ships ticked elsewhere, and shows their team", () => {
+    render(null);
+    act(() => {
+      store.dispatch(setFleetSelection(["Spear 1"]));
+    });
+    open();
+    expect(container.textContent).toContain("1 ticked");
+    expect((container.querySelector('select[aria-label="Team"]') as HTMLSelectElement).value).toBe("Red");
+    setValue(container.querySelector('select[aria-label="Move the selected ships to"]') as HTMLSelectElement, "\u0000new");
+    setValue(container.querySelector('input[aria-label="New squadron\'s name"]') as HTMLInputElement, "Spear");
+    act(() => (Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Move") as HTMLElement).click());
+    expect(sent.moves).toEqual([[["Spear 1"], "Spear"]]);
+    expect(store.getState().ui.fleetSelection).toEqual([]);
   });
 
   it("disbands a squadron", () => {

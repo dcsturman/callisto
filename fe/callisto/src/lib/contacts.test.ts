@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasContact, isUndetected, isUndetectedBy, isViewersOwn } from "lib/contacts";
+import { hasContact, isUndetected, isUndetectedBy, isViewersOwn, undetectedTest } from "lib/contacts";
 import { Ship } from "lib/entities";
 import { Team } from "lib/teams";
 
@@ -93,5 +93,27 @@ describe("a team as the viewer", () => {
 
   it("is nobody in particular for the referee, who sees everything", () => {
     expect(isUndetectedBy(null, lurker, fleet)).toBe(false);
+  });
+});
+
+describe("undetectedTest", () => {
+  const ships = [
+    ship("Blue 1", ["Red 1"], "Blue"),
+    ship("Blue 2", ["Red 2"], "Blue"),
+    ship("Red 1", [], "Red"),
+    ship("Red 2", ["Blue 1"], "Red"),
+    ship("Red 3", [], "Red"),
+  ];
+
+  it("agrees with isUndetectedBy for a team, a ship and the referee", () => {
+    for (const viewer of [{ team: "Blue" }, { team: "Red" }, { ship: ships[3] }, null]) {
+      const test = undetectedTest(viewer, ships);
+      ships.forEach((target) => expect(test(target)).toBe(isUndetectedBy(viewer, target, ships)));
+    }
+  });
+
+  it("pools the team's contacts", () => {
+    const test = undetectedTest({ team: "Blue" }, ships);
+    expect(ships.filter(test).map((s) => s.name)).toEqual(["Red 3"]);
   });
 });
