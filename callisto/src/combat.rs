@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::hash::BuildHasher;
 use std::sync::{Arc, RwLock};
 
@@ -256,7 +257,7 @@ pub fn attack(
   hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
   called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
-  let mut dodged = None;
+  let mut shot = Shot::default();
   let mut effects = resolve_attack(
     hit,
     damage_mod,
@@ -266,22 +267,171 @@ pub fn attack(
     called_shot_system,
     boost_map,
     rng,
-    &mut dodged,
+    &mut shot,
   );
   // The ship that dodged hears of it as well: the attacker's line names the
   // evade in its arithmetic, but the defender's crew never saw which shots
   // their pilot's reserve (and their captain's inspire) went on, or whether
   // it mattered.
-  effects.extend(dodged);
+  effects.extend(shot.dodged);
   effects
 }
 
-/// [`attack`], with what the defender's dodge did to the shot, if she
-/// dodged, left in `dodged`.
+/// What one attack came to, kept so a salvo or a battery can report all its
+/// shots in one line.
+#[derive(Debug, Default)]
+struct Shot {
+  /// The defender's line about dodging it, when she dodged.
+  dodged: Option<EffectMsg>,
+  /// Whether it was the dodge that made the shot miss.
+  dodge_made_it_miss: bool,
+  /// The 2D rolled and the DM on it, when the attack got as far as a roll.
+  /// The attack's own line is then the first effect it returned.
+  rolled: Option<(i32, i32)>,
+  /// The DM, itemised, as the attack's own line gives it.
+  breakdown: String,
+  hit: bool,
+  /// Hull damage done, after armour, screens and multiples.
+  damage: u32,
+  criticals: u32,
+}
+
+/// The most rolls a volley's hover lists before it says how many more.
+const VOLLEY_ROLLS_LISTED: usize = 24;
+
+/// Several attacks by one weapon at one target, reported as one line.
+///
+/// A missile salvo is one object with many missiles in it, and a battery is
+/// one weapon with many mounts. Each missile, and each mount, still rolls its
+/// own attack and does its own damage ("each one rolls to hit"; IN p. 113's
+/// "separate attack roll for each turret or barbette"), so this is
+/// [`attack`] run `shots` times. What changes is the report: one line, "7 of
+/// 12 hit, 31 damage", where there used to be twelve. Criticals and anything
+/// else an attack says beyond its own line are kept as they are.
+///
+/// `title` names the volley in that line, "Missile salvo (12)", and is given
+/// whenever there is more than one of anything. With no title, each shot is reported exactly as [`attack`] reports it, which keeps
+/// a lone missile and a single mount reading as they always have.
+#[allow(clippy::too_many_arguments)]
+pub fn volley(
+  hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>, shots: u16,
+  title: Option<&str>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+) -> Vec<EffectMsg> {
+  let Some(title) = title else {
+    return (0..shots.max(1))
+      .flat_map(|_| attack(hit, damage_mod, attacker, defender, firing, None, boost_map, rng))
+      .collect();
+  };
+
+  let mut outcomes: Vec<Shot> = Vec::with_capacity(usize::from(shots));
+  // One explosion or beam for the whole volley: the plot shows where it
+  // landed, not how often.
+  let mut visual: Option<EffectMsg> = None;
+  let mut rest: Vec<EffectMsg> = Vec::new();
+  for _ in 0..shots {
+    let mut shot = Shot::default();
+    let effects = resolve_attack(hit, damage_mod, attacker, defender, firing, None, boost_map, rng, &mut shot);
+    if shot.rolled.is_none() {
+      // It never got to a roll -- out of range, or a weapon that cannot be
+      // fired from its mount -- and every other shot would say the same.
+      return effects;
+    }
+    // The first effect is the shot's own line, which the summary replaces.
+    for effect in effects.into_iter().skip(1) {
+      match effect {
+        EffectMsg::ShipImpact { .. } | EffectMsg::BeamHit { .. } => {
+          visual.get_or_insert(effect);
+        }
+        other => rest.push(other),
+      }
+    }
+    outcomes.push(shot);
+  }
+
+  let attacker_name = attacker.get_name();
+  let weapon_name = String::from(&firing.kind);
+  let hits = outcomes.iter().filter(|shot| shot.hit).count();
+  let damage: u64 = outcomes.iter().map(|shot| u64::from(shot.damage)).sum();
+  let criticals: u32 = outcomes.iter().map(|shot| shot.criticals).sum();
+
+  let mut line = format!("%s {title} -> %t: {hits} of {shots} hit");
+  if hits > 0 {
+    let _ = write!(line, ", {damage} damage");
+  }
+  if criticals > 0 {
+    let _ = write!(line, ", {criticals} critical{}", if criticals == 1 { "" } else { "s" });
+  }
+  line.push('.');
+
+  // The arithmetic, for the hover: the DM as the first shot had it -- every
+  // shot's, unless the defender dodged some -- then every total rolled and
+  // the damage each hit did. A long volley's lists are cut short; the counts
+  // in the line are always complete.
+  let list = |values: Vec<String>| {
+    let more = values.len().saturating_sub(VOLLEY_ROLLS_LISTED);
+    let mut shown: Vec<String> = values.into_iter().take(VOLLEY_ROLLS_LISTED).collect();
+    if more > 0 {
+      shown.push(format!("and {more} more"));
+    }
+    shown.join(", ")
+  };
+  let first_dm = outcomes[0].rolled.map_or(0, |(_, dm)| dm);
+  let rolls = list(
+    outcomes
+      .iter()
+      .filter_map(|shot| shot.rolled.map(|(roll, dm)| (roll + dm).to_string()))
+      .collect(),
+  );
+  let mut arithmetic = format!(
+    "each 2D{first_dm:+}{} vs {STANDARD_ROLL_THRESHOLD}: {rolls}",
+    outcomes[0].breakdown
+  );
+  if hits > 0 {
+    let damages = list(
+      outcomes
+        .iter()
+        .filter(|shot| shot.hit)
+        .map(|shot| shot.damage.to_string())
+        .collect(),
+    );
+    let _ = write!(arithmetic, " · damage {damages}");
+  }
+
+  let category = if hits > 0 {
+    MessageCategory::Damage
+  } else {
+    MessageCategory::Attack
+  };
+  let mut effects = vec![EffectMsg::outcome(attacker_name, category, line, hits > 0)
+    .at(defender.get_name())
+    .rolled(arithmetic)];
+  effects.extend(visual);
+  effects.extend(rest);
+
+  // The defender hears of her dodging once for the volley, as the attacker's
+  // line is once for it.
+  let dodges = outcomes.iter().filter(|shot| shot.dodged.is_some()).count();
+  if dodges > 0 {
+    let decisive = outcomes.iter().filter(|shot| shot.dodge_made_it_miss).count();
+    effects.push(
+      EffectMsg::outcome(
+        defender.get_name(),
+        MessageCategory::Attack,
+        format!("%s dodges {dodges} of %t's {shots} {weapon_name}s: the dodge made {decisive} miss."),
+        decisive > 0,
+      )
+      .at(attacker_name),
+    );
+  }
+  effects
+}
+
+/// [`attack`], with what the shot came to -- and what the defender's dodge
+/// did to it, if she dodged -- left in `shot`.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn resolve_attack(
   hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
-  called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore, dodged: &mut Option<EffectMsg>,
+  called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore, shot: &mut Shot,
 ) -> Vec<EffectMsg> {
   let attacker_name = attacker.get_name();
 
@@ -445,12 +595,16 @@ fn resolve_attack(
   // of the sentence, which made every attack a line of arithmetic with the
   // outcome hidden at the end of it.
   let attack_roll = format!("{roll}{attack_mod:+}={hit_roll}{breakdown} vs {STANDARD_ROLL_THRESHOLD}");
+  shot.rolled = Some((roll, attack_mod));
+  shot.hit = hit_roll >= STANDARD_ROLL_THRESHOLD;
+  shot.breakdown.clone_from(&breakdown);
 
   if evading {
     let missed = hit_roll < STANDARD_ROLL_THRESHOLD;
     // The same roll without the dodge: whether it was the dodge that made
     // the difference.
     let undodged = hit_roll - evade_mod - captain_mod;
+    shot.dodge_made_it_miss = missed && undodged >= STANDARD_ROLL_THRESHOLD;
     let outcome = match (missed, undodged >= STANDARD_ROLL_THRESHOLD) {
       (true, true) => "the dodge made it miss",
       (true, false) => "it missed, and would have anyway",
@@ -460,7 +614,7 @@ fn resolve_attack(
     if captain_mod != 0 {
       why.push(format!("captain evade {captain_mod:+}"));
     }
-    *dodged = Some(
+    shot.dodged = Some(
       EffectMsg::outcome(
         defender.get_name(),
         MessageCategory::Attack,
@@ -498,8 +652,8 @@ fn resolve_attack(
   // missiles and torpedoes. The book has a salvo "roll for damage as if for a
   // single missile ... but do not apply the Effect", multiplying by the Effect
   // instead, capped at the missiles left in the salvo (Core Rulebook p. 169).
-  // Callisto's missiles fly singly, so that cap is always one: their dice
-  // alone.
+  // Callisto rolls every missile in a salvo on its own instead, so each one
+  // that hits does its dice alone.
   let roll = u32::from(roll_dice_min(
     profile.damage_dice,
     WeaponProfile::min_die(firing.kind, firing.modifiers),
@@ -717,6 +871,7 @@ fn resolve_attack(
     // Add a single crit at the effect level
     let severity =
       u8::try_from(hit_roll - CRITICAL_THRESHOLD).expect("(combat.attack) hit_role primary crit calc is out of range");
+    shot.criticals += 1;
     effects.append(&mut do_critical(
       severity,
       defender,
@@ -765,6 +920,8 @@ fn resolve_attack(
     ));
   }
 
+  shot.criticals += u32::try_from(secondary_crit).unwrap_or(u32::MAX);
+  shot.damage = damage;
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
   effects
 }
@@ -1597,13 +1754,14 @@ pub fn do_fire_actions<S: BuildHasher>(
         }
         *aboard -= u32::from(count);
 
-        for _ in 0..count {
-          new_missiles.push(LaunchMissileMsg {
-            source: attacker.get_name().to_string(),
-            target: target.get_name().to_string(),
-            weapon: weapon.clone(),
-          });
-        }
+        // One salvo: the mount's launch flies as one object and is resolved
+        // missile by missile when it arrives.
+        new_missiles.push(LaunchMissileMsg {
+          source: attacker.get_name().to_string(),
+          target: target.get_name().to_string(),
+          weapon: weapon.clone(),
+          count,
+        });
 
         debug!(
           "(Combat.do_fire_actions) {} launches {} {} at {}.",
@@ -1949,9 +2107,9 @@ pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
 /// How many missiles this ship's batteries will swat this round.
 ///
 /// The book has a battery "automatically intercept" a number of missiles each
-/// turn, which the defender may spread across salvoes as they like.  Callisto
-/// has no salvoes -- missiles are individual entities -- so a per-round pool is
-/// the same thing expressed in the units we actually have.
+/// turn, which the defender may spread across salvoes as they like.  A
+/// per-round pool, drained missile by missile across every salvo that
+/// arrives, is the same thing with the spreading done for her.
 ///
 /// Batteries are rolled separately and summed rather than pooled into one throw,
 /// so that a critical hit disabling one battery removes exactly its share.
@@ -2077,8 +2235,8 @@ fn roll_dice_d3(rng: &mut dyn RngCore) -> u8 {
 ///
 /// "A torpedo salvo halves the Effect of any successful point defence taken
 /// against it, rounding down" (High Guard p. 39).  We resolve point defence as
-/// one summed pool rather than per-check, because Callisto has no salvoes to
-/// halve against, so halving is expressed as a torpedo costing two points where
+/// one summed pool rather than per-check, spent across salvoes rather than
+/// against one, so halving is expressed as a torpedo costing two points where
 /// a missile costs one -- `floor(pool / 2)` torpedoes stopped, which is the same
 /// arithmetic applied to the total.  The Fleet Battles rule prices it the same
 /// way ("double the amount taken from the pool", p. 113), which is a useful
@@ -2101,8 +2259,9 @@ pub fn interception_cost(kind: WeaponType) -> u32 {
 ///
 /// This is a per-round total rather than a per-missile check because nothing in
 /// the rules pairs one gunner with one missile -- two gunners may perfectly well
-/// engage the same one, and a single good check can clear several. Callisto has
-/// no salvoes to allocate against, so the pool *is* the allocation.
+/// engage the same one, and a single good check can clear several. The pool is
+/// the ship's, not one salvo's: it takes whatever arrives first, salvo after
+/// salvo, so the pool *is* the allocation.
 ///
 /// # Return
 /// Total missiles this ship's gunners will remove this round.
@@ -3161,8 +3320,13 @@ mod tests {
     // Check beam weapon effect
     assert!(effects.iter().any(|e| matches!(e, EffectMsg::BeamHit { .. })));
 
-    // Check missile counts
-    assert_eq!(missiles.len(), 2 + 5 + 12 + 24 + 120); // 2 from turret, 5 from barbette, 12 from small bay, 24 from medium bay, 120 from large bay
+    // One salvo per launcher, carrying what it threw: 2 from the turret, 5
+    // from the barbette, 12 from the small bay, 24 from the medium bay, 120
+    // from the large bay.
+    assert_eq!(
+      missiles.iter().map(|missile| missile.count).collect::<Vec<_>>(),
+      vec![2, 5, 12, 24, 120]
+    );
 
     // Check that all missiles have correct source and target
     for missile in &missiles {
@@ -4979,7 +5143,8 @@ mod tests {
         &BoostMap::default(),
         &mut rng,
       );
-      missiles.len()
+      assert!(missiles.len() <= 1, "one mount, one salvo");
+      missiles.iter().map(|missile| missile.count).sum::<u16>()
     };
 
     assert_eq!(launch(None), 3, "the whole rack by default");

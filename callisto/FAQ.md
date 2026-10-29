@@ -64,16 +64,20 @@ Everything below is a smaller deviation within the tonnage we do support.
   * Ammunition is not tracked.  Missile racks, torpedo tubes and railguns never run dry or reload.
   * Fixed mounts exist and fire, but ships have no facing, so a fixed mount is just a single-weapon mount that
     cannot serve as point defence.
-* **Point defence** works differently in shape, because Callisto has no missile salvoes to defend against:
+* **Point defence** works differently in shape: it defends the ship, not against one salvo.
   * Every point-defence weapon a ship queues rolls **once per round** and their Effects total into one pool for
-    that ship; each incoming missile then drains a point from it.  The book instead has a gunner concentrate on
-    a single salvo.
+    that ship; each incoming missile then drains a point from it, missile by missile, across every salvo that
+    arrives that round.  The book instead has a gunner concentrate on a single salvo.
   * **Point defence laser batteries** are automatic -- no action, no gunner, no decision -- and add 2D/4D/6D to
     that pool for a Type I/II/III.
   * A **torpedo** costs two points where a missile costs one, matching the book's halving of point defence
     against torpedoes.
 * Missiles have a different implementation than in Mongoose Traveller.  
-  * They are not launched in salvos.  Instead each ship can fire a number of missiles equal to the number of turrets it has.  So a ship with 3 turrets can fire 3 missiles per turn.  Each missile then guides towards its target, adjusting its own course each turn, and has its own chances to hit as a singleton.
+  * A launch from one mount is one **salvo**: a triple turret throws 3, a barbette 5, a small bay 12, a large bay
+    120.  The salvo flies as one object, guiding towards its target and adjusting its course each turn, and is
+    reported as one line ("7 of 12 hit, 31 damage").  But each missile in it still rolls to hit on its own and,
+    if it hits, does its own damage -- the book's shortcut of multiplying one missile's damage by the Effect is
+    not used.
   * Torpedoes work the same way, as the book intends -- they are simply larger, harder-hitting missiles that
     are also harder to shoot down.
   * Missiles are effective at close range.
@@ -384,9 +388,9 @@ the plot, and killing the ship that gave it to them does not take it back.
 A salvo "rolls for damage as if for a single missile ... but do not apply the
 Effect of the attack roll. Instead, any damage is multiplied by the Effect ...
 but the Effect cannot be higher than the number of remaining missiles in the
-salvo" (CRB p. 169). Callisto's missiles fly one at a time, so that cap is
-always one: a missile or torpedo does its damage dice and nothing more. Every
-other weapon still adds the Effect.
+salvo" (CRB p. 169). Callisto rolls each missile in a salvo separately
+instead, so a missile or torpedo that hits does its damage dice and nothing
+more. Every other weapon still adds the Effect.
 
 #### Rule enforced — bay weapons struggle against small ships
 "All bay weapons suffer DM-2 when attacking targets of 2,000 tons or less and
@@ -405,10 +409,22 @@ fired as an ordinary shot, without the DM-2.
 Keeps it below a small bay, which is the intent of the progression. Worth
 revisiting.
 
-#### Change — no missile salvoes
-Each launcher fires its own missiles, each guiding and rolling to hit
-individually, rather than salvoes tracked as units. Point defence and the
-torpedo halving are re-expressed to match; see `FAQ.md`.
+#### Change — a salvo rolls missile by missile
+A launch from one mount flies as one salvo, as the book has it, and is shown
+and reported as one: one object on the plot with its count, one line in the
+results. But "each one rolls to hit": every missile in it makes its own attack
+roll and does its own damage dice, so a salvo of twelve does exactly what
+twelve lone missiles would. The book's single roll with damage multiplied by
+the Effect (CRB p. 169) is not used.
+
+#### Change — point defence and jamming defend the ship, not one salvo
+The book's point defence gunner and electronic warfare operator each pick a
+salvo (CRB p. 171, HG p. 34). In Callisto a ship's point defence -- gunners on
+point defence and its batteries -- is one pool for the round, and it takes the
+missiles arriving that round one at a time, whichever salvo they came in, a
+torpedo costing two points. Jam Missiles likewise destroys its Effect's worth of
+missiles chosen from everything inbound at the ship, across salvoes. A salvo
+that loses some missiles flies on with the rest.
 
 #### Omission — detecting missile launch
 A launch can be missed and picked up later (HG p. 76: Routine 6+, or Average 8+
@@ -416,9 +432,8 @@ if the firing ship is itself undetected, DM+1 per full 10 missiles). Callisto
 shows every launch to everyone. The blocker is presentation rather than rules:
 ship contacts are already per-observer, but it is not clear how to show *which
 missiles are visible to whom* without the view becoming unreadable, least of
-all for a referee watching every side at once. It would also need salvo
-grouping, since the DM scales with salvo size and missiles are tracked
-individually.
+all for a referee watching every side at once. The DM's salvo size is now
+there to be read, since a salvo carries its count.
 
 ---
 

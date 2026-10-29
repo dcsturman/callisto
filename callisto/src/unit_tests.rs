@@ -729,16 +729,27 @@ async fn test_exhausted_missile() {
     server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
   }
 
-  // 9th round missile should exhaust itself.
+  // The triple turret's three missiles fly as one salvo.
+  let salvoes: Vec<u16> = server
+    .get_entities()
+    .unwrap()
+    .missiles
+    .values()
+    .map(|missile| missile.read().unwrap().count)
+    .collect();
+  assert_eq!(salvoes, vec![3], "one salvo of three in flight");
+
+  // 9th round the salvo should exhaust itself, as one object.
   let response = server.update();
   assert_eq!(
     response
       .iter()
       .filter(|e| matches!(e, EffectMsg::ExhaustedMissile { .. }))
       .count(),
-    3,
+    1,
     "Round 9"
   );
+  assert!(server.get_entities().unwrap().missiles.is_empty());
 }
 
 #[test(tokio::test)]

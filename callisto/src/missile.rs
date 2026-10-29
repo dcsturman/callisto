@@ -40,6 +40,23 @@ pub struct Missile {
   /// scenarios saved before torpedoes existed still load.
   #[serde(default = "default_launcher")]
   pub weapon: Weapon,
+  /// How many missiles fly in this salvo. A launch from one mount is one
+  /// salvo: one object on the plot, one guidance solve a round, one line in
+  /// the results, and each missile in it still rolls its own attack on
+  /// impact. Defaulted so a scenario saved when every missile flew alone
+  /// still loads, each of them a salvo of one -- and written only when it is
+  /// more than one, so a lone missile is on the wire as it always was.
+  #[serde(default = "one_missile", skip_serializing_if = "is_one")]
+  pub count: u16,
+}
+
+fn one_missile() -> u16 {
+  1
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one(count: &u16) -> bool {
+  *count == 1
 }
 
 /// A single missile rack, matching how every launch behaved before the
@@ -59,7 +76,7 @@ impl Missile {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     name: String, source: String, target: String, target_ptr: Arc<RwLock<Ship>>, position: Vec3, velocity: Vec3,
-    burns: i32, weapon: Weapon,
+    burns: i32, weapon: Weapon, count: u16,
   ) -> Self {
     // We need to construct an initial route for the missile primarily so
     // it can be shown in the UX once creation of the missile returns.
@@ -97,6 +114,7 @@ impl Missile {
       acceleration,
       burns,
       weapon,
+      count: count.max(1),
     }
   }
 }
@@ -237,6 +255,7 @@ impl Default for Missile {
       acceleration: Vec3::zero(),
       burns: 0,
       weapon: default_launcher(),
+      count: 1,
     }
   }
 }
@@ -268,6 +287,7 @@ mod tests {
       Vec3::zero(),
       100,
       default_launcher(),
+      1,
     );
     assert_eq!(missile.get_name(), "missile1");
     assert_eq!(missile.get_position(), Vec3::zero());
@@ -278,5 +298,24 @@ mod tests {
     assert_eq!(missile.get_name(), "missile2");
     assert_eq!(missile.get_position(), Vec3::new(1000.0, 2000.0, 3000.0));
     assert_eq!(missile.get_velocity(), Vec3::new(4000.0, 5000.0, 6000.0));
+  }
+
+  #[test]
+  fn a_missile_saved_before_salvos_is_a_salvo_of_one() {
+    let json = r#"{"name":"A::B::0","position":[0,0,0],"velocity":[0,0,0],"source":"A","target":"B",
+      "acceleration":[0,0,0],"burns":3}"#;
+    let missile: Missile = serde_json::from_str(json).unwrap();
+    assert_eq!(missile.count, 1);
+    let round_trip: Missile = serde_json::from_str(&serde_json::to_string(&missile).unwrap()).unwrap();
+    assert_eq!(round_trip.count, 1);
+    assert!(
+      !serde_json::to_string(&missile).unwrap().contains("count"),
+      "a lone missile is written as before"
+    );
+
+    let salvo = Missile { count: 12, ..missile };
+    let json = serde_json::to_string(&salvo).unwrap();
+    assert!(json.contains(r#""count":12"#), "{json}");
+    assert_eq!(serde_json::from_str::<Missile>(&json).unwrap().count, 12);
   }
 }

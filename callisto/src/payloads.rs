@@ -264,6 +264,13 @@ pub struct LaunchMissileMsg {
   /// before torpedoes existed still load.
   #[serde(default = "default_launcher")]
   pub weapon: Weapon,
+  /// Missiles in the salvo: one launch from one mount flies as one object.
+  #[serde(default = "one_missile")]
+  pub count: u16,
+}
+
+fn one_missile() -> u16 {
+  1
 }
 
 /// A single missile rack, matching how every launch behaved before the

@@ -2,7 +2,6 @@ use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::payloads::{EffectMsg, EngineerActionResult, MessageCategory, OrdersScope};
-use rand::seq::SliceRandom;
 use rand::RngCore;
 
 use serde_with::serde_as;
@@ -16,9 +15,8 @@ use crate::action::{
   ShipAction, ShipActionList,
 };
 use crate::combat::{
-  apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
-  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, HitMods,
-  STANDARD_ROLL_THRESHOLD,
+  apply_crit, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
+  roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, volley, HitMods, STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -874,11 +872,15 @@ impl Entities {
     Err(format!("Entity {current} not found."))
   }
 
-  /// Launch a missile from a ship at a ship.
+  /// Launch a salvo of `count` missiles from a ship at a ship.
+  ///
+  /// The salvo is one entity: it flies one path and is resolved missile by
+  /// missile when it arrives.
   ///
   /// # Arguments
   /// * `source` - The ship that is launching the missile.
   /// * `target` - The ship that is the target of the missile.
+  /// * `count` - How many missiles fly in the salvo.
   ///
   /// # Errors
   /// Returns an error if the source ship is not found.
@@ -886,7 +888,7 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
-  pub fn launch_missile(&mut self, source: &str, target: &str, weapon: Weapon) -> Result<(), String> {
+  pub fn launch_missile(&mut self, source: &str, target: &str, weapon: Weapon, count: u16) -> Result<(), String> {
     // Could use a random number generator here for the name but that makes tests flakey (random)
     // So this counter used to distinguish missiles between the same source and target
     let id = self.next_missile_id;
@@ -924,6 +926,7 @@ impl Entities {
       velocity,
       crate::missile::DEFAULT_BURN,
       weapon,
+      count,
     );
 
     debug!("(Entities.launch_missile) Added missile {}", &name);
@@ -1161,15 +1164,16 @@ impl Entities {
         if let Some(ship) = self.ships.get(attacker) {
           let mut ship = ship.write().unwrap();
           for missile in &missiles {
+            let count = u32::from(missile.count);
             if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
-              ship.magazine.torpedoes = ship.magazine.torpedoes.saturating_sub(1);
+              ship.magazine.torpedoes = ship.magazine.torpedoes.saturating_sub(count);
             } else {
-              ship.magazine.missiles = ship.magazine.missiles.saturating_sub(1);
+              ship.magazine.missiles = ship.magazine.missiles.saturating_sub(count);
             }
           }
         }
         for missile in missiles {
-          if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon) {
+          if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon, missile.count) {
             warn!("Could not launch missile: {}", msg);
           }
         }
@@ -1268,6 +1272,7 @@ impl Entities {
         let missile_pos = missile.get_position();
         // Captured before the match, whose arm shadows `missile` with its name.
         let launcher = missile.weapon.clone();
+        let count = missile.count;
         let Some(missile_source) = ship_snapshot.get(&missile.source) else {
           warn!(
             "(Entity.update_all) Cannot find source {} for missile. It may have been destroyed.",
@@ -1306,29 +1311,44 @@ impl Entities {
               );
               let mut target = target.write().unwrap();
 
-              // A torpedo costs two points where a missile costs one, so a
-              // ship's point defence stops half as many of them.
+              // Point defence drains its pool missile by missile, whichever
+              // salvo they came in: the pool is the ship's for the round,
+              // not a gunner's against one salvo. A torpedo costs two points
+              // where a missile costs one, so a ship's point defence stops
+              // half as many of them.
               let cost = interception_cost(launcher.primary_kind());
-              let stopped = target.take_interception(cost);
+              let stopped = (0..count).take_while(|_| target.take_interception(cost)).count();
+              let stopped = u16::try_from(stopped).unwrap_or(count);
+              let through = count - stopped;
+              cleanup_missile_list.push(missile.clone());
 
-              // This stops the attack
-              if stopped {
+              let mut effects = Vec::new();
+              if stopped > 0 {
                 debug!(
-                  "(Entity.update_all) Missile {} destroyed by point defense by {}.",
+                  "(Entity.update_all) {stopped} of {count} in salvo {} destroyed by point defense by {}.",
                   missile, target_name
                 );
-                cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                *intercepted.entry((target_name.clone(), what)).or_default() += 1;
-                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }])
-              } else {
-                // The attack gets through point defense
-                // A launched object resolves as the gun that threw it.
+                *intercepted.entry((target_name.clone(), what)).or_default() += u32::from(stopped);
+                effects.push(EffectMsg::ExhaustedMissile { position: target.get_position() });
+              }
+              if through > 0 {
+                // The rest get through point defence, and each rolls its own
+                // attack: a launched object resolves as the gun that threw it.
                 let Some(firing) = launcher.firing_default() else {
                   warn!("(Entity.update_all) Missile {missile} has no launching gun.");
                   return None;
                 };
-                let effects = attack(
+                // A salvo of one reads as a lone missile always has.
+                let title = (count > 1).then(|| {
+                  let kind = String::from(&firing.kind);
+                  if stopped > 0 {
+                    format!("{kind} salvo ({count}, {stopped} shot down)")
+                  } else {
+                    format!("{kind} salvo ({count})")
+                  }
+                });
+                effects.extend(volley(
                   HitMods {
                     smart: smart_missile_bonus,
                     ..HitMods::default()
@@ -1337,15 +1357,13 @@ impl Entities {
                   missile_source,
                   &mut target,
                   &firing,
-                  // Missiles cannot do called shots
-                  None,
+                  through,
+                  title.as_deref(),
                   boost_map,
                   rng,
-                );
-                cleanup_missile_list.push(missile);
-
-                Some(effects)
+                ));
               }
+              Some(effects)
             } else {
               debug!(
                 "(Entity.update_all) Missile {} exhausted at position {:?}.",
@@ -1744,13 +1762,15 @@ impl Entities {
     &mut self, ship_name: &String, operator: Option<usize>, boost: i16, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
-    // Find all missiles targeting this ship.
-    let targeting_missiles = self
+    // Every salvo targeting this ship, and how many missiles are in it. In
+    // name order, so a seeded run picks the same missiles every time.
+    let mut targeting_salvoes = self
       .missiles
       .iter()
       .filter(|(_, missile)| missile.read().unwrap().target == *ship_name)
-      .map(|(missile_name, _missile)| missile_name.clone())
+      .map(|(missile_name, missile)| (missile_name.clone(), missile.read().unwrap().count))
       .collect::<Vec<_>>();
+    targeting_salvoes.sort_unstable();
 
     let dice = roll_dice(2, rng);
     // No operator means the program is doing it, and brings no skill of its
@@ -1792,29 +1812,7 @@ impl Entities {
       // Cast is safe because from above check >= 0.
       #[allow(clippy::cast_sign_loss)]
       let num_missiles = (check as usize).max(1);
-      // Randomly pick the missiles that are destroyed.
-      let destroyed = targeting_missiles.choose_multiple(rng, num_missiles).collect::<Vec<_>>();
-      // Create for each destroyed missile an effect (exhaustion) and message.
-      effects.append(
-        &mut destroyed
-          .iter()
-          .flat_map(|missile_name| {
-            let dead_missile = self.missiles.remove(missile_name.as_str()).unwrap();
-            let missile = dead_missile.read().unwrap();
-            [
-              EffectMsg::ExhaustedMissile {
-                position: missile.get_position(),
-              },
-              EffectMsg::about(
-                ship_name,
-                MessageCategory::Destruction,
-                format!("Missile {} destroyed by %s's jamming.", missile.get_name()),
-              ),
-            ]
-          })
-          .collect::<Vec<_>>(),
-      );
-      // Remove the destroyed missiles from the list of all missiles.
+      effects.append(&mut self.jam_salvoes(ship_name, &targeting_salvoes, num_missiles, rng));
     } else {
       // If the EW check failed, just let the users know.
       effects.push(sensor_check_effect(
@@ -1830,6 +1828,57 @@ impl Entities {
         10,
         "jamming failed",
       ));
+    }
+    effects
+  }
+
+  /// Destroy `num_missiles` of the missiles in `salvoes`, picked at random
+  /// from all of them: jamming acts on any missile coming at the ship, not
+  /// on one salvo. A salvo that loses every missile is gone; one that loses
+  /// some flies on with the rest. One line per salvo hit.
+  fn jam_salvoes(
+    &mut self, ship_name: &str, salvoes: &[(String, u16)], num_missiles: usize, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
+    let total: usize = salvoes.iter().map(|(_, count)| usize::from(*count)).sum();
+    // Which missiles, numbered across the salvoes in order, then counted
+    // back into the salvo each belongs to.
+    let mut lost = vec![0u16; salvoes.len()];
+    for pick in rand::seq::index::sample(rng, total, num_missiles.min(total)) {
+      let mut index = pick;
+      for (slot, (_, count)) in salvoes.iter().enumerate() {
+        if index < usize::from(*count) {
+          lost[slot] += 1;
+          break;
+        }
+        index -= usize::from(*count);
+      }
+    }
+
+    let mut effects = Vec::new();
+    for ((name, count), lost) in salvoes.iter().zip(lost) {
+      if lost == 0 {
+        continue;
+      }
+      let Some(salvo) = self.missiles.get(name).cloned() else {
+        continue;
+      };
+      let mut salvo = salvo.write().unwrap();
+      let what = String::from(&salvo.weapon.primary_kind()).to_lowercase();
+      let line = if *count == 1 {
+        format!("Missile {name} destroyed by %s's jamming.")
+      } else {
+        format!("%s's jamming destroys {lost} of the {count} {what}s in salvo {name}.")
+      };
+      effects.push(EffectMsg::ExhaustedMissile {
+        position: salvo.get_position(),
+      });
+      effects.push(EffectMsg::about(ship_name, MessageCategory::Destruction, line));
+      salvo.count -= lost;
+      let empty = salvo.count == 0;
+      drop(salvo);
+      if empty {
+        self.missiles.remove(name);
+      }
     }
     effects
   }
@@ -3911,7 +3960,7 @@ mod tests {
     )?;
 
     // Launch a missile
-    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
 
     // Test Display trait
     let display_output = format!("{entities}");
@@ -4181,7 +4230,7 @@ mod tests {
     );
 
     // Test 5: Add a valid missile
-    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert!(
       entities.validate(),
       "Entities with a valid planet, two ships, and missile should be valid"
@@ -4246,7 +4295,7 @@ mod tests {
       None,
       None,
     );
-    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     // Test 8: Create a missile with no target_ptr
     {
       entities
@@ -4790,7 +4839,7 @@ mod tests {
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Add some missiles to test
-    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
 
     // Test the two should not be equal
     assert_ne!(
@@ -4799,15 +4848,15 @@ mod tests {
     );
 
     // Add the same missile to entities2
-    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Test with a different missile
-    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert_ne!(entities1, entities2, "Entities should not be equal with different missiles");
 
     // Add the same missile to entities2
-    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Test with floating-point precision issues
@@ -4908,13 +4957,13 @@ mod tests {
 
     // Test launching a missile with an invalid target
     assert!(
-      entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).is_err(),
+      entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).is_err(),
       "Launching a missile with an invalid target should be an error"
     );
 
     // Test launching a missile with an invalid source
     assert!(
-      entities.launch_missile("Ship2", "Ship1", test_missile_weapon()).is_err(),
+      entities.launch_missile("Ship2", "Ship1", test_missile_weapon(), 1).is_err(),
       "Launching a missile with an invalid source should be an error"
     );
   }
@@ -5127,7 +5176,9 @@ mod tests {
 
     // Mimic the post-fix round ordering: a launch (from fire_actions) followed
     // by a jam pass (the second sensor_actions call).
-    entities.launch_missile("attacker", "defender", test_missile_weapon()).unwrap();
+    entities
+      .launch_missile("attacker", "defender", test_missile_weapon(), 1)
+      .unwrap();
     assert_eq!(entities.missiles.len(), 1, "Missile should be in flight after launch");
 
     let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
@@ -5707,7 +5758,12 @@ mod tests {
       None,
     );
     entities
-      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .launch_missile(
+        "Raider",
+        "Picket",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
+      )
       .unwrap();
     assert_eq!(entities.missiles.len(), 1);
 
@@ -5743,7 +5799,12 @@ mod tests {
       None,
     );
     entities
-      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .launch_missile(
+        "Raider",
+        "Picket",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
+      )
       .unwrap();
 
     let mut rng = StepRng::new(5, 0);
@@ -6620,6 +6681,7 @@ mod tests {
         "Shooter",
         "Doomed",
         Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
       )
       .expect("(test) launch");
     assert_eq!(entities.missiles.len(), 1);
@@ -6655,6 +6717,7 @@ mod tests {
         "Shooter",
         "Doomed",
         Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
       )
       .expect("(test) launch");
     entities.ships.remove("Doomed");
@@ -6686,6 +6749,7 @@ mod tests {
         "Shooter",
         "Quarry",
         Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
       )
       .expect("(test) launch");
 
@@ -8129,5 +8193,201 @@ mod tests {
   fn test_sensor_detection_modifiers_invalid_ships() {
     let entities = Entities::new();
     entities.sensor_detection_modifiers("nonexistent_attacker", "nonexistent_target");
+  }
+}
+
+/// A launch from one mount flies as one salvo and is resolved missile by
+/// missile when it arrives.
+#[cfg(test)]
+mod salvo_tests {
+  use super::*;
+  use crate::crew::{Crew, Skills};
+  use crate::ship::{ShipDesignTemplate, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use rand::rngs::mock::StepRng;
+  use rand::rngs::SmallRng;
+  use rand::SeedableRng;
+
+  fn missile_rack() -> Weapon {
+    Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)
+  }
+
+  /// Two ships close enough that anything launched arrives in the round it
+  /// is launched, the target big enough to survive it, with no armour.
+  fn duel() -> Entities {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Hulk".to_string(),
+      displacement: 2000,
+      hull: 100_000,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Shooter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Target".to_string(),
+      Vec3::new(100_000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+  }
+
+  fn hull(entities: &Entities) -> u32 {
+    entities.ships["Target"].read().unwrap().get_current_hull_points()
+  }
+
+  fn lines(effects: &[EffectMsg]) -> Vec<String> {
+    effects
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { .. }))
+      .map(EffectMsg::rendered)
+      .collect()
+  }
+
+  fn resolve(entities: &mut Entities, seed: u64) -> Vec<EffectMsg> {
+    let snapshot = entities.ship_deep_copy();
+    entities.update_all(&snapshot, &BoostMap::default(), &mut SmallRng::seed_from_u64(seed))
+  }
+
+  #[test]
+  fn a_salvo_is_one_entity() {
+    let mut entities = duel();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 120).unwrap();
+    assert_eq!(entities.missiles.len(), 1);
+    assert_eq!(entities.missiles.values().next().unwrap().read().unwrap().count, 120);
+  }
+
+  /// "Each one rolls to hit": a salvo of twelve does exactly what twelve
+  /// lone missiles do, roll for roll.
+  #[test]
+  fn a_salvo_rolls_each_missile_like_lone_missiles() {
+    for seed in 0..20 {
+      let mut salvo = duel();
+      salvo.launch_missile("Shooter", "Target", missile_rack(), 12).unwrap();
+      let effects = resolve(&mut salvo, seed);
+
+      let mut singles = duel();
+      for _ in 0..12 {
+        singles.launch_missile("Shooter", "Target", missile_rack(), 1).unwrap();
+      }
+      resolve(&mut singles, seed);
+
+      assert_eq!(hull(&salvo), hull(&singles), "seed {seed}");
+      assert!(salvo.missiles.is_empty(), "the salvo is spent on impact");
+
+      // One line for the twelve, and its damage is the hull lost.
+      let lines = lines(&effects);
+      let summary: Vec<&String> = lines.iter().filter(|l| l.contains("missile salvo (12)")).collect();
+      assert_eq!(summary.len(), 1, "seed {seed}: {lines:?}");
+      let lost = 100_000 - hull(&salvo);
+      if lost > 0 {
+        assert!(summary[0].contains(&format!(", {lost} damage")), "{}", summary[0]);
+      }
+      assert!(summary[0].contains(" of 12 hit"), "{}", summary[0]);
+      assert!(
+        !lines.iter().any(|l| l.starts_with("Shooter missile -> ")),
+        "no missile reports on its own: {lines:?}"
+      );
+    }
+  }
+
+  /// A salvo of one reads as a lone missile always has.
+  #[test]
+  fn a_salvo_of_one_reads_as_a_missile() {
+    let mut entities = duel();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 1).unwrap();
+    let lines = lines(&resolve(&mut entities, 3));
+    assert!(lines.iter().any(|l| l.starts_with("Shooter missile -> Target")), "{lines:?}");
+    assert!(!lines.iter().any(|l| l.contains("salvo")), "{lines:?}");
+  }
+
+  /// Point defence is the ship's pool for the round, drained missile by
+  /// missile across every salvo that arrives, not one salvo's worth.
+  #[test]
+  fn point_defence_drains_across_salvoes() {
+    let mut entities = duel();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 6).unwrap();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 6).unwrap();
+    entities.ships["Target"].write().unwrap().set_point_defense_pool(8);
+    let lines = lines(&resolve(&mut entities, 1));
+
+    assert!(
+      lines.contains(&"8 missiles destroyed by Target's point defence.".to_string()),
+      "{lines:?}"
+    );
+    // The first salvo arrives first and is wiped out; the second loses two
+    // and the other four roll.
+    assert!(
+      lines
+        .iter()
+        .any(|l| l.contains("missile salvo (6, 2 shot down) -> Target") && l.contains(" of 4 hit")),
+      "{lines:?}"
+    );
+    assert_eq!(lines.iter().filter(|l| l.contains("salvo")).count(), 1, "{lines:?}");
+    assert!(entities.missiles.is_empty());
+  }
+
+  /// A torpedo still costs two points, and a point left over cannot stop
+  /// half of one.
+  #[test]
+  fn torpedoes_cost_two_inside_a_salvo() {
+    let mut entities = duel();
+    let tube = Weapon::single(WeaponType::Torpedo, WeaponMount::Barbette);
+    entities.launch_missile("Shooter", "Target", tube, 3).unwrap();
+    entities.ships["Target"].write().unwrap().set_point_defense_pool(5);
+    let lines = lines(&resolve(&mut entities, 1));
+    assert!(
+      lines.contains(&"2 torpedos destroyed by Target's point defence.".to_string()),
+      "{lines:?}"
+    );
+    assert!(lines.iter().any(|l| l.contains("torpedo salvo (3, 2 shot down)")), "{lines:?}");
+  }
+
+  fn salvo_at(name: &str, target: &str, count: u16) -> Missile {
+    let mut missile = Missile::default();
+    missile.set_name(name.to_string());
+    missile.target = target.to_string();
+    missile.count = count;
+    missile
+  }
+
+  /// Jamming picks its missiles from everything coming at the ship, not from
+  /// one salvo, and a salvo that loses some flies on with the rest.
+  #[test]
+  fn jamming_destroys_missiles_across_salvoes() {
+    let mut entities = Entities::default();
+    let mut crew = Crew::default();
+    crew.set_skill(Skills::Sensors, 4);
+    let mut ship = Ship::default();
+    ship.set_crew(crew);
+    ship.set_name("defender".to_string());
+    entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
+    for (name, count) in [("a", 5), ("b", 5), ("c", 5)] {
+      entities
+        .missiles
+        .insert(name.to_string(), Arc::new(RwLock::new(salvo_at(name, "defender", count))));
+    }
+    entities.fixup_pointers().unwrap();
+
+    // Every die a 6: the same check that destroys seven missiles in
+    // `test_jam_missiles`.
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
+    let effects = entities.sensor_actions(&actions, &BoostMap::default(), &mut StepRng::new(5, 0));
+
+    let left: u16 = entities.missiles.values().map(|m| m.read().unwrap().count).sum();
+    assert_eq!(left, 15 - 7, "seven missiles jammed out of fifteen");
+    let lines = lines(&effects);
+    let reported: u16 = lines
+      .iter()
+      .filter_map(|l| {
+        l.strip_prefix("defender's jamming destroys ")
+          .and_then(|rest| rest.split(' ').next())
+          .and_then(|n| n.parse::<u16>().ok())
+      })
+      .sum();
+    assert_eq!(reported, 7, "the lines add up to what was destroyed: {lines:?}");
   }
 }
