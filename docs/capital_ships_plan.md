@@ -7,12 +7,15 @@ Phase 4 of the fleet-control epic (`docs/fleet_control_plan.md`). This document 
 
 It changes no game code.
 
+**Decisions since the first draft (2026-10-29).** The user settled facing, fighters and size. They are recorded in §9, and the rulings below follow them. New sections: §2 on facing, "What bites at 1,000,000 tons" in §3, and "Rearming: rules as written" in §4.
+
 **Sources.**
 - **HG** is *High Guard Update 2022* (the Apr 2024 PDF). Page numbers are the printed ones; the PDF page is one higher.
 - **HG FAQ** is *High Guard Update 2022 FAQ*, the errata. Where it changes the book, Callisto follows it.
 - **IN** is *Imperial Navy* (Corebook), printed pages.
 - **EC** is *Imperial Navy: Element Cruisers*.
-- **CRB** is the *Core Rulebook* 2022 update.
+- **CRB** is the *Core Rulebook* 2022 update (the 11-12-2024 PDF), printed pages.
+- **Companion** is the *Traveller Companion* 2024 update, printed pages.
 - *Naval Campaign Sourcebook* was checked. Its "Resolving Combat" chapter (pp. 50–54) abstracts ground and boarding fights and says outright that it "is not a ship-to-ship combat system". Nothing in it applies here.
 
 Status words are the FAQ's: **Change**, **Assumption**, **Interpretation/Decision**, **House rule**, **Addition**, **Omission**, and **Rule enforced** where Callisto does what the book says.
@@ -91,7 +94,7 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
 - **Crew:** military crewing is 1 gunner per 100 tons of spinal weaponry (HG p. 23). IN p. 114 keeps that in full ("Spinal weapons need their full complement").
 - **Aiming.** Spinals are "aimed by pointing the whole ship, with minimal aiming corrections possible" (IN p. 98).
   - HG gives the same reason for the close-range penalties: "their sheer size and dependency on the movement of the host ship" (HG p. 34–35).
-  - Neither book has a facing rule for the standard space-combat rules.
+  - No book has a facing rule for spacecraft. Facing is §2.
 - **Power:** high-efficiency batteries are suggested as a design option (HG p. 35). No charge-time rule exists.
 - **Readiness:** IN gives a spinal 4D+12 minutes from "weapons safe" to ready (IN p. 82). That only matters if a ship is surprised with its weapons cold.
 
@@ -114,18 +117,13 @@ The table gives AP 20 and the text gives "reduced by 2% per point of armour", wi
 - **Particle spinals** have no AP, so they lose 3% per point of the full armour.
 - **Floor:** both are capped at 100%, so damage can reach zero but never goes negative.
 
-#### Change — no facing: firing the spine holds the ship steady
-Ships in Callisto have no facing, and the books have no facing rule, only the reason for one. Giving every ship an attitude would change the flight solver, the plot and every fixed mount, which is too much for one weapon. Instead:
-- **A spinal can fire at any bearing,** in any round, without turning.
-- **The cost:** in a round a ship fires a spinal mount, its pilot is holding her on the bearing.
-  - That ship takes **no Evasive Action** (no dodge Thrust and no captain's evade boost) and **cannot Assist Gunner**.
-  - Evade software still works. It is the computer, not the pilot.
-  - Thrust is spent as plotted. Six minutes is long enough to swing a hull and burn along the line, and IN p. 98's "minimal aiming corrections" is about the last fraction of a degree.
-- **The trade-off this creates:** a capital ship chooses each round between her main gun and her best defence. That is the decision the books' "point the whole ship" is about.
-- **Rejected: tying thrust to the line of fire.** It would force burns toward the target, fight the flight solver and make a ship that fires while opening the range impossible. High Guard's close-range DMs already model clumsiness at short range.
+#### Change — the spinal fires along the thrust axis
+A spinal is a pointed weapon under §2.
+- **When it can fire:** only while the ship is coasting, or while every powered segment of her burn this round is within 45° of the target's bearing.
+- **What it does not cost:** dodge or Assist Gunner (the user's decision).
 
 #### Interpretation — "stationary" means no thrust last round
-HG does not define a stationary target, and in Newtonian space nothing is at rest. Callisto rules that a target under 2,000 t is open to a spinal if it **spent no Thrust and took no Evasive Action in the previous round**. A ship drifting with dead drives, or holding still to fire its own spinal, can be hit. The DM−8 for 5,000 t or less still applies.
+HG does not define a stationary target, and in Newtonian space nothing is at rest. Callisto rules that a target under 2,000 t is open to a spinal if it **spent no Thrust and took no Evasive Action in the previous round**. A ship drifting with dead drives, or coasting to bring her own spine round, can be hit. The DM−8 for 5,000 t or less still applies.
 
 "Caught in the blast by accident" is not modelled. There is no splash damage.
 
@@ -167,7 +165,135 @@ Scenarios open at action stations. IN's readiness times (p. 82) would make a sce
 
 ---
 
-## 2. Size: hulls, criticals, batteries, crew
+## 2. Facing: spinal and fixed mounts
+
+**What the user decided** (2026-10-29):
+- A ship faces along her thrust vector.
+- Firing a spinal costs no dodge and no Assist Gunner, because no rule says it does.
+- She cannot thrust away from a target and fire her spinal at it.
+
+This is built as **one mechanism for every weapon that has to be pointed**: spinal mounts, and the fixed mounts on today's fighters. Turrets are unaffected.
+
+### What the books say
+
+- **Fixed mounts point forward.**
+  - "Fixed mounts can only be fired directly forward" (CRB p. 168).
+  - "a fixed mount can only fire at targets directly ahead of it, a turret rotates and can engage any target in sight" (HG p. 28; CRB p. 183).
+- **A Firmpoint may point another way.** A Firmpoint is "a fixed mount, typically forward-facing but may alternatively point in any desired direction" (HG p. 26, as the HG FAQ amends it, and CRB p. 183).
+- **The only arc with a printed angle is for vehicles.** "A weapon mounted in the front arc … can only fire into a 90° area in front of the vehicle. Weapons in turrets can fire in any direction" (CRB p. 139, *Fire Arcs*). That chapter's diagram shows forward and rear fixed-mount arcs, but gives no angle for them.
+- **Dogfights:** the winner places the loser "in a fire arc of their choice", so that "all their forward facing weapons can attack" (CRB p. 174). Callisto has no dogfights.
+- **Spinals are aimed with the whole ship.**
+  - Spinals are "aimed by pointing the whole ship, with minimal aiming corrections possible by manipulating electromagnetic fields around the weapon beam" (IN p. 98).
+  - HG also allows "some degree of directional adjustment … at the barrel" and puts the close-range penalties down to "their sheer size and dependency on the movement of the host ship" (HG pp. 34–35).
+- **Turning is quick; changing course is not.** "Alignment can be changed almost immediately, unmasking batteries or protecting damaged areas. It is a form of fine-tuning for the situation created by momentum" (IN p. 85). "A ship can pitch, roll and yaw to bring different batteries to bear" (IN p. 85).
+  - Launch tubes are rolled into alignment the same way (IN p. 97).
+  - Missile and torpedo bays on the flanks are useful because they need no alignment, by contrast with the main armament (IN p. 99).
+- **The Companion's vector rules ignore facing.** "Spacecraft facing is ignored. It is assumed that ships may pivot to any needed direction over the course of each six-minute space combat round, even when expending their full Thrust during a round" (*Traveller Companion* 2024, p. 169). It also notes that facing "does not have a mechanical effect" (p. 174).
+- **Nothing anywhere ties facing to thrust.** No book, the HG FAQ included, has a cone, an arc in degrees for spacecraft, a turning rate, or a rule linking thrust to facing.
+
+So the user's rule is a **Change**. The nearest RAW is the Companion's free pivot, which is exactly what is being given up. The cone below is the CRB's vehicle front arc, carried across.
+
+### Callisto rulings
+
+#### Change — a ship faces along her thrust
+- **The direction:** while a ship is under thrust, her bow points along her acceleration vector.
+- **Coasting:** a ship spending no Thrust in a round is **free to face any way she likes**.
+  - There is no stored attitude. IN p. 85's "almost immediately" means a ship with her drive off can swing to any bearing within a six-minute round, which is also the Companion's pivot.
+  - Keeping the last thrust direction as an attitude was considered and rejected. It adds state the plot and the network would have to carry, and punishes a ship for a burn she has already stopped.
+- **Dodging does not set facing.** Evasive Action thrust jinks around whatever attitude the ship already has. It is not part of the course, and RAW gives it no direction.
+- **Stations:** a station with Thrust 0 is always coasting, so her fixed and spinal weapons always bear.
+
+#### Change — what counts as "thrusting" in a round
+**When it is checked.** Callisto fires before it moves: `do_fire_actions` runs before `update_all`. A ship's facing therefore comes from the flight plan she is about to fly this round: up to two segments (`FlightPlan(AccelPair, Option<AccelPair>)`).
+
+**The rule.** A pointed weapon bears on a target only if **every powered segment of this round's plan** is within the cone of the bearing to that target. Coasting segments do not count. A ship whose plan has no powered segment is coasting.
+- **The bearing** is measured at the moment of fire, from the start-of-round positions.
+- **Why every segment:** otherwise a one-second burn toward the target followed by five minutes away would be an exploit.
+- **What it costs:** the classic flip-and-brake. A ship decelerating on her way in has her thrust, and so her spine, pointed away from the target. To fire, she coasts or holds her braking burn until she has fired. That is the Newtonian price of the rule, and it is the intent.
+
+#### Decision — the cone is 45° either side of the bow
+**The number.** A pointed weapon bears on a target within **45° of the thrust axis**: a 90° cone. This is the CRB's "90° area in front" for a vehicle's front arc (CRB p. 139), the only arc the books print.
+- **Why not narrower:**
+  - "Directly ahead" read literally would be 0°. That would make any intercept burn, which almost always has a sideways part, useless for firing.
+  - Six minutes is a long round, and the plan's vector is an average over it.
+  - IN p. 98 and HG p. 34 both allow some aiming at the barrel.
+- **Why not wider:** it would hardly restrict anything. At 90° from the bow, burning straight sideways would still allow fire.
+- **The same cone for spinals and fixed mounts.** HG gives spinals their own clumsiness already, in the close-range DMs (HG p. 35). Narrowing their cone as well would charge twice for the same thing.
+- **A tunable:** it is one constant, `POINTED_ARC_HALF_ANGLE`. The value is a play decision and can move once scenarios have been flown.
+
+#### Interpretation — which weapons are pointed
+| Mount | Pointed? | Why |
+|---|---|---|
+| Spinal | Yes, forward only | IN p. 98 |
+| Fixed mount, Firmpoint | Yes, forward by default | CRB p. 168, HG p. 28 |
+| Fixed mount marked **aft** | Yes, along −thrust | A Firmpoint "may … point in any desired direction" (HG p. 26). Only fore and aft are offered. A sideways mount needs a facing frame the plot does not have |
+| Turret | No | "rotates and can engage any target in sight" (HG p. 28) |
+| Barbette | No | Turret-like. "capable of bringing fire to bear in a wider arc" (IN p. 99) |
+| Bay | No | HG gives bays no arc. IN's flank bays (p. 99) suggest some do have one, but there is no rule to build on |
+| Point-defence battery, screens | No | Automatic and defensive |
+
+**Assumption — launchers and sandcasters in fixed mounts are exempt.**
+- **Missiles and torpedoes** leave a fixed rack forward and steer onto the target with their own drive. They are Smart, and in Callisto they already fly their own course from the launcher. HG already exempts them from the Firmpoint range limit (HG p. 26).
+- **Sand** is a cloud around the ship.
+
+This is a ruling rather than RAW. The book's "directly forward" does not carve out missiles.
+
+#### Consequence — fighters change the most
+**Who is hit.** Today's light and ultralight fighters carry their pulse laser in a fixed mount, as does the military gig. A fighter can now shoot only along her burn, or while coasting. The heavy fighter's beam turret is unaffected, and its fixed missile rack is exempt.
+- **What it means:** intercepting at full thrust works, because the burn points at the target. Opening the range and shooting back does not.
+- **Fighter Screen and Fighter Swarm play differently,** so the step needs a before-and-after run and is part of retrain 1.
+
+#### What it does not change
+- **No dodge or Assist Gunner cost** (the user's decision).
+- **The spinal's close-range DMs** and its "cannot attack under 2,000 t unless stationary" rule (§1).
+- **Being shot at is not affected by your own facing.** There is no facing armour (the CRB's vehicle facings, p. 140, are not used) and no arc protection for engineering (IN p. 85's flavour).
+
+### Data model
+- **`Weapon`** gets `arc: Option<Arc>` with `Arc::{Fore, Aft}`. Spinals and fixed mounts default to `Fore`; other mounts reject it.
+- **Facing check:** `tactics::bears(ship, weapon, target) -> bool` and a shared `facing::in_arc(plan, bearing, arc)`. It is used:
+  - by `do_fire_actions`, which refuses with "Spinal not on target: burning 112° off its bearing";
+  - by `tactics::engagement` / `BandOdds`, so expected damage respects it;
+  - by the client's odds display.
+- **No new ship state:** facing is computed from the plan every round.
+
+### Frontend
+- **Plot:** the acceleration arrow (`Ships.tsx` already draws it from the plan) becomes the bow.
+  - **Own ships:** a ship with pointed weapons shows a translucent 90° wedge along it. Fore and aft wedges appear for aft mounts.
+  - **Coasting:** a ring instead of a wedge, meaning she can face anywhere.
+- **Gunner card (`WeaponUse.tsx`):**
+  - pointed weapons are marked with a bow glyph;
+  - a target outside the cone is greyed out with "off the bow: 112° (needs ≤45°)";
+  - a one-click fix offers "Coast this round" or "Burn toward <target>", which rewrites the plan through the normal helm path.
+- **Helm card:** when the plotted burn takes a pointed weapon off the ship's current Fire target, a warning names the weapon and the angle before orders are sent.
+- **Enemies:** another ship's plan is not visible. The wedge is drawn around her **last observed acceleration**, labelled "last burn", and only when there is a sensor contact (with no contact, thrust shows `?`, as today). The wedge is a guess and says so.
+- **`ShotOdds`:** a bearing term, "in arc" or "out of arc", alongside the range and size terms.
+
+### AI
+**The conflict.** Facing couples two heads that are independent today: Helm (where to burn) and Fire (whom to shoot). The pointed weapons follow the burn.
+
+**First: a tactics rule, before any retraining.** After the helm produces a burn, `tactics::orders` checks the Fire target against the ship's pointed weapons. If they are out of arc, it compares three options by expected damage and by what the burn is worth, then takes the best:
+1. keep the burn, and fire only turrets, bays and launchers;
+2. turn the burn into the cone: keep its magnitude and swing the direction to the nearest edge of the cone;
+3. coast this round.
+
+Fighter intercepts mostly fall into option 2, and capital ships into 1 or 3.
+
+**Retrain 1 adds an `Align` head** of size 3 (helm wins / weapons win / coast), with the rule above as its default and its mask.
+- **Masks:** "weapons win" only when a pointed weapon could bear on the Fire target at all, which is false when the target is under 2,000 t for a spinal-only ship. "Coast" only when the ship has a plan.
+- **New own features:**
+  - share of own expected damage in pointed weapons;
+  - has-spinal;
+  - has-aft-mount.
+- **New pair features:**
+  - the cosine between my current burn and the bearing to this enemy;
+  - the same for the enemy's last observed burn and the bearing to me, which says whether *her* spine is on me;
+  - her pointed-damage share.
+- **The heads are combined:** the Helm head's band choice and the Align head are decided together, so the network can learn to approach on a line that keeps its spine on.
+- **Where the code goes:** `Head::ALL`, `side_net.rs` `PLAIN`, `sidenet.py`, `policy.py`, and the `Intent.align` field. The masks go in `side.rs` / `encode.rs`.
+
+---
+
+## 3. Size: hulls, criticals, batteries, crew
 
 ### What the book says
 
@@ -303,7 +429,7 @@ Callisto plays HG's space-combat rules at every scale, which HG p. 105 allows. T
 - its "damage under half armour does nothing";
 - its fleet initiative and morale.
 
-Two things are borrowed from it: batteries, and launching fighters during the manoeuvre step (see §3).
+Two things are borrowed from it: batteries, and launching fighters during the manoeuvre step (see §4).
 
 #### Change — the command bridge does nothing in play
 Callisto has no initiative, so Tactics (naval) has nothing to modify (FAQ, "no initiative, so Tactics (Ship) does nothing"). A command bridge is still costed and built, and Phase 1's Squadron Command role can show it as the flagship's.
@@ -318,9 +444,46 @@ Beyond the bay, torpedo and spinal DMs, and criticals ignored on large hulls, HG
 
 A medium bay hit on a 10 t fighter is overkill, and that is correct.
 
+### What bites at 1,000,000 tons and beyond
+
+The plan is built to a limit of **1,000,000 t for ships**. Space stations go further: HG p. 64 runs from 1,000 t up to a "1 billion tons – orbital highport". So nothing should break below 10⁹ t.
+
+What I checked on `epic-fleet-control`:
+
+| Where | What happens at size | Fix (step) |
+|---|---|---|
+| **Damage dice:** `combat::roll_dice_min(dice: u8) -> u8` | Refuses more than 42 dice (42 × 6 > 255). It **logs an error and returns 0**. A 66D Tigress spinal, or an 11× meson, would silently do no damage. Today's largest roll, the 10D large bay, fits | Return `u32`, and widen `WeaponProfile.damage_dice` past `u8` (66D fits a `u8`, but scaled spinals and summed battery dice do not) (step 5) |
+| **Hull and displacement:** `ShipDesignTemplate.{displacement, hull, power, fuel, crew}` are `u32` | Fine up to 4.29 × 10⁹. A 10⁹ t station has about 6.7 × 10⁸ HP | None |
+| **Hull-point formula** (HG p. 10) | 1 per 1.5 t above 100,000 t. HG gives stations no other rule, so the same bands are assumed | The step-1 check uses this |
+| **Spinal damage** | 66D, max 396, + Effect, × 1,000 is about 4 × 10⁵. Fits `u32` | Do the arithmetic in `u64` anyway (step 5) |
+| **Salvo size:** `Salvo::Fixed(u16)` | A 32-bay large-missile battery is 3,840 missiles; `u16` holds 65,535 | Fine. `Missile.count` should also be `u16` (step 3) |
+| **Magazine:** `u32` | Fine | None |
+| **`MAX_SHIP_WEAPONS = 64`** (`player.rs`) | The Tigress has more than 900 mounts. Batteries bring her to about 40–60 entries, which is close to the cap. A large station could pass it | Count batteries, and raise the cap to 256 (step 2) |
+| **Crit thresholds:** `ceil(max_hull/10)` in `u64` | Fine. A single spinal hit can cross several tenths, so sustained-damage criticals come in bunches | Intended |
+| **Critical-hit size bands** (HG p. 27) | Top out at "larger than 100,000 tons". There is nothing for stations beyond that | Use the same bands |
+| **Battery size** (IN p. 113) | Tops out at 32 per battery "over 100,000" | Same at every size |
+| **Sensor operators** (HG p. 34) | One per 7,500 t: 133 at 10⁶ t, 133,333 at 10⁹ | Cap the automatic extra jams at the number of salvos actually incoming |
+| **Crew-critical percentages** (HG p. 27) | Already relative, so they scale | None |
+| **Crew reduction** (HG p. 22) | The table stops at "100,000+ (33%)" | Nothing in play depends on it |
+| **Prompt arithmetic:** `ai-ships/src/prompt.rs` `100 * ship.current_hull / design.hull` in `u32` | Overflows above 42.9 M HP, about 64 M t. Stations only | Compute in `u64` (step 7) |
+| **Admiral totals:** `admiral.rs` sums of hull in `u32` | Overflows at 4.29 × 10⁹ HP. Only reachable with stations | Compute in `u64` (step 7) |
+| **Network size features:** `log10(hull)/4` | Gives 1.45 at 10⁶ t and 2.2 at 10⁹ t. Armour/20 reaches about 1.5 with military-hull armour (HG p. 12 doubles the maximum) | Clamp to [0, 2], and put stations in retrain 1's scenario mix (step 7) |
+| **Expected-damage features** | Are shares of the target's hull, so they scale | None |
+| **Power:** `power * 10 / displacement` in `u32` | A 10⁹ t station's Power, about 2 × 10⁸, overflows when × 10 | Compute in `u64` (step 7) |
+| **Hardpoints:** `hardpoints.ts` `floor(displacement/100)` | 10,000 at 10⁶ t. Fine in JS | Show with thousands separators |
+| **Frontend numbers** | Hull and damage print as raw integers, e.g. "666667" | Use `toLocaleString` everywhere tons, hull and damage are shown (step 7) |
+| **Plot geometry** | A million-ton hull is about 2–3 km long, against a 250 km `IMPACT_DISTANCE` and a 1,250 km Short band. Fine as a point | None |
+| **Performance: entities** | 300 fighters per carrier (Antiama, Tigress), and 120 missiles per large bay (fixed by step 3) | Phase 3's 200-ship test with these designs (step 7) |
+| **Performance: detection** | O(n²) pairs each round. 600 ships is about 360,000 checks | Measure. Skip pairs already in contact (most of them), and cache per team |
+| **Performance: flight solver** | One solver call per AI ship per round. 300 fighters means 300 calls | Measure first. The fighters of a squadron share a goal, so a solved plan can be reused for ships at the same spot |
+| **Performance: network passes** | One pass per 20 ships | 600 ships is 30 passes. Fine |
+| **Performance: wire update size** | Every ship goes to every client each round | Phase 3 measures this. Send deltas, as Phase 3 plans |
+
+The user's ruling on fighters (each stays its own ship) means performance work comes before any grouping. Missiles are the bigger issue, and step 3 handles them first.
+
 ---
 
-## 3. Carriers and small craft
+## 4. Carriers and small craft
 
 ### What the book says
 
@@ -412,10 +575,10 @@ A craft aboard a carrier is not an entity in space. It is stored inside its carr
 
 The Element pod's "four recovered at once" with four decks is the book's original rate. EC was written against it.
 
-#### Decision — refuelling and rearming need a full hangar
-A craft that ends a whole round aboard in a **full hangar** gets back its magazine (missiles, sand, torpedoes) and can be repaired by the carrier's crew under the usual repair rules. A craft in a docking space or on a recovery deck gets neither (HG p. 61, IN p. 97: no room to work).
-- **Where the ordnance comes from:** open question 3.
-- **Fuel:** not tracked in combat, so it is not an issue.
+#### Open — rearming and refuelling
+The user wants the rules as written first. They are set out under "Rearming: rules as written" at the end of this section, with options A–E and no choice made.
+
+**Fuel is not tracked:** a fighter's power plant runs for weeks (HG p. 18).
 
 #### Rule enforced — big carriers' cargo criticals hit their craft
 Over 5,000 t, a Cargo critical rolls on a D6 table built from what the ship carries, on HG p. 27's pattern:
@@ -434,8 +597,12 @@ Craft aboard a destroyed carrier are destroyed. Craft on a carrier that jumps go
 - **The cap:** past the 20-ship squadron cap, they spill into "Wind air group 2" and so on.
 - **The scenario author** can name the squadrons instead.
 
-#### Omission — HG's fighter-squadron abstraction, for now
-Each fighter is its own ship, as today, and the HG p. 102 squadron rules are not used. The Antiama launching 300 heavy fighters puts 300 ships on the plot. Phase 3's 200-ship test will show whether that is affordable. Open question 2 asks whether to use HG flights instead.
+#### Decision — each fighter is its own ship
+The user decided that the HG p. 102 squadron abstraction is not used. The Antiama launching 300 heavy fighters puts 300 ships on the plot.
+
+If that is slow, the answer is optimisation, not grouping:
+- missiles as salvos (step 3);
+- detection, solver and wire costs measured and cut (step 7).
 
 #### Omission — battle riders and tenders
 The Hadrian battle rider (HG pp. 254–255) is a 50,000 t ship meant to ride a tender. Docking clamps support riding in general (a Type V clamp takes 2,001 t and up), but no tender is planned.
@@ -443,9 +610,62 @@ The Hadrian battle rider (HG pp. 254–255) is a 50,000 t ship meant to ride a t
 #### Omission — UNREP, construction decks, breakaway hulls, docking-space boarding
 Not combat-relevant at Callisto's timescale.
 
+### Rearming: rules as written
+
+**What the books say:**
+- **Magazines and storage.**
+  - Turret racks hold 12 missiles (CRB p. 168, HG p. 28), and racks on Firmpoints hold four (HG p. 28).
+  - Missile bays hold 12 salvos (HG p. 33), and torpedo bays the same (HG p. 34).
+  - Extra stock is bought by the ton: "Twelve missiles consume one ton … missiles can be replenished after use" (HG p. 36). Three torpedoes are a ton (HG p. 38) and twenty sand canisters a ton (HG p. 38).
+  - HG has no separate "magazine" component. Spare ammunition is cargo-like tonnage in the design (EC's cruisers list a "Missile Magazine (600 missiles)", 50 t, EC pp. 31–32).
+- **Reloading during combat.**
+  - "It takes one round to reload a missile rack" (CRB p. 168), and the same for a sandcaster (CRB p. 168).
+  - *Reload Turret (Gunner)*: "A turret may be reloaded by any Traveller with the Gunner skill but it will be unable to make any attacks in that round" (CRB p. 172).
+  - These are rules for a ship reloading **its own** turret from **its own** stores. Nothing in RAW covers reloading another craft.
+- **Where a carried craft can be worked on.**
+  - **Docking space:** "barely enough room for crew and passengers to scramble aboard. Most repairs and maintenance require the craft to be launched first" (HG p. 61). IN agrees: "There is no room to conduct maintenance in a docking space, requiring a return to base in order to service the craft" (IN p. 97).
+  - **Full hangar:** "allows for repairs and maintenance of the craft when it is on board its mother ship" and "includes specialised testing and repair equipment" (HG p. 61). IN's carriers "rotate [craft] through the hangars for inspection and minor repairs" (IN p. 97).
+  - **Recovery deck:** "may be used to store small craft … but it cannot function as a full hangar since it is open to vacuum" (HG p. 63).
+  - **Launch tube:** only launches, and "each craft … must have a docking space or full hangar" (HG p. 62).
+  - **None of them mentions rearming,** or gives a time for it.
+- **Time.**
+  - **No rule gives a turnaround time** for rearming or refuelling a fighter.
+  - The only timings are for getting in and out: docking space 1D minutes, full hangar 2D minutes, and in combat D3 or 1D rounds through a docking space (HG p. 61).
+  - IN mentions "a long turnaround time" only for a fleet's approach (IN p. 91).
+- **Fuel.**
+  - Only jump drives and power plants use fuel (HG p. 18).
+  - Power-plant fuel is "10% of their size … per month of operation" (HG p. 18), so a fighter has weeks of endurance.
+  - Refuelling a ship takes "1D hours" at a starport (CRB p. 156).
+  - UNREP moves "20 tons of fuel, cargo or ordnance every hour" per ton of system (HG p. 63).
+  - **Fuel is irrelevant over a fight of a few hours.**
+- **Crew.**
+  - A military carrier carries 1 pilot per small craft and an engineer per 35 t of the craft's drives and power plant (HG p. 23).
+  - Maintenance crew are counted per 500 t "of ship and contained small craft" (HG p. 23).
+  - IN's flight operations officer is responsible for "launch and recovery, but also maintenance and repairs" (IN p. 97).
+- **The Element hangar pod** (EC p. 27) is the most concrete source:
+  - "Up to 24 support crew can work on the fighter complement at once, using the ship's open-plan workshop";
+  - "It is possible to keep a 48-fighter group in operation almost indefinitely … providing sufficient spares and supplies are available";
+  - a small UNREP system lets fighters "replenish life support supplies without entering the recovery/hangar cycle".
+
+  That is description, not a rule with numbers.
+
+**In short:** RAW lets a carrier hold spare missiles as tonnage and lets a hangar maintain craft. It gives **no rule** on whether a carried fighter can be rearmed during a battle, how long it takes, or whether a docking space allows it. The closest mechanic is the CRB's one-round rack reload. Anything Callisto does here is an Addition.
+
+### Rearming: options for Callisto (not decided)
+
+| Option | What happens | For | Against |
+|---|---|---|---|
+| **A. No rearming in a scenario** | A recovered craft keeps what it has left | Closest to RAW's silence. No new data | Recovering craft becomes only about repairs and safety. A missile fighter is one-shot |
+| **B. Free restock in a full hangar** | One full round aboard in a hangar restores the craft's magazine. A docking space or recovery deck does nothing | Simple, and follows the hangar/docking-space split RAW does make (HG p. 61) | Carriers never run dry. Ignores the carrier's stores |
+| **C. Restock from the carrier's magazine** | As B, but the missiles and sand come out of the carrier's own `magazine`, a design field. A carrier with no spares cannot rearm | Uses HG's tonnage-based storage (p. 36) and the existing `Magazine`. Carriers can run out, which is a real constraint | Every published carrier needs a stated spare load. Most HG designs give none, so we need a default (e.g. a ton per 12 craft-missiles) |
+| **D. As C, with a turnaround time** | Rearming takes N rounds per craft, with only so many crews at a time (for example the EC pod's 24 support crew, or the HG maintenance count) | The most realistic. Makes hangar capacity matter | Time and crew numbers are invented. More state, and the network needs a "rounds until ready" feature |
+| **E. Rearm anywhere aboard, one round** | The CRB's one-round rack reload, applied to any berth | Mechanically simplest, and echoes CRB p. 168 | Contradicts HG p. 61 and IN p. 97, which say there is no room to work in a docking space |
+
+Options B–D only matter in scenarios long enough for fighters to come home. Step 9 can ship with A and add B, C or D behind a scenario flag once a decision is made.
+
 ---
 
-## 4. Other High Guard rules that matter at fleet scale
+## 5. Other High Guard rules that matter at fleet scale
 
 | Rule | Book | Callisto | Plan |
 |---|---|---|---|
@@ -457,13 +677,13 @@ Not combat-relevant at Callisto's timescale.
 | **Advanced warheads** (nuclear vs dampers, anti-torpedo, multi-warhead) | HG pp. 36–40 | Standard warhead only | Omission, as in the FAQ. Dampers do nothing against missiles until nuclear warheads exist |
 | **Fighters giving point defence to nearby ships** | HG p. 104 | Point Defence software lets a ship cover another at Short (/1) or Medium (/2) | Fighters already do this through software. No change |
 | **Firing into dogfights** | HG p. 104 | No dogfights | Out of scope, as in the FAQ |
-| **Command bridge, flagship morale, fleet manoeuvres** | HG pp. 19, 115–124 | Not used | Out of scope (§2) |
+| **Command bridge, flagship morale, fleet manoeuvres** | HG pp. 19, 115–124 | Not used | Out of scope (§3) |
 | **Boarding** | HG pp. 125–134 | — | Out of scope, as in the FAQ |
 | **Large particle bay range** | HG FAQ p. 1 | Distant | Bug. Becomes Very Long (step 1) |
 
 ---
 
-## 5. Data model
+## 6. Data model
 
 ### Design JSON, by example
 
@@ -476,7 +696,7 @@ Not combat-relevant at Callisto's timescale.
   "radiation_shielding": true, // new: HG p. 31
   "frozen_watch": 0,           // new: spare crew
   "weapons": [                 // illustrative; PD battery type not checked
-    { "kind": "Meson",   "mount": { "Spinal": 3 } },              // new: multiple
+    { "kind": "Meson",   "mount": { "Spinal": 3 } },              // new: multiple; arc defaults to "Fore" (§2)
     { "kind": "Missile", "mount": { "Bay": "Small" },  "count": 32 },  // new: count
     { "kind": "Repulsor","mount": { "Bay": "Medium" }, "count": 9 },
     { "kind": "Beam",    "mount": { "Turret": 3 },     "count": 200 },
@@ -547,7 +767,7 @@ Not combat-relevant at Callisto's timescale.
   - carriers add "Craft: 80 Light Fighter (62 aboard)".
 - **Gunner card (`WeaponUse.tsx`):** one row per battery, with a count badge.
   - **`ShotOdds`:** shows the spinal's size and sub-band DMs, and greys out targets under 2,000 t with the reason ("too small; stationary targets only").
-  - **Firing a spinal:** a note on the row says it holds the ship steady, so there is no dodge this round. If a dodge is plotted, the dodge control shows the conflict.
+  - **Pointed weapons** (spinal, fixed): the arc display in §2 shows whether they bear.
   - **Results:** one line per battery: "7 of 12 hit, 213 damage".
 - **Flight Deck card** (carrier, Captain):
   - embarked craft grouped by design and berth, with state: aboard, launching (rounds left), rearming;
@@ -562,7 +782,7 @@ Not combat-relevant at Callisto's timescale.
 
 ---
 
-## 6. AI
+## 7. AI
 
 **Spinals and batteries need no new head.**
 - **Fire** stays one target per ship. Tactics fires every battery and spinal that bears, and `share_fire` divides batteries among targets as it divides mounts now.
@@ -570,9 +790,7 @@ Not combat-relevant at Callisto's timescale.
   - `tactics::engagement` / `BandOdds` must price spinals (size DMs, sub-bands, ×1,000) and batteries (×count). Every expected-damage feature then follows.
   - New own features: has-spinal, and spinal damage share.
   - A new pair feature: *spinal can engage this target*, which is false under 2,000 t unless stationary.
-  - **The spinal–dodge conflict** is settled in tactics by a rule: if the Fire target is open to the spinal and the expected spinal damage beats what the dodge is worth by the engagement odds, fire and drop the dodge; otherwise dodge and hold the spinal.
-    - **First version:** a heuristic, so no head is needed.
-    - **Later:** the Dodge head's choice can override it after retraining.
+  - **Facing** (spinal and fixed mounts) gets its own tactics rule and the `Align` head (§2, AI).
 - **Size features** stay as they are: `log10(hull)/4` reaches about 1.45 at 1,000,000 t. Damage features are already scaled to the target's hull. A retraining run is needed anyway, because 10⁴–10⁵-point hits and 30,000-HP hulls are far outside anything the network has seen.
 
 **Carriers need a head.**
@@ -593,94 +811,123 @@ Not combat-relevant at Callisto's timescale.
 
 ---
 
-## 7. Work breakdown
+## 8. Work breakdown
 
-Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Each step is one PR into `capital-ships`, off canary, as the epic's table says. Steps 2–4 can go in either order; 5 needs 2 and 4.
+Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Each step is one PR into `capital-ships`, off canary, as the epic's table says.
+
+**Order:**
+- Steps 2–4 can go in any order.
+- 5 needs 4.
+- 6 needs 2 and 5.
+- 8 needs everything before it.
 
 | # | Step | Size | Retrain? |
 |---|---|---|---|
 | 1 | Size rules and fixes | S–M | No (evaluate) |
 | 2 | Weapon batteries | L | No (evaluate) |
 | 3 | Missile salvos as one entity | M | No (evaluate) |
-| 4 | Spinal mounts | L | No |
-| 5 | Large-ship criticals, frozen watch, sensor operators | M | No |
-| 6 | Capital designs and scenarios | M | No |
-| 7 | **Retrain 1:** capital ships | M + GPU run | **Yes** |
-| 8 | Embarked craft: engine | L | No |
-| 9 | Carrier frontend | M | No |
-| 10 | Carrier AI: heuristic and admiral orders | M | No |
-| 11 | **Retrain 2:** `Flight` head | M + GPU run | **Yes** |
-| 12 | FAQ and docs | S | No |
+| 4 | Facing for pointed weapons | M | No (evaluate; fighters change) |
+| 5 | Spinal mounts | L | No |
+| 6 | Large-ship criticals, frozen watch, sensor operators | M | No |
+| 7 | Capital designs to the Tigress, scenarios, size hardening | M–L | No |
+| 8 | **Retrain 1:** capital ships, facing, the `Align` head | M–L + GPU run | **Yes** |
+| 9 | Embarked craft: engine | L | No |
+| 10 | Carrier frontend | M | No |
+| 11 | Carrier AI: heuristic and admiral orders | M | No |
+| 12 | **Retrain 2:** the `Flight` head | M + GPU run | **Yes** |
+| 13 | FAQ and docs | S–M | No |
 
 1. **Size rules and fixes.**
-   - Criticals ignored on hulls over 2,000/10,000/100,000 t; spinal hits always crit (in place for step 4).
+   - Criticals ignored on hulls over 2,000/10,000/100,000 t; spinal hits always crit (in place for step 5).
    - The large particle bay at Very Long.
    - The radiation DM, with `radiation_shielding`.
    - The hull-point formula check over every template.
-   - The FAQ and doc header fixes for screens and point-defence batteries.
-   - *Tests:* unit tests per threshold, including exactly 2,000 t; a template test. *Risk:* low. It changes play for the 3,000 t and 5,000 t designs, so run a 200-game baseline before and after on scenarios with those designs.
+   - The FAQ and doc-header fixes for screens and point-defence batteries.
+   - The stale FAQ line "Ammunition is not tracked", which magazines now contradict.
+   - *Tests:* unit tests per threshold, including exactly 2,000 t; a template test. *Risk:* low. It changes play for the 3,000 t and 5,000 t designs, so run a 200-game baseline before and after.
 2. **Weapon batteries.**
    - `count` in `Weapon`, battery forming by hull limit, per-battery mount state.
-   - Fire resolved per mount and reported once; the point-defence pool by battery; power by battery; `MAX_SHIP_WEAPONS` counting batteries.
+   - Fire resolved per mount and reported once; the point-defence pool by battery; power by battery.
+   - `MAX_SHIP_WEAPONS` counting batteries, raised to 256.
    - Frontend gunner card and summaries; `hardpoints.ts` speaking `count`.
-   - *Tests:* round-trips of old and new JSON; that a battery of N matches N single mounts on a fixed seed in distribution; a point-defence pool test. *Risk:* weapon indices are aligned with `crew.gunnery` and `active_weapons`, and the wire format is shared with the client and `ai-ships`. Keep `count: 1` the identity so existing scenarios are byte-for-byte the same.
+   - *Tests:* round-trips of old and new JSON; that a battery of N matches N single mounts in distribution; a point-defence pool test. *Risk:* weapon indices are aligned with `crew.gunnery` and `active_weapons`, and the wire format is shared with the client and `ai-ships`. Keep `count: 1` the identity.
 3. **Missile salvos as one entity.**
-   - `Missile.count`, with point defence, jamming and impact per missile inside one entity.
-   - The network's missile planner (`network/missiles.rs`) counting salvos.
-   - *Tests:* existing missile tests unchanged at count 1; 120 missiles in one entity against a point-defence pool; an entity-count check. *Risk:* frontend missile drawing and the missile-by-landing-round grouping.
-4. **Spinal mounts.**
-   - The mount, profiles and scaling, the size and sub-band DMs, the stationary rule, the armour-percentage rules, ×1,000.
-   - The pilot conflict, ammunition, power, and builder validation.
+   - `Missile.count: u16`, with point defence, jamming and impact per missile inside one entity.
+   - The network's missile planner counting salvos.
+   - *Tests:* existing missile tests unchanged at count 1; 120 missiles in one entity against a pool; an entity-count check. *Risk:* frontend missile drawing; the landing-round grouping in `network/missiles.rs`.
+   - **Do this first among the performance work.** It is the largest single cut in entity count.
+4. **Facing for pointed weapons (§2).**
+   - `Weapon.arc`, `facing::in_arc` over every powered plan segment, the 45° cone, the coasting exemption, and the launcher and sand exemption.
+   - Refusal messages; `tactics::engagement` respecting the arc; the tactics rule that picks among keep-burn / turn-into-cone / coast.
+   - Frontend wedge and ring, the gunner-card greying and one-click fixes, the helm warning, the enemy "last burn" wedge, and the `ShotOdds` term.
+   - *Tests:* the cone edge at 44° and 46°; two-segment plans, one powered and one coasting; a flip-and-brake refusal; an aft mount; launcher exemption; a coasting ship bearing anything.
+   - *Evaluation:* 200 games each of Fighter Screen and Fighter Swarm before and after, with the old network. *Risk:* the current network flies fighters without knowing about arcs and will lose shots until retrain 1. The tactics rule is what keeps play sane in the meantime.
+5. **Spinal mounts.**
+   - The mount, profiles and scaling, the size and sub-band DMs, the stationary rule, the armour-percentage rules, ×1,000, and facing through step 4.
+   - Ammunition, power, builder validation.
+   - **Damage dice made wide:** `roll_dice_min` returns `u32`, and `damage_dice` is no longer a `u8` (today more than 42 dice silently roll 0). The damage arithmetic moves to `u64`.
    - Frontend summary, gunner card and odds.
-   - *Tests:* table-driven profile tests against HG p. 35 and the Wind and Ghalalk figures; DM tests at each size boundary; one test that a dodge is refused when the spinal fires. *Risk:* Callisto has never had numbers this size; check `u32` damage paths and the overflow that would come from a ×1,000 multiple.
-5. **Large-ship criticals, frozen watch, sensor operators.**
-   - Battery-percentage weapon criticals, the crew-percentage table and its DMs, the cargo D6 table (cargo only until step 8), `frozen_watch` and Revive.
-   - One Jam Missiles per 7,500 t.
-   - *Tests:* severity table tests, threshold DMs, revive.
-6. **Capital designs and scenarios.**
-   - JSON for the Valiant (30,000 t, HG pp. 237–238), Ghalalk (pp. 241–243), Azhanti High Lightning (pp. 257–258), Atlantic (pp. 261–262), Kokirrak (pp. 275–276) and Tigress (pp. 283–284), with the HG FAQ's spinal corrections.
-   - Two scenarios: a cruiser squadron action and a dreadnought with escorts.
-   - Upload to the design and scenario buckets: merging does not do it.
-   - *Tests:* template load and validation; one 200-ship timing run with these designs, together with Phase 3.
-7. **Retrain 1: capital ships.**
-   - `tactics::engagement` pricing spinals and batteries; the new own and pair features (they change `OWN_FEATS` and `PAIR_FEATS`).
-   - Capital designs in the rl-env scenario generator; a full PPO run (keep games × rollout ≈ 4k per update).
-   - *Gate:* the new network at least matches the old one on the existing scenarios (Fighter Screen, Thebus, Aslan Border Clash) and beats the heuristic on the capital scenarios.
-8. **Embarked craft: engine.**
-   - Facility features, `embarked` and `complement`, Launch, Land and timers.
-   - The landing check and failure damage, rearming in a full hangar, the air-group squadrons, loss with the carrier, the cargo criticals that hit craft, and docking clamps.
-   - *Tests:* launch rates per facility, pinned-carrier rules, landing DMs and failure damage, capacity limits, reset restoring craft. *Risk:* entity lifetime (a craft that is in a carrier, then in space, then back), detection state across it, and squadron membership.
-9. **Carrier frontend.**
-   - The Flight Deck card, *Land* on the helm, the plot badge, the Add Ship embarked editor, the admiral situation lines.
-   - *Tests:* Vitest on the card and the editor; a manual play of the Wind scenario.
-10. **Carrier AI: heuristic and admiral orders.**
+   - *Tests:* table-driven profile tests against HG p. 35 and the Wind and Ghalalk figures; DM tests at each size boundary; a 66D roll test; an out-of-arc refusal.
+6. **Large-ship criticals, frozen watch, sensor operators.**
+   - Battery-percentage weapon criticals, the crew-percentage table and its DMs, and the cargo D6 table (cargo only until step 9).
+   - `frozen_watch` and Revive; one Jam Missiles per 7,500 t, capped at the salvos incoming.
+   - *Tests:* severity tables, threshold DMs, revive.
+7. **Capital designs to the Tigress, scenarios, size hardening.**
+   - **Designs:** JSON for the Valiant (HG pp. 237–238), Ghalalk (pp. 241–243), Azhanti High Lightning (pp. 257–258), Atlantic (pp. 261–262), Wind (pp. 265–268), Antiama (pp. 269–270), Kokirrak (pp. 275–276), Plankwell (pp. 279–280) and Tigress (pp. 283–284), with the HG FAQ's spinal corrections. The carriers' craft wait for step 9.
+   - **One test-only design** at 1,000,000 t, and a 10⁸ t station, for overflow tests. They are not shipped.
+   - **Hardening:**
+     - every row of the "what bites" table in §3: `u64` in the prompt, admiral and power arithmetic;
+     - clamped network size features;
+     - `toLocaleString` on the frontend.
+   - **Scenarios:** a cruiser squadron action, a dreadnought with escorts, and a Tigress action. Upload them to the design and scenario buckets, since merging does not.
+   - **Performance:** Phase 3's 200-ship test rerun with these designs. Measure detection, solver and wire time per round, and optimise the worst before going on. The user's ruling is to optimise, not to group fighters.
+   - *Tests:* template validation; the overflow tests at 10⁶ t and 10⁸ t; the timing run.
+8. **Retrain 1: capital ships, facing, the `Align` head.**
+   - `tactics::engagement` pricing spinals, batteries and arcs.
+   - New own and pair features (`OWN_FEATS`, `PAIR_FEATS`); the `Align` head and its masks.
+   - Capital designs and fixed-mount fighters in the rl-env scenario generator; a full PPO run (games × rollout ≈ 4k per update).
+   - *Gate:* the new network at least matches the old one on Fighter Screen, Thebus and Aslan Border Clash, and beats the step-4 rule on capital scenarios.
+9. **Embarked craft: engine.**
+   - Facility features, `embarked` and `complement`, Launch, Land and timers; the landing check and failure damage.
+   - Rearming per the chosen option (open question 1, with A as the default until it is chosen).
+   - Air-group squadrons, loss with the carrier, cargo criticals that hit craft, docking clamps.
+   - *Tests:* launch rates per facility, pinned-carrier rules, landing DMs and failure damage, capacity, reset restoring craft. *Risk:* entity lifetime across boarding and launch, detection state, squadron membership.
+10. **Carrier frontend.**
+    - The Flight Deck card, *Land* on the helm, the plot badge, the embarked-craft editor, the admiral situation lines.
+    - *Tests:* Vitest on the card and the editor; a manual play of the Wind scenario.
+11. **Carrier AI: heuristic and admiral orders.**
     - Default launch and recover in `tactics`; `flight` in `Directive`, the prompt, the schema and a parsed example.
-    - *Tests:* a harness run of carrier against cruiser, as a heuristic baseline.
-11. **Retrain 2: the `Flight` head.**
-    - The head, masks and features (§6); carriers in the scenario generator; a full run.
-    - *Gate:* beats the step-10 heuristic over 200 games on a carrier scenario, and holds on the old scenarios.
-12. **FAQ and docs.**
-    - Replace "The big one: no capital ships" with what is supported.
-    - Add the rulings above under *Rules decisions and assumptions*.
+    - *Tests:* a harness baseline of carrier against cruiser.
+12. **Retrain 2: the `Flight` head.**
+    - The head, masks and features (§7); carriers in the scenario generator; a full run.
+    - *Gate:* beats the step-11 heuristic over 200 games and holds on the old scenarios.
+13. **FAQ and docs.**
+    - Replace "The big one: no capital ships"; rewrite the fixed-mount line to describe facing.
+    - Add every ruling here to *Rules decisions and assumptions*.
     - Update `docs/fleet_control_plan.md` with results.
 
-**Plotting:** Phase 5's 100+ ship battles can start after step 7. They only need carriers after step 11.
+**Plotting:** Phase 5's 100+ ship battles can start after step 8. They only need carriers after step 12.
 
 ---
 
-## 8. Open questions
+## 9. Decisions and open questions
 
-1. **Spinal facing.** Is "firing the spinal means no dodge and no Assist Gunner that round" the right price? The alternative is no restriction at all, with HG's close-range DMs as the only clumsiness.
-2. **Fighters as one ship each, or as HG flights?** HG p. 102 flies up to ~12 fighters as one ship: pooled hull, one attack at DM+1 per extra fighter, a fighter lost per critical.
-   - Flights would cut the Antiama's 300 craft to about 25 entities, and they suit the 20-slot network.
-   - They cost Callisto's per-fighter detail, plus a second kind of ship in combat.
-   - My recommendation: individual fighters first (steps 8–11), and flights only if Phase 3's 200-ship test says we must.
-3. **Where rearming ordnance comes from.** Should a full hangar draw from a carrier magazine stated in the design, so carriers can run dry, or restock for free? A carrier magazine is more faithful but more data to enter for every published carrier.
-4. **How big do we go?** The Tigress (500,000 t) is the largest published ship. Should step 6 build all of the list above, or stop at the 200,000 t Kokirrak to keep the first battles fast?
+**Decided by the user (2026-10-29):**
+- **Facing:** a ship faces along her thrust. Firing a spinal costs no dodge or Assist Gunner. She cannot burn away from a target and fire a pointed weapon at it. This is built as a general mechanism for spinals and fixed mounts (§2).
+- **Fighters:** each fighter stays its own ship. If performance suffers, optimise first, missiles above all (steps 3 and 7). HG's squadron abstraction is not used.
+- **Size:** step 7 builds every design up to the 500,000 t Tigress. The code is hardened to 1,000,000 t for ships and beyond for stations (§3, "What bites").
+
+**Still open:**
+1. **Rearming carried craft.** The rules as written are summarised in §4, with options A–E. RAW is silent on rearming carried craft, so any option is an Addition.
+2. **The 45° cone and its exemptions.** Is a 90° cone (the CRB's vehicle front arc) right for both spinals and fixed mounts? And should missile racks and sandcasters in fixed mounts be exempt?
 
 ## What could not be settled from the books
 
-- **No ship-facing or turning rule** exists in HG or IN's standard combat rules, only the "point the whole ship" description (IN p. 98). Hence the ruling in §1.
+- **No rule ties facing to thrust, or gives a cone for spacecraft,** in HG, the HG FAQ, IN, EC or the CRB.
+  - The Companion's vector rules let ships "pivot to any needed direction" every round, even at full Thrust (Companion p. 169). That is the opposite of the user's rule.
+  - The 45° cone is carried across from the CRB's vehicle front arc (p. 139).
+- **No turnaround time exists for rearming carried craft,** and no rule says whether a docking space allows it. See §4.
+- **HG gives space stations no hull-point rule of their own.** The ship bands are assumed.
 - **HG never defines a "stationary" target** for spinal fire, or how relative velocity affects landing. Both are assumptions above.
 - **Element Cruisers designs predate HG 2022.** EC writes spinals as "Particle Accelerator (improved, 1DD)", an older notation. Its hull figures include pods (the Ghalalk's 27,500 is for 50,000 t with pods). Callisto should build from HG's own Ghalalk (HG pp. 241–243), not EC's.
 - **Launch and recovery rates differ between sources.** The HG FAQ says 10 per round. HG's text says one per deck, with a round to move into a tube, and EC's pod follows HG's text. We follow the FAQ.
