@@ -236,6 +236,16 @@ function ContactDetail(args: {
                   {ship.current_maneuver}
                   {design != null && design.maneuver !== ship.current_maneuver && `(${design.maneuver})`}
                 </span>
+                {/* Hull and armour: what a gunner asks next -- how much she
+                    has left, and how much of each hit her armour stops. */}
+                <span className="contact-detail-stat">
+                  <span className="contact-detail-label">hull</span> {ship.current_hull}
+                  {design != null && `(${design.hull})`}
+                </span>
+                <span className="contact-detail-stat">
+                  <span className="contact-detail-label">armour</span> {ship.current_armor}
+                  {design != null && design.armor !== ship.current_armor && `(${design.armor})`}
+                </span>
                 <span className="contact-detail-stat">
                   <span className="contact-detail-label">sensors</span> {ship.current_sensors}
                 </span>
