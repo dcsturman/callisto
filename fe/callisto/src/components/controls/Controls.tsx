@@ -233,7 +233,9 @@ function ScenarioBuilderControls(args: {
       <AddPlanet />
       <hr />
       <EntityList />
+      <hr />
       <SquadronsPanel />
+      <hr />
       <button
         type="button"
         className="control-button blue-button save-scenario-anchor"
@@ -342,7 +344,10 @@ export function Controls() {
       {/* Organising the fleet from the top down: the referee any team, a
           fleet commander their own. */}
       {(isReferee(roles, shipName) || fleetTeam != null) && entities.ships.length > 0 && (
-        <SquadronsPanel onlyTeam={fleetTeam} />
+        <>
+          <SquadronsPanel onlyTeam={fleetTeam} />
+          <hr />
+        </>
       )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true} tutorial="ship-dossier">
         {/* A squadron's commander sits aboard her flagship but may open any
