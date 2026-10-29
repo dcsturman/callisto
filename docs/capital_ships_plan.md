@@ -798,7 +798,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 | 4 | Reloading: mount loads, spare gunners, the Reload choice — **done** | M | No (evaluate) |
 | 5 | Spinal mounts — **done** | L | No |
 | 6 | Large-ship criticals, frozen watch, sensor operators — **done** | M | No |
-| 7 | Capital designs to the Tigress, scenarios, the remaining size hardening | M | No |
+| 7 | Capital designs to the Tigress, scenarios, the remaining size hardening — **in part:** the four Keelhaven designs and Keelhaven | M | No |
 | 8 | **Retrain 1:** capital ships and reloading | M + GPU run | **Yes** |
 | 9 | Embarked craft: engine, rearming aboard | L | No |
 | 10 | Carrier frontend | M | No |
@@ -851,7 +851,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
    - Battery-percentage weapon criticals, the crew-percentage table and its DMs, and the cargo D6 table (cargo only until step 9).
    - `frozen_watch` and Revive; one Jam Missiles per 7,500 t, capped at the salvos incoming.
    - *Tests:* severity tables, threshold DMs, revive.
-7. **Capital designs to the Tigress, scenarios, size hardening.**
+7. **Capital designs to the Tigress, scenarios, size hardening.** **In part**: the Hadrian, Jaellemo, Wind and Valiant, and the Keelhaven scenario, are done; see "Step 7: what was built" below. The rest of this list is still to do.
    - **Designs:** JSON for the Valiant (HG pp. 237–238), Ghalalk (pp. 241–243), Azhanti High Lightning (pp. 257–258), Atlantic (pp. 261–262), Wind (pp. 265–268), Antiama (pp. 269–270), Kokirrak (pp. 275–276), Plankwell (pp. 279–280) and Tigress (pp. 283–284), with the HG FAQ's spinal corrections. The carriers' craft wait for step 9.
    - **One test-only design** at 1,000,000 t, and a 10⁸ t station, for overflow tests. They are not shipped.
    - **Hardening:** most of §3's table is done. What is left:
@@ -1058,6 +1058,56 @@ On `epic-fleet-control`.
 
 **For the user to check by eye:** no shipped design is over 5,000 tons, so give a scenario ship a test design over 5,000 t with a battery (`"count"`), a `frozen_watch` and `radiation_shielding`. Then: a Weapons critical's line and the gunner card's "(N down)" badge, and the Power board's draw; a Crew critical's line, the damage board's crew lines, and the "crew" term in a later attack's hover; the captain card's Revive and the next round's log line; a 15,000-ton ship's sensor station note and the "from sensor station 2" lines when two salvoes are inbound; the Add Ship tooltip on the Laboratory Ship.
 
+### Step 7: what was built (2026-10-29)
+
+On `epic-fleet-control`. The Keelhaven half of step 7: its four designs and the scenario.
+
+**Designs** (`callisto/ship_templates/`, new files), from HG 2022 with the HG FAQ's spinal multiples:
+
+| Design | File | Tons | Hull | Armour | Thrust/Jump | Spinal | Formed entries |
+|---|---|---|---|---|---|---|---|
+| Battle Rider - Hadrian (pp. 255–256) | `battle_rider_hadrian.json` | 50,000 | 27,500 | 30 | 6/0 | meson 3× (18,000 t) | 32 |
+| Planetoid Monitor - Jaellemo (pp. 247–249) | `planetoid_monitor_jaellemo.json` | 50,000 | 31,250 | 15 | 6/0 | meson 2× (12,000 t) | 34 |
+| Strike Carrier - Wind (pp. 265–267) | `strike_carrier_wind.json` | 75,000 | 41,250 | 11 | 6/3 | meson 3× (18,000 t) | 34 |
+| Light Cruiser - Valiant (pp. 237–239) | `light_cruiser_valiant.json` | 30,000 | 16,500 | 15 | 5/4 | meson 1× (6,000 t) | 22 |
+
+- Every turret and bay line is one entry with the book's `count` (the Hadrian's "Medium Missile Bays x50" is `{"kind": "Missile", "mount": {"Bay": "Medium"}, "count": 50}`), formed on load into batteries of 16. Point-defence batteries are listed one by one, as the Sloan's are. Weapon modifiers as printed: the Hadrian's size-reduced large particle bays, the Jaellemo's accurate lasers, high-yield fusion guns and intense-focus particle barbettes.
+- Power, fuel, crew (the book's whole complement), sensors (Advanced), Military countermeasures, computer with `/fib`, screens, software, repair drones (Hadrian, Jaellemo) and `radiation_shielding` as printed. `cost_mcr` is the sheet's purchase cost, as the shipped designs use. None of the four prints low berths, so none has a `frozen_watch`.
+- **Magazines** are the mounts' own load plus the book's storage, as the FAQ's "Book storage is beyond the bays" ruling has it: Hadrian 23,040 missiles (14,400 + 8,640) and 6,500 sand; Jaellemo 2,400 missiles (her fighters', no launcher) and 5,000 sand; Wind 8,448 and 5,000; Valiant 11,520 and 1,820. Every mount starts full.
+- **The hull-formula check** gained the planetoid's +25% (HG p. 11), server and frontend. The Jaellemo is printed as a buffered planetoid but with Hull 31,250, a planetoid's figure, not the buffered 37,500; the design keeps the printed figure.
+- **Not expressible**, now in the FAQ (*The capital designs*): embarked craft and their facilities (step 9), railgun bay ammunition (the Hadrian's 200 shots), sensor fittings beyond the grade, the command bridge and the other fittings with no play effect.
+- `combat.rs`'s battery test (`shipped_designs_form_their_batteries`) now lets a design state counts: a design without one still comes out identical, and one with them keeps every mount in batteries within the hull's limit.
+
+**The scenario** (`callisto/scenarios/Keelhaven.json`, new), as the section below sets it:
+- Oroth at the origin; Keelhaven 600,000 km out; Oroth V at (850,000, 0, 150,000) km, 292,000 km from Keelhaven. Planets are static, as in Jupiter.
+- **Red, 107 ships, goal `hold`, post Keelhaven:** the Hadrian *Cleon* and the Jaellemo *Keelhaven Bastion* 5,000 km off the moon toward the attack (squadron Battle Line); the Bastion's 30 heavy fighters beside her (Bastion A and B, 15 each); the depot's 50 heavy fighters as a screen 10,000 km out (Talon 17, Spur 17, Claw 16); 15 Dragons (Dragons) and 10 SDBs (Pickets) 2,000 km off Oroth V, at rest. The SDBs have no stealth beyond the Dragon design's own: they are simply 290,000 km from everything else.
+- **Blue, 89 ships, goal `destroy`:** the Wind *Sirocco* (flagship) and the Valiants *Intrepid* and *Dauntless* (Battle Line), the Sloan *Arcturus*, the Midu Agashams *Ishkur* and *Ninurta* and the Fer-de-Lances *Taipan*, *Mamba* and *Krait* (Screen), and the Sirocco's 80 light fighters beside her (Gale, Squall, Tempest, Zephyr, 20 each). They come in 100,080 km from Keelhaven at 20 km/s toward it. The nearest defender is 86,000 km away, beyond Distant of every one.
+- 196 ships in all: the plan's 77 and 89 hulls, plus the Jaellemo's 30 fighters in space. 30 rounds. Crews are skill 2 throughout (pilots 3 on fighters, leadership 3 on the two flagships); each capital's gunnery list is its formed entries plus a spare for each launcher and sandcaster battery, and screens are crewed.
+
+**Performance**, `ai-ships/examples/scale.rs` on Keelhaven, 30 rounds, release build:
+
+| | network vs network | close vs close |
+|---|---|---|
+| World update | 0.12–0.32 MB | 0.24–0.51 MB |
+| Serialising it | 0.2–0.8 ms | 0.4–1.4 ms |
+| Resolving a round | 4–27 ms | 19–47 ms |
+| Observation, both sides | up to 108 ms | up to 154 ms |
+| Decision, per side | 25–29 ms | 0–96 ms |
+| Results, worst round | 0.68 MB | 2.94 MB |
+| Missiles in flight, most | 2,846 in 29 salvoes | 1,758 in 99 salvoes |
+
+Nothing is broken. Two things stand out:
+- **The 2.94 MB results round** (close vs close, round 11) is 12,470 lines of "%s has lost sensor contact with %t: out of range" out of 13,837: the fleets passed through each other and every pair beyond Distant got its own line. One line per observer listing its lost contacts would cut it to a few hundred.
+- **Observation** climbs from 0.5 ms to 50–150 ms once ships hold contacts. The Scale Test's 200 ships do the same today (16–95 ms in rounds 4–12), so it is not the capitals; Phase 3's 0.8–1.0 ms was measured with idle sides.
+
+**Play.** Red won both 30-round runs. The *Cleon* took no damage in either: armour 30 stops everything but mesons, and her nine meson screens each absorb a meson hit a round (2D×10, applied before the ×1,000, against a 3× spinal's 18D + Effect). Every Blue meson spinal hit on her, five in all, was absorbed by screens. The Valiants, which have nuclear dampers but no meson screens, died to Red's spinals. This is the screens and spinal rules as built in steps 5 and 6, not anything new here; it is for the user to judge before Keelhaven is balanced.
+
+**Tests:** `ship::capital_design_tests` (each design loads, spinal legal and of the printed tonnage, the printed hull passes the formula, batteries formed within the limit with every mount, every mount full and the book's storage left); `entity::tests::keelhaven_opens_at_distant` (sides, designs, goals and post, every attacker beyond Distant of every defender, squadrons of 20 or fewer, round limit); `ai-ships` `keelhaven_plays_its_opening_rounds` (twelve rounds with the heuristic on both sides, both lose hull); the hull-formula and battery tests over every shipped design; `every_bundled_scenario_loads`. The side network's fingerprints gained the four designs' 60 lines; the existing 1,245 are unchanged.
+
+**Still to do in step 7:** the Ghalalk, Atlantic, Azhanti High Lightning, Antiama, Kokirrak, Plankwell, Tigress, Skimkish and Arakoine; the test-only 10⁶ t and 10⁸ t designs and their overflow tests; the cruiser-squadron, dreadnought and Tigress scenarios; the `rl-env` reward sums and `toLocaleString` hardening.
+
+**For the user to check by eye:** Keelhaven in the browser: the plot at the start (the Oroth V boats far off, the attackers and their fighter swarm 100,000 km out), squadron lists, the Add Ship tooltips for the four designs (the spinal line and the battery counts), the gunner card's battery buttons on the Hadrian, and the results log once the fleets meet. Upload the four designs and the scenario to the buckets.
+
 ## Scenario: Keelhaven (decided 2026-10-29)
 
 The first capital-ship scenario, and the one step 7 builds its designs for. Two fleets bought to a budget from High Guard's price lists: the attacker 100 BCr of jump-capable ships, the defender 70 BCr of ships that cannot jump. Roughly half of each goes on capital ships, and the user asked for two to four capitals a side rather than one.
@@ -1092,7 +1142,7 @@ The first capital-ship scenario, and the one step 7 builds its designs for. Two 
 
 **What step 7 must build for it.** The Hadrian, the Jaellemo, the Wind and the Valiant, from their HG pages with the HG FAQ's spinal corrections, and the hull-formula test's buffered-planetoid product for the Jaellemo. The other HG capitals can follow. Until step 9 lands carriers, the Wind's 80 light fighters and the Jaellemo's 30 heavy fighters start in space beside their ships. Embarked craft count in the carrier's price; only extra fighters are bought from the small half.
 
-**Open.** Whether the SDBs start hidden at Oroth V (stealth is only built for ships designed for it) or simply out of detection range; the exact start positions and the round limit are the scenario builder's to tune.
+**Settled when it was built.** The SDBs simply start out of detection range at Oroth V, with no stealth; the start positions and the 30-round limit are in "Step 7: what was built" above.
 
 ## 9. Decisions and open questions
 
