@@ -641,12 +641,14 @@ async fn integration_builder_save_keeps_round_limit() {
   callisto::ship::config_test_ship_templates().await;
   let port = get_next_port();
   let (_root, scenario_dir, design_dir, _added) = setup_reloadable_test_files(port);
-  // A scenario with a round limit to open in the builder.
-  fs::copy(
-    "scenarios/tutorial-9-scenario.json",
-    PathBuf::from(&scenario_dir).join("tutorial-9-scenario.json"),
-  )
-  .unwrap();
+  // A scenario with a round limit to open in the builder, under a name only
+  // this test's scenario directory has. The port is checked free and then
+  // bound by the server, and in between another test's server can take it;
+  // this test would then be talking to that server, whose scenarios are the
+  // real `scenarios/`, and its save would land there. Under a name nobody
+  // else has, opening the scenario fails first and nothing is saved.
+  let source = format!("round-limit-{port}.json");
+  fs::copy("scenarios/tutorial-9-scenario.json", PathBuf::from(&scenario_dir).join(&source)).unwrap();
   let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir), true)
     .await
     .unwrap();
@@ -657,12 +659,15 @@ async fn integration_builder_save_keeps_round_limit() {
     &mut stream,
     RequestMsg::CreateScenario(CreateScenarioMsg {
       name: "SCENARIO-amber-river-lamp".to_string(),
-      scenario: "tutorial-9-scenario.json".to_string(),
+      scenario: source,
       ai_ships: None,
     }),
   )
   .await;
-  assert!(matches!(body, ResponseMsg::JoinedScenario(_)), "Expected to join, got {body:?}");
+  assert!(
+    matches!(body, ResponseMsg::JoinedScenario(_)),
+    "Expected to join (if not, this may be another test's server), got {body:?}"
+  );
   let _ = stream.next().await.unwrap();
   drain_post_scenario_messages(&mut stream).await;
 
