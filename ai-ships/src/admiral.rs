@@ -243,8 +243,8 @@ fn enemy_groups<'a>(enemies: &[&'a Contact], from: Vec3) -> Vec<Group<'a>> {
   groups
 }
 
-fn share(part: u32, whole: u32) -> u32 {
-  (100 * u64::from(part) / u64::from(whole.max(1))).try_into().unwrap_or(100)
+fn share(part: u64, whole: u64) -> u64 {
+  100 * part / whole.max(1)
 }
 
 fn group_middle(group: &Group) -> Vec3 {
@@ -297,8 +297,8 @@ fn write_squadrons(
       *kinds.entry(ship.design.name.as_str()).or_default() += 1;
     }
     let make_up: Vec<String> = kinds.iter().map(|(design, n)| format!("{n} x {design}")).collect();
-    let hull: u32 = ships.iter().map(|ship| ship.current_hull).sum();
-    let built: u32 = ships.iter().map(|ship| ship.design.hull).sum();
+    let hull: u64 = ships.iter().map(|ship| u64::from(ship.current_hull)).sum();
+    let built: u64 = ships.iter().map(|ship| u64::from(ship.design.hull)).sum();
     let at = middle(ships.iter().map(|ship| ship.get_position()));
     let velocity = middle(ships.iter().map(|ship| ship.get_velocity()));
     let nearest = groups
@@ -370,8 +370,8 @@ pub fn situation(
     let _ = writeln!(out, "None found yet.");
   }
   for group in &groups {
-    let hull: u32 = group.ships.iter().map(|c| c.current_hull).sum();
-    let built: u32 = group.ships.iter().map(|c| c.design_hull).sum();
+    let hull: u64 = group.ships.iter().map(|c| u64::from(c.current_hull)).sum();
+    let built: u64 = group.ships.iter().map(|c| u64::from(c.design_hull)).sum();
     let names: Vec<&str> = group.ships.iter().take(NAMES_SHOWN).map(|c| c.name.as_str()).collect();
     let more = group.ships.len().saturating_sub(NAMES_SHOWN);
     let _ = writeln!(
@@ -771,6 +771,19 @@ mod tests {
     assert_eq!(orders.fleet.as_deref(), Some("Hold the gate."));
     assert_eq!(orders.squadrons, vec![("Lance".to_string(), "Fighters first.".to_string())]);
     assert_eq!(orders.ships, vec![("Lance 2".to_string(), "Stay by the flagship.".to_string())]);
+  }
+
+  /// Hull shares are summed and scaled in u64: a few billion-ton stations
+  /// pass u32 hull points, and 100 x a single one's did.
+  #[test]
+  fn hull_shares_survive_station_sized_hulls() {
+    assert_eq!(share(1, 2), 50);
+    assert_eq!(share(0, 0), 0);
+    let station = u64::from(666_666_667_u32);
+    let fleet = [station; 10];
+    let built: u64 = fleet.iter().sum();
+    assert!(built > u64::from(u32::MAX));
+    assert_eq!(share(built / 2, built), 50);
   }
 
   #[test]

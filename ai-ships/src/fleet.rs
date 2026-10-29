@@ -215,8 +215,8 @@ pub struct Trigger {
 struct Progress {
   step: usize,
   /// The squadron's hull when the step began, and last round.
-  hull_at_step: u32,
-  hull_last_round: u32,
+  hull_at_step: u64,
+  hull_last_round: u64,
 }
 
 /// The group name of a ship with orders of her own.
@@ -308,7 +308,7 @@ fn locate(place: &Place, view: &Observation, groups: &[(String, Vec<String>)]) -
 fn reached(
   until: &Until, view: &Observation, ships: &[&Ship], groups: &[(String, Vec<String>)], progress: &Progress,
 ) -> bool {
-  let hull: u32 = ships.iter().map(|ship| ship.current_hull).sum();
+  let hull: u64 = ships.iter().map(|ship| u64::from(ship.current_hull)).sum();
   let round = until.round.is_some_and(|round| view.round >= round);
   let within = until.within.as_ref().is_some_and(|within| {
     locate(&within.of, view, groups).is_some_and(|at| {
@@ -650,7 +650,7 @@ impl Commander for FleetCommander {
     let mut intents = Vec::new();
     for (name, members) in &groups {
       let ships = ships_of(view, members);
-      let hull: u32 = ships.iter().map(|ship| ship.current_hull).sum();
+      let hull: u64 = ships.iter().map(|ship| u64::from(ship.current_hull)).sum();
       let steps = self.script(name).map(|script| script.steps.clone()).unwrap_or_default();
       let progress = self.progress.entry(name.clone()).or_insert_with(|| Progress {
         step: 0,

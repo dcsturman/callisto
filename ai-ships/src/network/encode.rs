@@ -349,10 +349,19 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   }
   row[77] = share(ctx.history.lost(name), me.design.hull);
   row[78] = ctx.history.since_hit(name).map_or(1.0, |rounds| rounds.min(10) as f32 / 10.0);
-  // The enemy's loss last round, as a share of what the side started with.
-  let enemy_loss: u32 = view.contacts.iter().map(|contact| ctx.history.lost(&contact.name)).sum();
-  let enemy_design: u32 = view.contacts.iter().map(|contact| contact.design_hull).sum();
-  row[79] = share(enemy_loss, enemy_design);
+  row[79] = enemy_loss_share(ctx, view);
+}
+
+/// The enemy's loss last round, as a share of what the side started with.
+/// Summed in u64, which a few large stations need; the ratio is unchanged.
+fn enemy_loss_share(ctx: &Context, view: &Observation) -> f32 {
+  let lost: u64 = view
+    .contacts
+    .iter()
+    .map(|contact| u64::from(ctx.history.lost(&contact.name)))
+    .sum();
+  let built: u64 = view.contacts.iter().map(|contact| u64::from(contact.design_hull)).sum();
+  (lost as f32 / built.max(1) as f32).min(1.0)
 }
 
 /// Rounds until something at `position` moving at `velocity` reaches `me`,

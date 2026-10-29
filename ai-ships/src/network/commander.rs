@@ -30,7 +30,7 @@ pub const MAX_ROUNDS: u32 = 40;
 pub struct Net {
   policy: Arc<Policy>,
   memory: Memory,
-  hull_at_start: Option<u32>,
+  hull_at_start: Option<u64>,
   /// Choices drawn as in training, rather than always the best scored.
   rng: Option<rand::rngs::SmallRng>,
   /// The goal to play for, in place of the scenario's.
@@ -170,7 +170,7 @@ impl Commander for Net {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     remember(&mut self.memory, view, view.round);
     self.history.look(view);
-    let hull: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
+    let hull: u64 = view.own.iter().map(|ship| u64::from(ship.current_hull)).sum();
     let start = *self.hull_at_start.get_or_insert(hull);
     let ctx = Context {
       view,
@@ -230,7 +230,7 @@ pub struct SideCommander {
   net: Arc<SideNet>,
   memory: Memory,
   history: History,
-  hull_at_start: Option<u32>,
+  hull_at_start: Option<u64>,
   /// The middle of the side when this commander first saw it: where a Hold
   /// side holds if its scenario names no post.
   start: Option<Vec3>,
@@ -311,7 +311,7 @@ impl SideCommander {
     };
     remember(&mut self.memory, view, view.round);
     self.history.look(view);
-    let hull: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
+    let hull: u64 = view.own.iter().map(|ship| u64::from(ship.current_hull)).sum();
     let start = *self.hull_at_start.get_or_insert(hull);
     let centre = *self.start.get_or_insert_with(|| {
       view

@@ -3369,7 +3369,8 @@ impl ShipDesignTemplate {
     if self.displacement == 0 {
       return self.maneuver;
     }
-    (power_for_drive * 10 / self.displacement)
+    // In u64: a big station's Power times ten passes u32.
+    (u64::from(power_for_drive) * 10 / u64::from(self.displacement))
       .try_into()
       .unwrap_or(u8::MAX)
       .min(self.maneuver)
@@ -3395,9 +3396,9 @@ impl ShipDesignTemplate {
     }
 
     // Power left for thrust is one thrust per 10% of ship displacement in power units.
-    // Displacement cannot be over 1M tons ever.
+    // In u64, since a large station's Power times ten passes u32.
     // If somehow power is enough we are above u8::MAX then just use that as really thrust cannot be that high.
-    (power * 10 / self.displacement)
+    (u64::from(power) * 10 / u64::from(self.displacement))
       .try_into()
       .unwrap_or(u8::MAX)
       .min(self.maneuver)
@@ -5334,6 +5335,31 @@ mod tests {
     assert_eq!(design.best_thrust(122), 1);
     assert_eq!(design.best_thrust(121), 0);
     assert_eq!(design.best_thrust(0), 0);
+  }
+
+  /// Power times ten passed u32 for a station-sized hull (High Guard p. 64 runs
+  /// to a billion tons) and wrapped, or panicked in a debug build.
+  #[test]
+  fn thrust_from_power_at_station_scale() {
+    let station = ShipDesignTemplate {
+      displacement: 1_000_000_000,
+      hull: 666_666_667,
+      maneuver: 6,
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(station.thrust_from_power(u32::MAX), 6);
+    assert_eq!(station.thrust_from_power(300_000_000), 3);
+    // Basic systems take 200,000,000; the rest drives Thrust 6 at most.
+    assert_eq!(station.best_thrust(u32::MAX), 6);
+    assert_eq!(station.best_thrust(500_000_010), 3);
+
+    let dreadnought = ShipDesignTemplate {
+      displacement: 1_000_000,
+      maneuver: 6,
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(dreadnought.thrust_from_power(600_000), 6);
+    assert_eq!(dreadnought.best_thrust(500_010), 3);
   }
 
   #[test]

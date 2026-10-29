@@ -84,11 +84,18 @@ fn heading(out: &mut String, view: &Observation) {
 
 /// How the fight stands, first: what each side has left, as far as we can
 /// see. Whether it is going against us is read here, not inferred.
+/// `part` as a whole percentage of `whole`, in u64 so a station's hull points
+/// (High Guard p. 64 runs to a billion tons) cannot overflow the hundredfold.
+fn hull_percent(part: u32, whole: u32) -> u64 {
+  100 * u64::from(part) / u64::from(whole.max(1))
+}
+
 fn status(out: &mut String, view: &Observation, memory: &Memory) {
   let _ = writeln!(out, "## The fight so far\n");
   let alive = |name: &str| view.own.iter().any(|ship| ship.get_name() == name);
-  let started: u32 = memory.roster.iter().map(|(_, hull)| hull).sum::<u32>().max(1);
-  let left: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
+  // Summed and scaled in u64: a fleet of large stations passes u32 hull points.
+  let started: u64 = memory.roster.iter().map(|(_, hull)| u64::from(*hull)).sum::<u64>().max(1);
+  let left: u64 = view.own.iter().map(|ship| u64::from(ship.current_hull)).sum();
   let lost: Vec<&str> = memory
     .roster
     .iter()
@@ -103,7 +110,7 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
       format!(
         "{} {}%{}{}{}",
         ship.get_name(),
-        100 * ship.current_hull / ship.design.hull.max(1),
+        hull_percent(ship.current_hull, ship.design.hull),
         if ship.current_maneuver == 0 {
           " (cannot manoeuvre)"
         } else {
@@ -159,7 +166,7 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
           contact.name,
           contact.current_hull,
           contact.design_hull,
-          100 * contact.current_hull / contact.design_hull.max(1)
+          hull_percent(contact.current_hull, contact.design_hull)
         )
       })
       .collect();
@@ -1129,4 +1136,20 @@ fn planets(out: &mut String, view: &Observation) {
     );
   }
   out.push('\n');
+}
+
+#[cfg(test)]
+mod tests {
+  use super::hull_percent;
+
+  #[test]
+  fn percent_of_huge_hulls() {
+    assert_eq!(hull_percent(50, 100), 50);
+    assert_eq!(hull_percent(0, 0), 0);
+    // A million-ton hull, and a billion-ton station's, where 100 x hull
+    // passed u32::MAX and wrapped (or panicked in a debug build).
+    assert_eq!(hull_percent(333_333, 666_667), 49);
+    assert_eq!(hull_percent(600_000_000, 666_666_667), 89);
+    assert_eq!(hull_percent(u32::MAX, u32::MAX), 100);
+  }
 }
