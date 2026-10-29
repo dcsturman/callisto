@@ -1141,7 +1141,7 @@ The first capital-ship scenario, and the one step 7 builds its designs for. Two 
 | 2 Midu Agasham destroyers | 2,056 | 4,113 | |
 | 3 Fer-de-Lance destroyer escorts | 728 | 2,183 | |
 
-89 hulls. Goal `destroy`. **Everything starts at Distant** (user, 2026-10-29): every attacker begins beyond 50,000 km of every defender, since these ships' weapons reach Very Long. The attacker arrives from the jump limit about 100,000 km out from Keelhaven, under way, so the first shots come after a few rounds. Round limit about 30.
+89 hulls. Goal `destroy`. **Everything starts at Distant** (user, 2026-10-29): every attacker begins beyond 50,000 km of every defender, since these ships' weapons reach Very Long. The attacker arrives from the jump limit about 100,000 km out from Keelhaven, under way, so the first shots come after a few rounds. Round limit 60 (raised from 30 on 2026-10-29: neither re-run reached a result in 30, and bigger fleets take longer to resolve).
 
 **Why these.** Only mesons work against the Hadrian: a particle spinal loses 3% a point of armour, 90% against armour 30, so the Ghalalk and Azhanti were passed over. The Wind is the one attacker capital in budget whose spinal matches the Hadrian's. Two Jaellemos were weighed against the Hadrian (two spinals, 2.3× the hull points and 60 fighters for 43% more money, but armour 15 and no missile launchers); one of each gives the attacker a real choice of which to kill first.
 

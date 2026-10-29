@@ -6680,7 +6680,7 @@ mod tests {
     let bytes = fs::read("./scenarios/Keelhaven.json").unwrap();
     let entities =
       Entities::parse_bytes_with_ship_templates(&bytes, "Keelhaven", get_ship_templates_snapshot()).unwrap();
-    assert_eq!(entities.metadata.rounds, Some(30));
+    assert_eq!(entities.metadata.rounds, Some(60));
     let ships: Vec<Ship> = entities.ships.values().map(|ship| ship.read().unwrap().clone()).collect();
     let side = |team: Team| ships.iter().filter(move |ship| ship.team == Some(team));
     assert_eq!((side(Team::Red).count(), side(Team::Blue).count()), (107, 89));
