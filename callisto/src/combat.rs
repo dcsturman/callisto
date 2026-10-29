@@ -28,8 +28,19 @@ pub fn roll(rng: &mut dyn RngCore) -> u8 {
   u8::try_from(rng.next_u32() % DIE_SIZE + 1).unwrap_or(0)
 }
 
+/// Roll `dice` d6 for a check or a per-weapon pool (2D, a screen's 2D, a
+/// battery's 6D), as a `u8`.
+///
+/// A `u8` holds up to 42 dice.  Damage, which can run to 66D on a spinal mount
+/// (High Guard p. 35), goes through [`roll_dice_min`] and its wider total; asking
+/// this for more than 42 dice is a bug, logged and saturated rather than
+/// silently returned as 0.
 pub fn roll_dice(dice: u8, rng: &mut dyn RngCore) -> u8 {
-  roll_dice_min(dice, 1, rng)
+  let total = roll_dice_min(dice, 1, rng);
+  u8::try_from(total).unwrap_or_else(|_| {
+    error!("(Combat.roll_dice) {dice}D totals {total}, too many for a check roll; use roll_dice_min.");
+    u8::MAX
+  })
 }
 
 /// Roll `dice` d6, counting any die below `min_die` as `min_die`.
@@ -38,13 +49,8 @@ pub fn roll_dice(dice: u8, rng: &mut dyn RngCore) -> u8 {
 /// Yield, every '1' and '2' as a '3').  That has to be decided per die rather
 /// than on the total, which is why the sum cannot simply be adjusted afterwards.
 #[must_use]
-pub fn roll_dice_min(dice: u8, min_die: u8, rng: &mut dyn RngCore) -> u8 {
-  if u32::from(dice) * DIE_SIZE > u32::from(u8::MAX) {
-    error!("(Combat.roll_dice) Too many dice to roll.");
-    return 0;
-  }
-
-  (0..dice).map(|_| roll(rng).max(min_die)).sum()
+pub fn roll_dice_min(dice: u8, min_die: u8, rng: &mut dyn RngCore) -> u16 {
+  (0..dice).map(|_| u16::from(roll(rng).max(min_die))).sum()
 }
 
 #[must_use]
@@ -2797,6 +2803,29 @@ mod battery_tests {
       let very = roll_dice_min(6, 3, &mut rng);
       assert!((18..=36).contains(&very), "6D very high yield out of range: {very}");
     }
+  }
+
+  /// Capital-ship damage rolls far more dice than a byte can total: a 66D
+  /// meson spinal (High Guard p. 35) once silently rolled 0.
+  #[test]
+  fn many_dice_roll_in_full() {
+    let mut rng = SmallRng::seed_from_u64(0x5917);
+    for dice in [43u8, 66, 120, u8::MAX] {
+      let total = roll_dice_min(dice, 1, &mut rng);
+      let (low, high) = (u16::from(dice), u16::from(dice) * 6);
+      assert!((low..=high).contains(&total), "{dice}D out of range: {total}");
+      let floored = roll_dice_min(dice, 3, &mut rng);
+      assert!(
+        (low * 3..=high).contains(&floored),
+        "{dice}D floored at 3 out of range: {floored}"
+      );
+    }
+    // The mean of 66D is 231; a sum of 0 (the old failure) is impossible.
+    let mean = (0..200).map(|_| f64::from(roll_dice_min(66, 1, &mut rng))).sum::<f64>() / 200.0;
+    assert!((220.0..=242.0).contains(&mean), "66D mean {mean}");
+    // A check roll that is handed too many dice saturates rather than reading 0.
+    assert_eq!(roll_dice(u8::MAX, &mut rng), u8::MAX);
+    assert!((2..=12).contains(&roll_dice(2, &mut rng)));
   }
 
   /// Modifiers ride on the weapon, so two weapons of the same kind and mount can
