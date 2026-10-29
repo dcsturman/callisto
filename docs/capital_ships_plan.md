@@ -961,7 +961,7 @@ On `epic-fleet-control`.
 - The magazine section shows stores and each mount's load.
 
 **Rulings made on the way** (also in the FAQ):
-- **A load is per turret, as both books word it:** "each turret with one or more missile racks holds 12 missiles" (CRB p. 168, HG p. 28), and the same for sandcasters. The table above, "Turret missile rack 12", reads either way. Because of this ruling, a silent design keeps today's total by holding the rest in stores (a triple rack turret has 12 loaded and 24 in stores), rather than having no spares as §4 assumed.
+- **A load is per turret, as both books word it** (confirmed by the user, 2026-10-29: a turret's racks share one load, and so do a bay's launchers): "each turret with one or more missile racks holds 12 missiles" (CRB p. 168, HG p. 28), and the same for sandcasters. The table above, "Turret missile rack 12", reads either way. Because of this ruling, a silent design keeps today's total by holding the rest in stores (a triple rack turret has 12 loaded and 24 in stores), rather than having no spares as §4 assumed.
 - **A Reload that would put nothing in the mount takes no spare,** and it does not cost an own gunner the shot. A mount that is full when the round starts cannot be "fired and reloaded", so the card only offers Reload below capacity.
 - **A mount whose own gunner reloads keeps its Fire order** for the next round. The card says "its order waits a round" rather than deleting it.
 - **A fixed-mount rack loads as a turret's** (12, or 4 on a Firmpoint), which fits the heavy fighter's 4 loaded and 56 in stores.

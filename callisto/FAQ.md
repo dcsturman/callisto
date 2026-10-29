@@ -642,7 +642,7 @@ per launcher, as the small ships that do state a load carry. Where the book
 gives the mount more (a barbette's 25, a bay's twelve salvos), it carries
 that instead. No design file changed, and no ship carries less than it did.
 
-**Assumption — the load is per turret, not per rack.** Both books say "each
+**Rule enforced — the load is per turret, not per rack** (confirmed by the user, 2026-10-29). Both books say "each
 turret with one or more missile racks holds 12 missiles" and "each turret
 with one or more sandcasters holds 20 sand canisters". So a triple-rack
 turret holds twelve, not 36, and throws three a round. A design that states
