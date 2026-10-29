@@ -2259,18 +2259,77 @@ impl Entities {
   ///
   /// A band is the whole of the to-hit modifier, and for a stealthed ship an
   /// opening band is what loses the contact, so a change is worth saying.
-  fn band_change_effect(
-    ship_snapshot: &HashMap<String, Ship>, observer_name: &str, target_name: &str, band_now: Range,
-  ) -> Option<EffectMsg> {
-    let band_start = Self::snapshot_band(ship_snapshot, observer_name, target_name)?;
-    (band_now != band_start).then(|| {
-      EffectMsg::about(
-        observer_name,
-        MessageCategory::Detection,
-        format!("%s: %t now at {band_now} range (was {band_start})."),
-      )
-      .at(target_name)
-    })
+  ///
+  /// `moves` is every (observer, target, band at the start, band now), with
+  /// each observer's together. When fleets close, every ship sees every enemy
+  /// cross the same band at once: a hundred a side made some 4,000 lines in a
+  /// round. So an observer's contacts that made the same move share one line
+  /// naming them all; a contact that moved alone keeps its own.
+  fn band_change_effects(moves: &[(&String, &String, Range, Range)]) -> Vec<EffectMsg> {
+    moves
+      .chunk_by(|a, b| a.0 == b.0)
+      .flat_map(|observer_moves| {
+        let mut transitions: Vec<(Range, Range)> = Vec::new();
+        for (_, _, from, to) in observer_moves {
+          if !transitions.contains(&(*from, *to)) {
+            transitions.push((*from, *to));
+          }
+        }
+        let observer = observer_moves[0].0;
+        transitions.into_iter().map(move |(from, to)| {
+          let targets: Vec<&String> = observer_moves
+            .iter()
+            .filter(|(_, _, f, t)| (*f, *t) == (from, to))
+            .map(|(_, target, _, _)| *target)
+            .collect();
+          match targets.as_slice() {
+            [target] => EffectMsg::about(
+              observer,
+              MessageCategory::Detection,
+              format!("%s: %t now at {to} range (was {from})."),
+            )
+            .at(target),
+            _ => EffectMsg::about(
+              observer,
+              MessageCategory::Detection,
+              format!("%s: {} now at {to} range (was {from}).", join_names(targets)),
+            ),
+          }
+        })
+      })
+      .collect()
+  }
+
+  /// The acquisition checks an observer could not have failed, as one line
+  /// when there are several.
+  ///
+  /// A check that passes even on a 2 tells a referee nothing, and a loud fleet
+  /// coming into range makes one per pair: thousands a round with a hundred
+  /// ships a side. A check that could have failed is still reported on its
+  /// own, with its arithmetic.
+  fn sure_check_effects(sure: &[(&String, &String, i16, EffectMsg)]) -> Vec<EffectMsg> {
+    sure
+      .chunk_by(|a, b| a.0 == b.0)
+      .map(|checks| {
+        if let [(_, _, _, single)] = checks {
+          return single.clone();
+        }
+        let lowest = checks.iter().map(|(_, _, dm, _)| *dm).min().unwrap_or_default();
+        EffectMsg::outcome(
+          checks[0].0,
+          MessageCategory::Detection,
+          format!(
+            "%s sensor checks on {}: contact.",
+            join_names(checks.iter().map(|(_, target, _, _)| *target))
+          ),
+          true,
+        )
+        .rolled(format!(
+          "none could fail: lowest DM {lowest:+}, so at least {} vs 8",
+          2 + lowest
+        ))
+      })
+      .collect()
   }
 
   /// # Panics
@@ -2302,7 +2361,10 @@ impl Entities {
     // no contact on. Worth saying even when nothing is rolled -- the band sets
     // the to-hit modifier, and for a stealthed target an opening band is what
     // puts the contact at risk.
-    let mut band_changes = Vec::<EffectMsg>::new();
+    let mut band_moves = Vec::<(&String, &String, Range, Range)>::new();
+    // Acquisition checks that could not fail, with each one's DM, held back
+    // to be reported together (see `sure_check_effects`).
+    let mut sure = Vec::<(&String, &String, i16, EffectMsg)>::new();
 
     for observer_name in &names {
       for target_name in &names {
@@ -2333,8 +2395,10 @@ impl Entities {
         let holds_contact = observer.contacts.iter().any(|name| name == *target_name);
 
         if holds_contact {
-          if let Some(change) = Self::band_change_effect(ship_snapshot, observer_name, target_name, band_now) {
-            band_changes.push(change);
+          if let Some(band_start) = Self::snapshot_band(ship_snapshot, observer_name, target_name) {
+            if band_start != band_now {
+              band_moves.push((*observer_name, *target_name, band_start, band_now));
+            }
           }
 
           // Beyond Distant everything is an undifferentiated blip (p. 76), so
@@ -2393,27 +2457,23 @@ impl Entities {
           let dm: i16 = terms.iter().map(|(_, value)| value).sum::<i16>() + boost;
           let roll = roll_dice(2, rng);
           let total = i32::from(roll) + i32::from(dm);
-          if total >= STANDARD_ROLL_THRESHOLD {
+          let found = total >= STANDARD_ROLL_THRESHOLD;
+          if found {
             acquired.push(((*observer_name).clone(), (*target_name).clone()));
           }
-          rolls.push(detection_roll_effect(
-            observer_name,
-            target_name,
-            roll,
-            dm,
-            total,
-            if total >= STANDARD_ROLL_THRESHOLD {
-              "contact"
-            } else {
-              "no contact"
-            },
-            &terms,
-          ));
+          let outcome = if found { "contact" } else { "no contact" };
+          let check = detection_roll_effect(observer_name, target_name, roll, dm, total, outcome, &terms);
+          if 2 + i32::from(dm) >= STANDARD_ROLL_THRESHOLD {
+            sure.push((*observer_name, *target_name, dm, check));
+          } else {
+            rolls.push(check);
+          }
         }
       }
     }
 
-    effects.append(&mut band_changes);
+    effects.append(&mut Self::band_change_effects(&band_moves));
+    effects.append(&mut Self::sure_check_effects(&sure));
     effects.append(&mut rolls);
     effects.append(&mut self.apply_detection_changes(&lost, &acquired));
     effects
@@ -6381,6 +6441,67 @@ mod tests {
         .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("now at"))),
       "a ship with no contact should not be told the range, got {effects:?}"
     );
+  }
+
+  /// When a fleet closes, an observer sees many contacts cross the same band
+  /// at once. They share one line, so a hundred ships a side do not make
+  /// thousands of lines a round.
+  #[test]
+  fn contacts_that_move_band_together_share_a_line() {
+    let mut entities = detection_pair(None, 1.0e6);
+    let plain = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Decoy".to_string(),
+      Vec3::new(1.0e6, 1.0e3, 0.0),
+      Vec3::zero(),
+      &plain,
+      None,
+      None,
+    );
+    entities.establish_initial_contacts();
+    let snapshot = entities.ship_deep_copy();
+    for name in ["Quarry", "Decoy"] {
+      let mut ship = entities.ships.get(name).unwrap().write().unwrap();
+      let y = ship.get_position().y;
+      ship.set_position(Vec3::new(5.0e6, y, 0.0));
+    }
+
+    let mut rng = SmallRng::seed_from_u64(7);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
+    let seeker_lines: Vec<String> = effects
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { ship, .. } if ship.name == "Seeker"))
+      .map(EffectMsg::rendered)
+      .filter(|line| line.contains("now at"))
+      .collect();
+    assert_eq!(
+      seeker_lines,
+      vec!["Seeker: Decoy and Quarry now at Medium range (was Short).".to_string()],
+      "both moved the same band, so one line"
+    );
+  }
+
+  /// Checks that could not fail are gathered per observer; one on its own, or
+  /// any that could have failed, keeps its own line and arithmetic.
+  #[test]
+  fn checks_that_cannot_fail_share_a_line() {
+    let seeker = "Seeker".to_string();
+    let (a, b, c) = ("Alpha".to_string(), "Bravo".to_string(), "Charlie".to_string());
+    let check = |target: &str| detection_roll_effect("Seeker", target, 7, 9, 16, "contact", &[]);
+    let effects = Entities::sure_check_effects(&[
+      (&seeker, &a, 9, check("Alpha")),
+      (&seeker, &b, 7, check("Bravo")),
+      (&c, &a, 8, detection_roll_effect("Charlie", "Alpha", 3, 8, 11, "contact", &[])),
+    ]);
+    assert_eq!(effects.len(), 2, "{effects:?}");
+    assert_eq!(effects[0].rendered(), "Seeker sensor checks on Alpha and Bravo: contact.");
+    assert!(
+      matches!(&effects[0], EffectMsg::Message { roll: Some(roll), succeeded: Some(true), .. }
+        if roll.contains("lowest DM +7") && roll.contains("at least 9")),
+      "{:?}",
+      effects[0]
+    );
+    assert_eq!(effects[1].rendered(), "Charlie sensor check on Alpha: contact.");
   }
 
   /// A captain can put the sensop's attention on one particular check.

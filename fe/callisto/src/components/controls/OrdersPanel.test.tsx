@@ -17,6 +17,7 @@ import { OrdersPanel } from "components/controls/OrdersPanel";
 import { store } from "state/store";
 import { setEntities } from "state/serverSlice";
 import { setFleetCommand, setSquadronCommand } from "state/userSlice";
+import { setFocusSquadron } from "state/uiSlice";
 import { Ship } from "lib/entities";
 
 let container: HTMLDivElement;
@@ -124,5 +125,20 @@ describe("OrdersPanel", () => {
     store.dispatch(setSquadronCommand({ squadron: { team: "Blue", name: "Lance" }, flagship: "Lance 1" }));
     render();
     expect(options()).toEqual(["Squadron Lance ✓", "Lance 1", "Lance 2"]);
+  });
+
+  it("addresses the squadron picked in the roster or the view", () => {
+    store.dispatch(setFleetCommand("Blue"));
+    render();
+    const to = () => (container.querySelector('select[aria-label="Give orders to"]') as HTMLSelectElement).value;
+    expect(to()).toBe("fleet");
+    act(() => {
+      store.dispatch(setFocusSquadron({ team: "Blue", name: "Lance" }));
+    });
+    expect(to()).toBe("squadron:Lance");
+    expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Fighters first.");
+    act(() => {
+      store.dispatch(setFocusSquadron(null));
+    });
   });
 });

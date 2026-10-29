@@ -5,7 +5,8 @@ import { Ship } from "lib/entities";
 import { MAX_SQUADRON, sizeAfterMove, teamSquadrons } from "lib/squadrons";
 import { renameSquadron, setSquadron } from "lib/serverManager";
 import { TEAMS, TEAM_CSS } from "lib/teams";
-import { useAppSelector } from "state/hooks";
+import { useAppDispatch, useAppSelector } from "state/hooks";
+import { setFleetSelection, tickShips } from "state/uiSlice";
 import { entitiesSelector } from "state/serverSlice";
 
 /** The chooser's value for "no team". */
@@ -33,11 +34,24 @@ export function SquadronsPanel(args: { onlyTeam?: string | null }) {
     const unaligned = entities.ships.some((ship) => ship.team == null);
     return unaligned ? [...present, UNALIGNED] : present;
   }, [entities.ships]);
+  const dispatch = useAppDispatch();
+  // The ticks are shared with the roster and the 3D view's box-select.
+  const selected = useAppSelector((state) => state.ui.fleetSelection);
+  const setSelected = (names: string[]) => dispatch(setFleetSelection(names));
+  // Ships ticked elsewhere bring their team up with them, so a referee who
+  // boxes Red ships sees Red here; picking a team clears the ticks.
+  const selectionTeam = useMemo(() => {
+    const picked = entities.ships.filter((ship) => selected.includes(ship.name));
+    const sides = new Set(picked.map((ship) => ship.team ?? UNALIGNED));
+    return sides.size === 1 ? [...sides][0] : null;
+  }, [entities.ships, selected]);
   const [chosenTeam, setChosenTeam] = useState<string | null>(null);
-  const team = args.onlyTeam ?? (chosenTeam != null && teams.includes(chosenTeam) ? chosenTeam : teams[0] ?? UNALIGNED);
+  const team =
+    args.onlyTeam ??
+    selectionTeam ??
+    (chosenTeam != null && teams.includes(chosenTeam) ? chosenTeam : teams[0] ?? UNALIGNED);
   const teamOrNull = team === UNALIGNED ? null : team;
 
-  const [selected, setSelected] = useState<string[]>([]);
   const [chosenTarget, setTarget] = useState<string>("");
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<{ from: string; text: string } | null>(null);
@@ -63,8 +77,7 @@ export function SquadronsPanel(args: { onlyTeam?: string | null }) {
   const squadronNames = groups.flatMap((group) => (group.name == null ? [] : [group.name]));
   const target = [NEW, NONE, ...squadronNames].includes(chosenTarget) ? chosenTarget : squadronNames[0] ?? NEW;
 
-  const toggle = (names: string[], on: boolean) =>
-    setSelected((prev) => (on ? [...new Set([...prev, ...names])] : prev.filter((name) => !names.includes(name))));
+  const toggle = (names: string[], on: boolean) => dispatch(tickShips({ ships: names, on }));
 
   const move = () => {
     setProblem(null);
@@ -95,7 +108,9 @@ export function SquadronsPanel(args: { onlyTeam?: string | null }) {
     <Accordion
       id="squadrons"
       // The count says, folded, that there is something inside.
-      title={`Squadrons (${groups.filter((group) => group.name != null).length})`}
+      title={`Squadrons (${groups.filter((group) => group.name != null).length})${
+        ticked.length > 0 ? ` · ${ticked.length} ticked` : ""
+      }`}
       initialOpen={false}
       className="squadrons-panel"
     >

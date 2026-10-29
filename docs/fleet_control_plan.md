@@ -235,3 +235,279 @@ With no orders at all it is never asked. If an answer cannot be read, the squadr
 - call me on new enemies, or 25% losses.
 
 Blue won.
+
+## Phase 2e: how well orders are translated (2026-10-29)
+
+**The test.** `ai-ships/corpus/admiral_orders.json` holds 61 cases (written by `corpus/make_admiral_orders.py`). Each takes a side of a scenario: Fighter Screen, Aslan Border Clash, Fighter Swarm, Picket at the Refuelling Point, Convoy Escape or Thebus.
+- The side's ships are put in squadrons, the scenario's orders are swapped for the case's (fleet, squadron and ship), and the model is called once.
+- Each case checks the `Directive` that comes back, e.g. "Lance engages Light Fighters", "every group holds", "dodge ≥ 3", "Flag arrives at Long of CS Tarsis by round 4", "CS Hesperus has her own script, ending in escape", "`say` explains what could not be ordered".
+- Every case also checks that the answer names only squadrons, ships, designs and planets the situation gave, and that rules name only enemies.
+
+**The runner.** `cargo run --release --example admiral_eval -- --model gemini --model gemini:gemini-3.5-flash-lite --repeat 3 --out runs/x.jsonl`.
+- It writes a JSON line per call: answer, checks, tokens, cost and seconds. Then it prints the summary tables.
+- `--rescore` checks old answers against the cases as they are now, at no cost.
+- It estimates the spend before starting and stops at `--budget`.
+
+**Models.** Gemini 3.8 Flash (the default) and Gemini 3.5 Flash-Lite. Claude Haiku 5.5 could not be tested:
+- Vertex answers 429, "quota exceeded for anthropic-claude-haiku", on `global`. Sonnet gets the same answer.
+- The regional endpoints answer 404.
+- No Anthropic API key is set.
+
+**Results.** Three tries per case with the original prompt, then four with the final one (two of the four were with the last version but one). A case counts only if every check passes. Calls that failed on transport are left out of the accuracy.
+
+| Model | Prompt | Cases right | Checks right | Cost/call | Median s | p90 s |
+|---|---|---|---|---|---|---|
+| Gemini 3.8 Flash | original | 177/183 (97%) | 99.0% | $0.0031 | 2.9 | 15.8 |
+| Gemini 3.8 Flash | final | 235/240 (98%); 61/61 on the very last | 99.1% | $0.0040 | 5.5 | 21.4 |
+| Gemini 3.5 Flash-Lite | original | 127/183 (69%) | 85.8% | $0.0015 | 1.2 | 3.2 |
+| Gemini 3.5 Flash-Lite | final | 203/244 (83%) | 95.3% | $0.0013 | 1.2 | 3.5 |
+
+- **Size of a call:** about 3.8k tokens in and 170–380 out.
+- **Reliability:** in two runs of 6–8 calls at a time, 15 of 3.8 Flash's ~610 calls failed: three 40-second timeouts in a row, or a 429. The slowest answer took about 2 minutes. Flash-Lite never failed.
+- **Spend:** about $4.30 for the whole evaluation, with every rerun.
+
+By category (cases right; original prompt, then final):
+
+| Category | 3.8 Flash | Flash-Lite |
+|---|---|---|
+| plain goals | 9/9, then 11/11 | 9/9, then 12/12 |
+| hold, with a post | 15/15, then 20/20 | 10/15, then 14/20 |
+| targets (design, tonnage, name) | 27/27, then 36/36 | 18/27, then 32/36 |
+| timed arrivals | 15/15, then 17/19 | 13/15, then 17/20 |
+| burns | 12/12, then 16/16 | 10/12, then 15/16 |
+| dodge | 12/12, then 16/16 | 10/12, then 15/16 |
+| ship-level orders | 15/15, then 20/20 | 15/15, then 18/20 |
+| layered fleet + squadron + ship | 15/15, then 20/20 | 7/15, then 13/20 |
+| ambiguous (least change) | 12/12, then 15/15 | 9/12, then 8/16 |
+| cannot be expressed | 9/15, then 19/19 | 4/15, then 17/20 |
+| withdrawals | 12/12, then 16/16 | 8/12, then 16/16 |
+| tricky phrasings (the user's own among them) | 24/24, then 29/32 | 14/24, then 26/32 |
+
+**What went wrong.**
+- **3.8 Flash, original prompt:**
+  - it named an enemy not yet found (Thebus: "HMS Executor", still a blip) and burned toward her, which the executor ignores;
+  - it carried out "board CS Tarsis" and "take her alive" as attacks without saying it could not do the rest.
+- **3.8 Flash, final prompt:**
+  - twice it gave an arrival with no `mode`, so the ships did not move. `mode` is now required, and the last run had none of these;
+  - "hang back at Long range" became a hold whose post was the enemy with a 25,000 km radius. The prompt now says to `arrive` at a band.
+- **Flash-Lite:**
+  - **Scripts with no `squadron`:** 32 of its 183 original answers had one. The executor silently drops them.
+  - **Layering:** it read squadron orders as replacing the fleet's, which dropped the fleet's hold.
+  - **Copying example 1:** with Lance and Flag on the plot, it split the targets "fighters / cruiser" when nobody asked.
+  - **Our own ships as targets:** for "Support the escorts" it engaged IMS Steadfast and IMS Valiant.
+  - **Wrong field or step:** `toward` where an arrival needs `at`; `until` on the wrong step.
+  - **Wrong names:** "Kald0r", "squadron E1", "planet Valiant".
+  - **What remains:** mostly layering, needless engage limits on ambiguous orders, and holds without `goal: hold`.
+
+**Changes to the prompt and schema** (`prompt/admiral.md`, `admiral::schema`):
+- **Layering:**
+  - squadron orders add to the fleet's, and win only where the two conflict, with a one-line example;
+  - a ship's own script still carries her fleet's and squadron's orders.
+- **What cannot be expressed:** a list (boarding, taking a ship alive, aiming at drives or weapons, formations, ends the scripts cannot test). `say` must name the part not ordered.
+- **Names:** use only names the situation lists. An unidentified enemy cannot be named: say so, and ask for `new_enemies`.
+- **`until`:** it goes on the step it ends, with an example.
+- **Range:** to stand off at a range, `arrive` at a band; a post is a place, not a range.
+- **The examples** now use made-up names (Wasps, Line, Arbiter), with a note that they show only the form. This stopped Flash-Lite copying example 1.
+- **Schema:**
+  - a script's `squadron` is required (for a ship's own script, it is her squadron);
+  - movement's `mode` is required;
+  - `toward`, `away` and `thrust` are marked burn only, and `at`, `band` and `round` arrive only;
+  - rules are marked enemies only;
+  - a post works only with `goal: hold`.
+
+The executor (`fleet.rs`) is unchanged. Two orders show a real gap: "until she is destroyed", and "cover the merchants until they are gone". No `until` or `call_me_when` can test whether a ship or squadron is destroyed or has jumped. With the final prompt, 3.8 Flash says so and holds. A `gone` condition (ships or a squadron destroyed or jumped) would let the Convoy Escape escort be ordered properly. It is worth adding before Phase 5.
+
+**Recommendation: keep Gemini 3.8 Flash as the default.**
+- It gets 98–100% of cases right, and its mistakes were all closed by the prompt and schema changes.
+- Flash-Lite costs a third as much and answers in about a second. But it still gets about one order in six wrong, and its mistakes are silent: a script that does something else. Phase 2a showed that a bad order costs about 25 wins in 100.
+- At about 0.4¢ a call and a few calls a game, the saving is not worth it.
+- Watch 3.8 Flash's occasional stalls of 40 s or more. The admiral already keeps the old scripts and asks again next round when a call fails.
+
+## Phase 3 results: the fleet commander at scale (2026-10-29)
+
+Branch `fleet-ux`, off `epic-fleet-control`.
+
+### The scale test
+
+**Setup.**
+- **Scenario:** `callisto/scenarios/Scale Test - 200 Ships.json`, written by `scripts/make_scale_scenario.py`. Two fleets of 100 start 100,000 km apart. Each fleet is six squadrons: Line (2 Kinunirs, 4 Fer-de-Lances, 4 Type Ts), Escort (6 Gazelles, 6 SDBs, 4 Torpedo Boats), three wings of 20 Light Fighters, and 14 Heavy Fighters. Pass a number to the script for another size; above 100 a side its squadrons pass 20, which loading does not check, so such a file is for timing only.
+- **Timing:** `ai-ships/examples/scale.rs` plays the scenario the way the harness does, in-process, on an M3 Pro. Each side is the squadron executor with no orders, which is one network pass per squadron. The example times each part of a round, and measures the world update and the round's results as serialised for the wire.
+
+**Results at 200 ships**, rounds 1–8 (the fleets come into range in round 3 and fight from round 5):
+
+| What | Measured |
+|---|---|
+| World update (`EntityResponse`) | 185 KB at the start, 413 KB at the height of the fight; about 2 KB a ship. Serialising it takes 0.3–1 ms. |
+| … of which `contacts` | 178 KB of 393 KB: every ship lists every contact by name |
+| Round results (`Effects`), before the fix | 0.9, 2.8, 2.2 and 1.6 MB in rounds 3–6: up to 9,857 lines, about 95% of them detection lines |
+| Round results, after | 0.2, 0.3, 0.5 and 0.7 MB: 315 to 2,478 lines, now mostly combat |
+| Resolving the round (`PlayerManager::update`) | 16–38 ms |
+| AI decision, per side | 150–230 ms: about 25 ms per squadron pass, times six. A single pass of the plain network takes 25 ms. |
+| AI observation, per side | 0.3 ms before contact, then 27–52 ms |
+
+Compressed with deflate, the 413 KB update is 21 KB, and the 0.7 MB of results is 31 KB.
+
+**How it grows.**
+
+| Ships | Resolve | Observe, per side | Update | Worst round's results |
+|---|---|---|---|---|
+| 100 | 4–7 ms | 6–14 ms | 177 KB | 0.3 MB |
+| 200 | 16–38 ms | 27–52 ms | 413 KB | 0.7 MB |
+| 400 | 60–106 ms | 53–137 ms | 676 KB | 1.6 MB |
+
+**What grows with the square of the ship count:**
+- **The detection pass:** every ordered pair of ships. It is still cheap: under 40 ms in all at 200 ships.
+- **The lines it reported (fixed):** one per pair for every acquisition check, and one per pair for every change of range band. That was most of the 2.8 MB.
+- **`contacts` on the wire:** each ship carries the name of each ship it holds, so 100 against 100 is 10,000 names.
+- **The AI's engagement and exposure tables** (`ai-ships/src/observation.rs`, `tables`): an engagement both ways and a detection-odds entry for every pair of our ship and contact. That is 20,000 calculations a side at 100 a side, and it is most of the observation's 50 ms. Replacing its list scans with sets made no measurable difference; the calculations are the cost.
+- **The client, which:**
+  - wrote every ship of every world update to the console as JSON;
+  - drew every result line at once;
+  - serialised the whole UI slice, results included, to session storage on every frame of a camera move;
+  - re-rendered every ship on every frame of a camera move. Each render rebuilt the ship's label geometry and checked each ship against every team-mate's contacts.
+
+  All four are fixed (see below).
+
+### Fixes
+
+- **Detection lines, collapsed** (`callisto/src/entity.rs`): when several of an observer's contacts make the same band move, they share one line. The same goes for her acquisition checks that pass even on a 2. Any check that could have failed keeps its own line and arithmetic. Tests: `contacts_that_move_band_together_share_a_line`, `checks_that_cannot_fail_share_a_line`.
+- **Console logging** (`lib/serverManager.ts`): entities and results are written out in full only up to 40; otherwise the log gives counts.
+- **Results window** (`components/space/Effects.tsx`): at most 400 lines are drawn, with a note of how many more the filter can find.
+- **Session storage** (`state/store.ts`): a round of more than 300 results is not kept across a reload. Test: `state/store.test.ts`.
+- **3D view** (`components/space/Ships.tsx`):
+  - `Ships` and `Missiles` are memoised, so a camera move no longer re-renders them;
+  - a label's geometry arguments are kept while its text stays the same (@react-three/fiber compares `args` elements by reference);
+  - the team's detection picture is gathered once per render (`undetectedTest`, tested against `isUndetectedBy`).
+
+### What was built
+
+- **Roster** (`SquadronRoster.tsx`, in the console for the referee and a fleet commander, above Squadrons): one line per squadron, grouped by team for the referee. Each line shows:
+  - the squadron's name, in its team's colour;
+  - its ship count and hull left;
+  - under it, the AI's current step, taken from the front of the ships' `ai_report.rationale` ("step 1 of 2: engage Light Fighter; …"), or "deciding…".
+
+  Each line folds open to its ships. Each ship has a tick box, a click that opens her console, her hull and her design. The line's actions:
+  - **Select** ticks the squadron's ships for Squadrons' Move, and points the Orders panel at the squadron (`ui.focusSquadron`).
+  - **Go** puts the camera over the squadron's centre.
+- **Squadron markers** (View panel, on by default): a squadron more than 60 scene units (60,000 km) from the camera draws as one wireframe marker labelled "Lance (20)" in its team's colour. It stays the same size on screen, and the labels of that squadron's ships are hidden. Clicking a marker selects the squadron, as Select does. The referee sees every squadron's marker; anyone else sees only their own side's.
+- **Box-select** (Shift-drag in the view, for the referee and a fleet commander): ticks every ship inside the box. Shift-Ctrl or Shift-⌘ adds to the ticks. A fleet commander ticks only their own side. A referee's box keeps the team it caught most of, and the Squadrons panel switches to that team. The ticks (`ui.fleetSelection`) are now shared by the roster, the view and the Squadrons panel, whose title shows "· N ticked".
+- **Add Ship, N at once** (builder and the referee's Add Ship): a Count box. Above 1, there are also Squadron and Spacing (km, default 250) boxes. The ships are named from the name given (Lance 01, Lance 02, …), laid out five abreast around the position, then put in the squadron. A batch that would take the squadron past 20 is refused before anything is sent.
+- **Tests:**
+  - `SquadronRoster.test.tsx`;
+  - `AddShip.test.tsx`;
+  - new cases in `SquadronsPanel.test.tsx` and `OrdersPanel.test.tsx`;
+  - `lib/boxSelect.test.ts`;
+  - new cases in `lib/squadrons.test.ts` (hull share, centre, AI step, batch names, grid) and `lib/contacts.test.ts`.
+
+### For the user to check by eye
+
+Nothing here was seen in a browser. Start the backend and frontend as usual, and join **Scale Test - 200 Ships** as the referee.
+
+1. **Frame rate.**
+   - Open Chrome DevTools, then Rendering, then Frame Rendering Stats.
+   - Fly the camera (WASD, drag to look) close in, with every label showing. Then fly it zoomed out (scroll back about 100 units), with Squadron Markers on and then off.
+   - Press Next Round with the Results window open. Note the frame rate and any pause. Rounds 3 to 6 are the heavy ones.
+   - For comparison, the same on `epic-fleet-control` would show what the render fixes bought.
+2. **Roster.**
+   - The console should show "Roster (12)", with Blue and Red sections, each listing six squadrons with 2 to 20 ships and 100%.
+   - Select a squadron. Squadrons should read "· 20 ticked", and Orders "To: Squadron …".
+   - Check that Go moves the camera, and the fold shows the ships.
+   - With AI crews on both sides, play a round. Each line should show its step.
+3. **Markers.**
+   - Zoom out until the markers appear. That squadron's ship labels should disappear, and the marker should stay readable.
+   - Click a marker: the roster line should highlight, and the Orders panel should switch to it.
+   - Take Fleet Command of Blue. Only Blue's markers should show.
+4. **Box-select.**
+   - Shift-drag over part of a wing. A dashed blue box should show, and the camera must not turn.
+   - Squadrons should tick those ships. Move them into a new squadron.
+   - Shift-Ctrl-drag should add more. A plain drag should still turn the view, and the Shift speed-up of the flight keys should still work.
+5. **Builder.**
+   - Add Ship with a name, Count 10, Squadron "Wing", Spacing 250, and a team.
+   - Ten ships should appear, named "<name> 01" to "<name> 10", in two rows of five, in Wing.
+6. **Results.** After round 4 the window should end with "… more lines", and the filter chips should reach them.
+
+### Known limits and what remains
+
+- **Enemy labels stay.** Enemy squadrons get no markers: their squadrons are not ours to know. A hundred detected enemies are still a hundred labels. Grouping detected enemies by design and position, as the admiral's situation does, would fix it.
+- **Marker distance:** fixed at 60 units from the squadron's centre, not chosen by the player.
+- **Shift-drag** now belongs to box-select for the referee and a fleet commander. It used to be a faster mouse-look.
+- **Wire size.** The world update is still 0.4 MB at 200 ships, and each ship's `contacts` is about 45% of it. Two options, either of which would fix most of it:
+  - **Compression:** deflate takes the update and results about 20× smaller. Check whether the tokio-tungstenite in use (0.26) or a newer release can negotiate permessage-deflate (browsers ask for it themselves).
+  - **A smaller update:** send each player only their side's picture, which also stops it leaking to the other side.
+- **AI observation:** grows with the square of the ship count, about 50 ms a side at 100 a side and 140 ms at 200. Recommendation: build the engagement and exposure tables only for the pairs a squadron's pass is shown (at most 20 by 20), or on demand.
+- **Not measured here:**
+  - the AI service over HTTP, as opposed to in-process;
+  - the browser's own frame rate (see above).
+- **The roster:** no sort or filter yet, and the AI step shown is the first report found in the squadron.
+
+### Ten thousand missiles in flight
+
+**Setup.** The same 200-ship scenario. `SCALE_MISSILES=10000` makes `ai-ships/examples/scale.rs` put 10,000 missiles in the air before round 1: every ship fires in turn at an enemy, and the targets are spread across the enemy fleet. The fleets are 100,000 km apart, so the missiles fly for three rounds and land in rounds 4 and 5. Sides played as before (squadron executor) and idle, for the server alone.
+
+**Results:**
+
+| What | Measured |
+|---|---|
+| World update | 3.1–3.4 MB, about 310 bytes a missile: name, position, velocity, acceleration, source, target, burns and the weapon. Deflate makes it 0.3 MB. |
+| Copying and serialising it | 8–13 ms |
+| Resolving the round | 40–90 ms, against 16–38 ms without the missiles |
+| Round results, worst round, before the fix | 7.2 MB, 25,875 lines, 17,428 of them "critical hit at level N caused N damage" |
+| Round results, after | 1.5 MB, 4,655 lines, plus about 7,000 visual events: 2,010 hits and 2,010 impacts, 1,692 misses, 1,640 missiles exhausted |
+| AI observation, per side | 3–8 ms |
+| AI decision, per side (squadron executor) | 210–330 ms, against 150–230 ms without; the extra is the missile sharing, which counts what is already in flight |
+
+**At 50,000 missiles** everything grows in proportion:
+- resolving takes 130–280 ms;
+- the update is 16 MB and takes 63 ms to serialise;
+- observation takes 20 ms a side.
+
+Nothing here grows faster than the number of missiles.
+
+**Where the server's time goes.** Sampled with `sample` at 50,000 missiles, resolving is mostly each missile's guidance solve:
+- `gomez`'s trust-region solver on `computer::TargetParams`, with nalgebra's QR decomposition inside it;
+- then sorting the missiles by name on every update;
+- then hashing and serialising.
+
+Point defence is a pool per ship per round and did not show up.
+
+**In the browser** (measured in Node and jsdom, not in a browser):
+
+| What | Measured |
+|---|---|
+| Parsing the 3.1 MB update | 8 ms |
+| Parsing it and running it through the reducers (`handleMessage`) | 53–60 ms |
+| Grouping inbound salvoes (`incomingSalvoes`) | 0.25 ms per ship whose console is open |
+| Session storage | unaffected: the `server` slice, which holds the missiles, is not persisted |
+
+**Fixes, with tests:**
+- **Criticals stop at the hull left** (`callisto/src/combat.rs`, test `sustained_damage_criticals_stop_at_the_hull_left`). Sustained-damage criticals counted the whole of a hit's damage, not just the hull the ship still had. One missile could give a Light Fighter (hull 4, so a tenth is 1) fifteen criticals, and every later missile that hit her wreck gave as many again. That was almost all of the 7.2 MB.
+- **Missiles drawn as one swarm** (`components/space/Ships.tsx`, `lib/missileSwarm.ts`). Each missile used to be drawn with its own sphere, two vector lines and a drei text label. Above 300 missiles (`MISSILE_DETAIL_LIMIT`) they are now one instanced mesh, one draw call, without names or vectors.
+
+**For the user to check by eye:**
+1. Make a scenario with the missiles already in the air:
+
+   ```
+   cd ai-ships && SCALE_MISSILES=10000 SCALE_WRITE="../callisto/scenarios/Scale Test - 10000 Missiles.json" \
+     cargo run --release --example scale -- "../callisto/scenarios/Scale Test - 200 Ships.json" 1 idle
+   ```
+
+   The file is 5.5 MB and is not committed. Join it as the referee.
+2. **The swarm:** check that it draws, as red dots, and the frame rate while flying the camera.
+3. **Rounds 4 and 5:**
+   - the explosion animations, about 3,600 impacts and exhausted missiles in one round (`Explosions` in `Effects.tsx`), which is the likeliest stall left;
+   - the time from Next Round to the view settling.
+4. **Each update:** whether the 3.4 MB on every update shows as a pause.
+5. **A gunner's or sensop's console** on a ship with hundreds inbound: the Incoming board and sensor salvoes.
+
+**Recommendations:**
+1. **A salvo as one entity with a count.** The capital-ships plan already proposes `Missile.count`. A launcher's salvo flies one path, so with a count it needs one guidance solve, one wire entry and one results line ("7 of 12 hit, 31 damage") instead of twelve. Point defence already works on numbers, so it takes the count directly. This is the one change that fixes the server time, the wire size and the results together.
+2. **Meanwhile, solve each salvo's guidance once.** Group the missiles in flight by source, target and launch round, which today fly identical paths, and reuse the solution within the group.
+3. **Smaller missile entries on the wire:**
+   - send `weapon` as its kind only;
+   - drop `acceleration` where the client can derive it;
+   - name missiles with an id, not `source::target::id`;
+   - with compression, about 10×.
+4. **Per-player pictures:** a side need only see its own missiles and those it has detected.
+5. **The client:**
+   - the explosion animations want the same treatment as the swarm (above a few hundred, one instanced effect, or none);
+   - `EntitySelector` with missiles enabled lists every missile as an option.

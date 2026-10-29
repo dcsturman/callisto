@@ -57,6 +57,20 @@ export interface UISlice {
     /** How many renames this player has asked for: for the tutorial, which
      *  cannot tell a rename from names alone if it came before the step. */
     renames: number;
+    /**
+     * The ships ticked for the Squadrons panel's Move.
+     *
+     * Held here rather than in the panel so the 3D view's box-select and the
+     * roster can tick ships too: with a hundred of them, ticking one box at a
+     * time is not a way to build squadrons.
+     */
+    fleetSelection: string[];
+    /** The squadron last picked in the roster or the 3D view, which the
+     *  Orders panel then addresses. */
+    focusSquadron: { team: string | null; name: string } | null;
+    /** Whether a squadron far from the camera draws as one labelled marker
+     *  rather than a label per ship. */
+    squadronMarkers: boolean;
 }
 
 const initialState: UISlice  = {
@@ -77,6 +91,9 @@ const initialState: UISlice  = {
     scenarioDirty: false,
     scenarioSaves: 0,
     renames: 0,
+    fleetSelection: [],
+    focusSquadron: null,
+    squadronMarkers: true,
 }
 
 export const uiSlice = createSlice({
@@ -180,10 +197,26 @@ export const uiSlice = createSlice({
     resetCardOrder: (state) => {
       state.cardOrder = [];
     },
+    setFleetSelection: (state, action: PayloadAction<string[]>) => {
+      state.fleetSelection = [...new Set(action.payload)];
+    },
+    /** Tick ships on, or off, keeping the rest. */
+    tickShips: (state, action: PayloadAction<{ ships: string[]; on: boolean }>) => {
+      const { ships, on } = action.payload;
+      state.fleetSelection = on
+        ? [...new Set([...state.fleetSelection, ...ships])]
+        : state.fleetSelection.filter((name) => !ships.includes(name));
+    },
+    setFocusSquadron: (state, action: PayloadAction<{ team: string | null; name: string } | null>) => {
+      state.focusSquadron = action.payload;
+    },
+    setSquadronMarkers: (state, action: PayloadAction<boolean>) => {
+      state.squadronMarkers = action.payload;
+    },
     resetServer: () => initialState,
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, scenarioSaved, renamed, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, scenarioSaved, renamed, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, setFleetSelection, tickShips, setFocusSquadron, setSquadronMarkers, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;
