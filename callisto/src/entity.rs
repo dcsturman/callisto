@@ -6699,6 +6699,25 @@ mod tests {
     );
     assert!(side(Team::Blue).all(|ship| ship.goal == Some(crate::ship::Goal::Destroy)));
 
+    // Each carrier's air group flies in squadrons named for her, right beside
+    // her, ready for step 9 to embark them.
+    let position = |name: &str| ships.iter().find(|ship| ship.get_name() == name).unwrap().get_position();
+    for (carrier, wing, design, size) in [
+      ("Keelhaven Bastion", "Jaellemo Wing", "Heavy Fighter", 30),
+      ("Sirocco", "Wind Wing", "Light Fighter", 80),
+    ] {
+      let air_group: Vec<&Ship> = ships
+        .iter()
+        .filter(|ship| ship.squadron.as_deref().is_some_and(|squadron| squadron.starts_with(wing)))
+        .collect();
+      assert_eq!(air_group.len(), size, "{wing}");
+      for fighter in air_group {
+        assert_eq!(fighter.design.name, design, "{}", fighter.get_name());
+        let km = (fighter.get_position() - position(carrier)).magnitude() / 1000.0;
+        assert!(km < 200.0, "{} starts {km:.0} km from {carrier}", fighter.get_name());
+      }
+    }
+
     let distant_km = f64::from(crate::rules_tables::RANGE_BANDS[3]) / 1000.0;
     for attacker in side(Team::Blue) {
       for defender in side(Team::Red) {

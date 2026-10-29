@@ -295,11 +295,11 @@
       "orders": "The depot's monitor. Stay at Keelhaven and kill whatever comes within reach of the spinal and the barbettes."
     },
     {
-      "name": "Bastion A 01",
+      "name": "Bastion 1-01",
       "position": [
-        601188426.2,
-        961170.2,
-        -5572593.2
+        600566352.6,
+        979604.4,
+        -5126404.2
       ],
       "velocity": [
         0.0,
@@ -318,7 +318,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -334,11 +334,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 02",
+      "name": "Bastion 1-02",
       "position": [
-        601090528.1,
-        961170.2,
-        -5552197.8
+        600546773.0,
+        979604.4,
+        -5122325.1
       ],
       "velocity": [
         0.0,
@@ -357,7 +357,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -373,11 +373,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 03",
+      "name": "Bastion 1-03",
       "position": [
-        600992630.1,
-        961170.2,
-        -5531802.4
+        600527193.4,
+        979604.4,
+        -5118246.0
       ],
       "velocity": [
         0.0,
@@ -396,7 +396,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -412,11 +412,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 04",
+      "name": "Bastion 1-04",
       "position": [
-        600894732.0,
-        961170.2,
-        -5511407.0
+        600507613.8,
+        979604.4,
+        -5114167.0
       ],
       "velocity": [
         0.0,
@@ -435,7 +435,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -451,11 +451,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 05",
+      "name": "Bastion 1-05",
       "position": [
-        600796834.0,
-        961170.2,
-        -5491011.5
+        600488034.1,
+        979604.4,
+        -5110087.9
       ],
       "velocity": [
         0.0,
@@ -474,7 +474,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -490,11 +490,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 06",
+      "name": "Bastion 1-06",
       "position": [
-        601192502.0,
-        1059153.1,
-        -5553029.3
+        600567167.7,
+        999201.0,
+        -5122491.4
       ],
       "velocity": [
         0.0,
@@ -513,7 +513,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -529,11 +529,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 07",
+      "name": "Bastion 1-07",
       "position": [
-        601094603.9,
-        1059153.1,
-        -5532633.9
+        600547588.1,
+        999201.0,
+        -5118412.3
       ],
       "velocity": [
         0.0,
@@ -552,7 +552,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -568,11 +568,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 08",
+      "name": "Bastion 1-08",
       "position": [
-        600996705.9,
-        1059153.1,
-        -5512238.4
+        600528008.5,
+        999201.0,
+        -5114333.3
       ],
       "velocity": [
         0.0,
@@ -591,7 +591,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -607,11 +607,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 09",
+      "name": "Bastion 1-09",
       "position": [
-        600898807.9,
-        1059153.1,
-        -5491843.0
+        600508428.9,
+        999201.0,
+        -5110254.2
       ],
       "velocity": [
         0.0,
@@ -630,7 +630,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -646,11 +646,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 10",
+      "name": "Bastion 1-10",
       "position": [
-        600800909.8,
-        1059153.1,
-        -5471447.6
+        600488849.3,
+        999201.0,
+        -5106175.1
       ],
       "velocity": [
         0.0,
@@ -669,7 +669,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -685,11 +685,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 11",
+      "name": "Bastion 1-11",
       "position": [
-        601196577.8,
-        1157135.9,
-        -5533465.3
+        600567982.9,
+        1018797.6,
+        -5118578.6
       ],
       "velocity": [
         0.0,
@@ -708,7 +708,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -724,11 +724,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 12",
+      "name": "Bastion 1-12",
       "position": [
-        601098679.8,
-        1157135.9,
-        -5513069.9
+        600548403.3,
+        1018797.6,
+        -5114499.5
       ],
       "velocity": [
         0.0,
@@ -747,7 +747,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -763,11 +763,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 13",
+      "name": "Bastion 1-13",
       "position": [
-        601000781.7,
-        1157135.9,
-        -5492674.5
+        600528823.7,
+        1018797.6,
+        -5110420.5
       ],
       "velocity": [
         0.0,
@@ -786,7 +786,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -802,11 +802,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 14",
+      "name": "Bastion 1-14",
       "position": [
-        600902883.7,
-        1157135.9,
-        -5472279.0
+        600509244.1,
+        1018797.6,
+        -5106341.4
       ],
       "velocity": [
         0.0,
@@ -825,7 +825,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -841,11 +841,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion A 15",
+      "name": "Bastion 1-15",
       "position": [
-        600804985.6,
-        1157135.9,
-        -5451883.6
+        600489664.5,
+        1018797.6,
+        -5102262.3
       ],
       "velocity": [
         0.0,
@@ -864,7 +864,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion A",
+      "squadron": "Jaellemo Wing 1",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -880,11 +880,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 01",
+      "name": "Bastion 2-01",
       "position": [
-        600013649.6,
-        961170.2,
-        -5327848.1
+        600448874.9,
+        979604.4,
+        -5101929.7
       ],
       "velocity": [
         0.0,
@@ -903,7 +903,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -919,11 +919,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 02",
+      "name": "Bastion 2-02",
       "position": [
-        599915751.6,
-        961170.2,
-        -5307452.7
+        600429295.3,
+        979604.4,
+        -5097850.6
       ],
       "velocity": [
         0.0,
@@ -942,7 +942,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -958,11 +958,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 03",
+      "name": "Bastion 2-03",
       "position": [
-        599817853.6,
-        961170.2,
-        -5287057.3
+        600409715.7,
+        979604.4,
+        -5093771.5
       ],
       "velocity": [
         0.0,
@@ -981,7 +981,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -997,11 +997,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 04",
+      "name": "Bastion 2-04",
       "position": [
-        599719955.5,
-        961170.2,
-        -5266661.9
+        600390136.1,
+        979604.4,
+        -5089692.5
       ],
       "velocity": [
         0.0,
@@ -1020,7 +1020,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1036,11 +1036,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 05",
+      "name": "Bastion 2-05",
       "position": [
-        599622057.5,
-        961170.2,
-        -5246266.4
+        600370556.5,
+        979604.4,
+        -5085613.4
       ],
       "velocity": [
         0.0,
@@ -1059,7 +1059,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1075,11 +1075,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 06",
+      "name": "Bastion 2-06",
       "position": [
-        600017725.5,
-        1059153.1,
-        -5308284.2
+        600449690.1,
+        999201.0,
+        -5098016.9
       ],
       "velocity": [
         0.0,
@@ -1098,7 +1098,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1114,11 +1114,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 07",
+      "name": "Bastion 2-07",
       "position": [
-        599919827.4,
-        1059153.1,
-        -5287888.7
+        600430110.5,
+        999201.0,
+        -5093937.8
       ],
       "velocity": [
         0.0,
@@ -1137,7 +1137,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1153,11 +1153,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 08",
+      "name": "Bastion 2-08",
       "position": [
-        599821929.4,
-        1059153.1,
-        -5267493.3
+        600410530.9,
+        999201.0,
+        -5089858.7
       ],
       "velocity": [
         0.0,
@@ -1176,7 +1176,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1192,11 +1192,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 09",
+      "name": "Bastion 2-09",
       "position": [
-        599724031.3,
-        1059153.1,
-        -5247097.9
+        600390951.3,
+        999201.0,
+        -5085779.7
       ],
       "velocity": [
         0.0,
@@ -1215,7 +1215,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1231,11 +1231,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 10",
+      "name": "Bastion 2-10",
       "position": [
-        599626133.3,
-        1059153.1,
-        -5226702.5
+        600371371.7,
+        999201.0,
+        -5081700.6
       ],
       "velocity": [
         0.0,
@@ -1254,7 +1254,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1270,11 +1270,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 11",
+      "name": "Bastion 2-11",
       "position": [
-        600021801.3,
-        1157135.9,
-        -5288720.2
+        600450505.3,
+        1018797.6,
+        -5094104.1
       ],
       "velocity": [
         0.0,
@@ -1293,7 +1293,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1309,11 +1309,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 12",
+      "name": "Bastion 2-12",
       "position": [
-        599923903.3,
-        1157135.9,
-        -5268324.8
+        600430925.6,
+        1018797.6,
+        -5090025.0
       ],
       "velocity": [
         0.0,
@@ -1332,7 +1332,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1348,11 +1348,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 13",
+      "name": "Bastion 2-13",
       "position": [
-        599826005.2,
-        1157135.9,
-        -5247929.4
+        600411346.0,
+        1018797.6,
+        -5085946.0
       ],
       "velocity": [
         0.0,
@@ -1371,7 +1371,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1387,11 +1387,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 14",
+      "name": "Bastion 2-14",
       "position": [
-        599728107.2,
-        1157135.9,
-        -5227533.9
+        600391766.4,
+        1018797.6,
+        -5081866.9
       ],
       "velocity": [
         0.0,
@@ -1410,7 +1410,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -1426,11 +1426,11 @@
       "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
     },
     {
-      "name": "Bastion B 15",
+      "name": "Bastion 2-15",
       "position": [
-        599630209.1,
-        1157135.9,
-        -5207138.5
+        600372186.8,
+        1018797.6,
+        -5077787.8
       ],
       "velocity": [
         0.0,
@@ -1449,7 +1449,7 @@
       ],
       "design": "Heavy Fighter",
       "team": "Red",
-      "squadron": "Bastion B",
+      "squadron": "Jaellemo Wing 2",
       "goal": "hold",
       "post": "Keelhaven",
       "crew": {
@@ -5345,9 +5345,9 @@
     {
       "name": "Gale 01",
       "position": [
-        581680522.4,
-        19945196.8,
-        -94797776.7
+        580078929.8,
+        20014697.4,
+        -96013381.7
       ],
       "velocity": [
         3996.8,
@@ -5366,7 +5366,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5382,9 +5382,9 @@
     {
       "name": "Gale 02",
       "position": [
-        581582624.4,
-        19945196.8,
-        -94777381.2
+        580069140.0,
+        20014697.4,
+        -96011342.2
       ],
       "velocity": [
         3996.8,
@@ -5403,7 +5403,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5419,9 +5419,9 @@
     {
       "name": "Gale 03",
       "position": [
-        581484726.4,
-        19945196.8,
-        -94756985.8
+        580059350.2,
+        20014697.4,
+        -96009302.7
       ],
       "velocity": [
         3996.8,
@@ -5440,7 +5440,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5456,9 +5456,9 @@
     {
       "name": "Gale 04",
       "position": [
-        581386828.3,
-        19945196.8,
-        -94736590.4
+        580049560.4,
+        20014697.4,
+        -96007263.1
       ],
       "velocity": [
         3996.8,
@@ -5477,7 +5477,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5493,9 +5493,9 @@
     {
       "name": "Gale 05",
       "position": [
-        581288930.3,
-        19945196.8,
-        -94716195.0
+        580039770.6,
+        20014697.4,
+        -96005223.6
       ],
       "velocity": [
         3996.8,
@@ -5514,7 +5514,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5530,9 +5530,9 @@
     {
       "name": "Gale 06",
       "position": [
-        581684598.3,
-        20043179.7,
-        -94778212.7
+        580079337.4,
+        20024495.7,
+        -96011425.3
       ],
       "velocity": [
         3996.8,
@@ -5551,7 +5551,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5567,9 +5567,9 @@
     {
       "name": "Gale 07",
       "position": [
-        581586700.2,
-        20043179.7,
-        -94757817.3
+        580069547.6,
+        20024495.7,
+        -96009385.8
       ],
       "velocity": [
         3996.8,
@@ -5588,7 +5588,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5604,9 +5604,9 @@
     {
       "name": "Gale 08",
       "position": [
-        581488802.2,
-        20043179.7,
-        -94737421.9
+        580059757.8,
+        20024495.7,
+        -96007346.3
       ],
       "velocity": [
         3996.8,
@@ -5625,7 +5625,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5641,9 +5641,9 @@
     {
       "name": "Gale 09",
       "position": [
-        581390904.1,
-        20043179.7,
-        -94717026.4
+        580049968.0,
+        20024495.7,
+        -96005306.7
       ],
       "velocity": [
         3996.8,
@@ -5662,7 +5662,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5678,9 +5678,9 @@
     {
       "name": "Gale 10",
       "position": [
-        581293006.1,
-        20043179.7,
-        -94696631.0
+        580040178.2,
+        20024495.7,
+        -96003267.2
       ],
       "velocity": [
         3996.8,
@@ -5699,7 +5699,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5715,9 +5715,9 @@
     {
       "name": "Gale 11",
       "position": [
-        581688674.1,
-        20141162.5,
-        -94758648.7
+        580079745.0,
+        20034294.0,
+        -96009469.0
       ],
       "velocity": [
         3996.8,
@@ -5736,7 +5736,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5752,9 +5752,9 @@
     {
       "name": "Gale 12",
       "position": [
-        581590776.0,
-        20141162.5,
-        -94738253.3
+        580069955.2,
+        20034294.0,
+        -96007429.4
       ],
       "velocity": [
         3996.8,
@@ -5773,7 +5773,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5789,9 +5789,9 @@
     {
       "name": "Gale 13",
       "position": [
-        581492878.0,
-        20141162.5,
-        -94717857.9
+        580060165.4,
+        20034294.0,
+        -96005389.9
       ],
       "velocity": [
         3996.8,
@@ -5810,7 +5810,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5826,9 +5826,9 @@
     {
       "name": "Gale 14",
       "position": [
-        581394980.0,
-        20141162.5,
-        -94697462.5
+        580050375.6,
+        20034294.0,
+        -96003350.3
       ],
       "velocity": [
         3996.8,
@@ -5847,7 +5847,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5863,9 +5863,9 @@
     {
       "name": "Gale 15",
       "position": [
-        581297081.9,
-        20141162.5,
-        -94677067.0
+        580040585.8,
+        20034294.0,
+        -96001310.8
       ],
       "velocity": [
         3996.8,
@@ -5884,7 +5884,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5900,9 +5900,9 @@
     {
       "name": "Gale 16",
       "position": [
-        581692749.9,
-        20239145.4,
-        -94739084.8
+        580080152.6,
+        20044092.3,
+        -96007512.6
       ],
       "velocity": [
         3996.8,
@@ -5921,7 +5921,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5937,9 +5937,9 @@
     {
       "name": "Gale 17",
       "position": [
-        581594851.9,
-        20239145.4,
-        -94718689.4
+        580070362.8,
+        20044092.3,
+        -96005473.0
       ],
       "velocity": [
         3996.8,
@@ -5958,7 +5958,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -5974,9 +5974,9 @@
     {
       "name": "Gale 18",
       "position": [
-        581496953.8,
-        20239145.4,
-        -94698293.9
+        580060572.9,
+        20044092.3,
+        -96003433.5
       ],
       "velocity": [
         3996.8,
@@ -5995,7 +5995,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6011,9 +6011,9 @@
     {
       "name": "Gale 19",
       "position": [
-        581399055.8,
-        20239145.4,
-        -94677898.5
+        580050783.1,
+        20044092.3,
+        -96001393.9
       ],
       "velocity": [
         3996.8,
@@ -6032,7 +6032,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6048,9 +6048,9 @@
     {
       "name": "Gale 20",
       "position": [
-        581301157.7,
-        20239145.4,
-        -94657503.1
+        580040993.3,
+        20044092.3,
+        -95999354.4
       ],
       "velocity": [
         3996.8,
@@ -6069,7 +6069,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Gale",
+      "squadron": "Wind Wing 1",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6085,9 +6085,9 @@
     {
       "name": "Squall 01",
       "position": [
-        579330969.4,
-        19945196.8,
-        -94308286.5
+        579961452.2,
+        20014697.4,
+        -95988907.2
       ],
       "velocity": [
         3996.8,
@@ -6106,7 +6106,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6122,9 +6122,9 @@
     {
       "name": "Squall 02",
       "position": [
-        579233071.4,
-        19945196.8,
-        -94287891.0
+        579951662.4,
+        20014697.4,
+        -95986867.7
       ],
       "velocity": [
         3996.8,
@@ -6143,7 +6143,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6159,9 +6159,9 @@
     {
       "name": "Squall 03",
       "position": [
-        579135173.3,
-        19945196.8,
-        -94267495.6
+        579941872.5,
+        20014697.4,
+        -95984828.2
       ],
       "velocity": [
         3996.8,
@@ -6180,7 +6180,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6196,9 +6196,9 @@
     {
       "name": "Squall 04",
       "position": [
-        579037275.3,
-        19945196.8,
-        -94247100.2
+        579932082.7,
+        20014697.4,
+        -95982788.6
       ],
       "velocity": [
         3996.8,
@@ -6217,7 +6217,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6233,9 +6233,9 @@
     {
       "name": "Squall 05",
       "position": [
-        578939377.3,
-        19945196.8,
-        -94226704.8
+        579922292.9,
+        20014697.4,
+        -95980749.1
       ],
       "velocity": [
         3996.8,
@@ -6254,7 +6254,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6270,9 +6270,9 @@
     {
       "name": "Squall 06",
       "position": [
-        579335045.3,
-        20043179.7,
-        -94288722.5
+        579961859.7,
+        20024495.7,
+        -95986950.8
       ],
       "velocity": [
         3996.8,
@@ -6291,7 +6291,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6307,9 +6307,9 @@
     {
       "name": "Squall 07",
       "position": [
-        579237147.2,
-        20043179.7,
-        -94268327.1
+        579952069.9,
+        20024495.7,
+        -95984911.3
       ],
       "velocity": [
         3996.8,
@@ -6328,7 +6328,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6344,9 +6344,9 @@
     {
       "name": "Squall 08",
       "position": [
-        579139249.2,
-        20043179.7,
-        -94247931.6
+        579942280.1,
+        20024495.7,
+        -95982871.8
       ],
       "velocity": [
         3996.8,
@@ -6365,7 +6365,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6381,9 +6381,9 @@
     {
       "name": "Squall 09",
       "position": [
-        579041351.1,
-        20043179.7,
-        -94227536.2
+        579932490.3,
+        20024495.7,
+        -95980832.2
       ],
       "velocity": [
         3996.8,
@@ -6402,7 +6402,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6418,9 +6418,9 @@
     {
       "name": "Squall 10",
       "position": [
-        578943453.1,
-        20043179.7,
-        -94207140.8
+        579922700.5,
+        20024495.7,
+        -95978792.7
       ],
       "velocity": [
         3996.8,
@@ -6439,7 +6439,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6455,9 +6455,9 @@
     {
       "name": "Squall 11",
       "position": [
-        579339121.1,
-        20141162.5,
-        -94269158.5
+        579962267.3,
+        20034294.0,
+        -95984994.4
       ],
       "velocity": [
         3996.8,
@@ -6476,7 +6476,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6492,9 +6492,9 @@
     {
       "name": "Squall 12",
       "position": [
-        579241223.0,
-        20141162.5,
-        -94248763.1
+        579952477.5,
+        20034294.0,
+        -95982954.9
       ],
       "velocity": [
         3996.8,
@@ -6513,7 +6513,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6529,9 +6529,9 @@
     {
       "name": "Squall 13",
       "position": [
-        579143325.0,
-        20141162.5,
-        -94228367.7
+        579942687.7,
+        20034294.0,
+        -95980915.4
       ],
       "velocity": [
         3996.8,
@@ -6550,7 +6550,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6566,9 +6566,9 @@
     {
       "name": "Squall 14",
       "position": [
-        579045427.0,
-        20141162.5,
-        -94207972.3
+        579932897.9,
+        20034294.0,
+        -95978875.8
       ],
       "velocity": [
         3996.8,
@@ -6587,7 +6587,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6603,9 +6603,9 @@
     {
       "name": "Squall 15",
       "position": [
-        578947528.9,
-        20141162.5,
-        -94187576.8
+        579923108.1,
+        20034294.0,
+        -95976836.3
       ],
       "velocity": [
         3996.8,
@@ -6624,7 +6624,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6640,9 +6640,9 @@
     {
       "name": "Squall 16",
       "position": [
-        579343196.9,
-        20239145.4,
-        -94249594.6
+        579962674.9,
+        20044092.3,
+        -95983038.0
       ],
       "velocity": [
         3996.8,
@@ -6661,7 +6661,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6677,9 +6677,9 @@
     {
       "name": "Squall 17",
       "position": [
-        579245298.9,
-        20239145.4,
-        -94229199.1
+        579952885.1,
+        20044092.3,
+        -95980998.5
       ],
       "velocity": [
         3996.8,
@@ -6698,7 +6698,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6714,9 +6714,9 @@
     {
       "name": "Squall 18",
       "position": [
-        579147400.8,
-        20239145.4,
-        -94208803.7
+        579943095.3,
+        20044092.3,
+        -95978959.0
       ],
       "velocity": [
         3996.8,
@@ -6735,7 +6735,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6751,9 +6751,9 @@
     {
       "name": "Squall 19",
       "position": [
-        579049502.8,
-        20239145.4,
-        -94188408.3
+        579933305.5,
+        20044092.3,
+        -95976919.4
       ],
       "velocity": [
         3996.8,
@@ -6772,7 +6772,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6788,9 +6788,9 @@
     {
       "name": "Squall 20",
       "position": [
-        578951604.7,
-        20239145.4,
-        -94168012.9
+        579923515.7,
+        20044092.3,
+        -95974879.9
       ],
       "velocity": [
         3996.8,
@@ -6809,7 +6809,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Squall",
+      "squadron": "Wind Wing 2",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6825,9 +6825,9 @@
     {
       "name": "Tempest 01",
       "position": [
-        581647915.8,
-        19161334.0,
-        -94954288.4
+        580076484.3,
+        19955907.7,
+        -96025120.1
       ],
       "velocity": [
         3996.8,
@@ -6846,7 +6846,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6862,9 +6862,9 @@
     {
       "name": "Tempest 02",
       "position": [
-        581550017.8,
-        19161334.0,
-        -94933892.9
+        580066694.5,
+        19955907.7,
+        -96023080.6
       ],
       "velocity": [
         3996.8,
@@ -6883,7 +6883,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6899,9 +6899,9 @@
     {
       "name": "Tempest 03",
       "position": [
-        581452119.7,
-        19161334.0,
-        -94913497.5
+        580056904.7,
+        19955907.7,
+        -96021041.0
       ],
       "velocity": [
         3996.8,
@@ -6920,7 +6920,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6936,9 +6936,9 @@
     {
       "name": "Tempest 04",
       "position": [
-        581354221.7,
-        19161334.0,
-        -94893102.1
+        580047114.9,
+        19955907.7,
+        -96019001.5
       ],
       "velocity": [
         3996.8,
@@ -6957,7 +6957,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -6973,9 +6973,9 @@
     {
       "name": "Tempest 05",
       "position": [
-        581256323.7,
-        19161334.0,
-        -94872706.7
+        580037325.1,
+        19955907.7,
+        -96016962.0
       ],
       "velocity": [
         3996.8,
@@ -6994,7 +6994,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7010,9 +7010,9 @@
     {
       "name": "Tempest 06",
       "position": [
-        581651991.7,
-        19259316.9,
-        -94934724.4
+        580076891.9,
+        19965706.0,
+        -96023163.7
       ],
       "velocity": [
         3996.8,
@@ -7031,7 +7031,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7047,9 +7047,9 @@
     {
       "name": "Tempest 07",
       "position": [
-        581554093.6,
-        19259316.9,
-        -94914329.0
+        580067102.1,
+        19965706.0,
+        -96021124.2
       ],
       "velocity": [
         3996.8,
@@ -7068,7 +7068,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7084,9 +7084,9 @@
     {
       "name": "Tempest 08",
       "position": [
-        581456195.6,
-        19259316.9,
-        -94893933.6
+        580057312.3,
+        19965706.0,
+        -96019084.6
       ],
       "velocity": [
         3996.8,
@@ -7105,7 +7105,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7121,9 +7121,9 @@
     {
       "name": "Tempest 09",
       "position": [
-        581358297.5,
-        19259316.9,
-        -94873538.1
+        580047522.5,
+        19965706.0,
+        -96017045.1
       ],
       "velocity": [
         3996.8,
@@ -7142,7 +7142,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7158,9 +7158,9 @@
     {
       "name": "Tempest 10",
       "position": [
-        581260399.5,
-        19259316.9,
-        -94853142.7
+        580037732.7,
+        19965706.0,
+        -96015005.6
       ],
       "velocity": [
         3996.8,
@@ -7179,7 +7179,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7195,9 +7195,9 @@
     {
       "name": "Tempest 11",
       "position": [
-        581656067.5,
-        19357299.7,
-        -94915160.4
+        580077299.5,
+        19975504.3,
+        -96021207.3
       ],
       "velocity": [
         3996.8,
@@ -7216,7 +7216,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7232,9 +7232,9 @@
     {
       "name": "Tempest 12",
       "position": [
-        581558169.4,
-        19357299.7,
-        -94894765.0
+        580067509.7,
+        19975504.3,
+        -96019167.8
       ],
       "velocity": [
         3996.8,
@@ -7253,7 +7253,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7269,9 +7269,9 @@
     {
       "name": "Tempest 13",
       "position": [
-        581460271.4,
-        19357299.7,
-        -94874369.6
+        580057719.9,
+        19975504.3,
+        -96017128.2
       ],
       "velocity": [
         3996.8,
@@ -7290,7 +7290,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7306,9 +7306,9 @@
     {
       "name": "Tempest 14",
       "position": [
-        581362373.4,
-        19357299.7,
-        -94853974.2
+        580047930.1,
+        19975504.3,
+        -96015088.7
       ],
       "velocity": [
         3996.8,
@@ -7327,7 +7327,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7343,9 +7343,9 @@
     {
       "name": "Tempest 15",
       "position": [
-        581264475.3,
-        19357299.7,
-        -94833578.7
+        580038140.3,
+        19975504.3,
+        -96013049.2
       ],
       "velocity": [
         3996.8,
@@ -7364,7 +7364,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7380,9 +7380,9 @@
     {
       "name": "Tempest 16",
       "position": [
-        581660143.3,
-        19455282.6,
-        -94895596.5
+        580077707.1,
+        19985302.6,
+        -96019250.9
       ],
       "velocity": [
         3996.8,
@@ -7401,7 +7401,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7417,9 +7417,9 @@
     {
       "name": "Tempest 17",
       "position": [
-        581562245.3,
-        19455282.6,
-        -94875201.1
+        580067917.3,
+        19985302.6,
+        -96017211.4
       ],
       "velocity": [
         3996.8,
@@ -7438,7 +7438,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7454,9 +7454,9 @@
     {
       "name": "Tempest 18",
       "position": [
-        581464347.2,
-        19455282.6,
-        -94854805.6
+        580058127.5,
+        19985302.6,
+        -96015171.8
       ],
       "velocity": [
         3996.8,
@@ -7475,7 +7475,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7491,9 +7491,9 @@
     {
       "name": "Tempest 19",
       "position": [
-        581366449.2,
-        19455282.6,
-        -94834410.2
+        580048337.6,
+        19985302.6,
+        -96013132.3
       ],
       "velocity": [
         3996.8,
@@ -7512,7 +7512,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7528,9 +7528,9 @@
     {
       "name": "Tempest 20",
       "position": [
-        581268551.1,
-        19455282.6,
-        -94814014.8
+        580038547.8,
+        19985302.6,
+        -96011092.8
       ],
       "velocity": [
         3996.8,
@@ -7549,7 +7549,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Tempest",
+      "squadron": "Wind Wing 3",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7565,9 +7565,9 @@
     {
       "name": "Zephyr 01",
       "position": [
-        579298362.8,
-        19161334.0,
-        -94464798.2
+        579959006.7,
+        19955907.7,
+        -96000645.6
       ],
       "velocity": [
         3996.8,
@@ -7586,7 +7586,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7602,9 +7602,9 @@
     {
       "name": "Zephyr 02",
       "position": [
-        579200464.8,
-        19161334.0,
-        -94444402.7
+        579949216.9,
+        19955907.7,
+        -95998606.1
       ],
       "velocity": [
         3996.8,
@@ -7623,7 +7623,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7639,9 +7639,9 @@
     {
       "name": "Zephyr 03",
       "position": [
-        579102566.7,
-        19161334.0,
-        -94424007.3
+        579939427.1,
+        19955907.7,
+        -95996566.5
       ],
       "velocity": [
         3996.8,
@@ -7660,7 +7660,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7676,9 +7676,9 @@
     {
       "name": "Zephyr 04",
       "position": [
-        579004668.7,
-        19161334.0,
-        -94403611.9
+        579929637.2,
+        19955907.7,
+        -95994527.0
       ],
       "velocity": [
         3996.8,
@@ -7697,7 +7697,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7713,9 +7713,9 @@
     {
       "name": "Zephyr 05",
       "position": [
-        578906770.7,
-        19161334.0,
-        -94383216.5
+        579919847.4,
+        19955907.7,
+        -95992487.4
       ],
       "velocity": [
         3996.8,
@@ -7734,7 +7734,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7750,9 +7750,9 @@
     {
       "name": "Zephyr 06",
       "position": [
-        579302438.7,
-        19259316.9,
-        -94445234.2
+        579959414.2,
+        19965706.0,
+        -95998689.2
       ],
       "velocity": [
         3996.8,
@@ -7771,7 +7771,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7787,9 +7787,9 @@
     {
       "name": "Zephyr 07",
       "position": [
-        579204540.6,
-        19259316.9,
-        -94424838.8
+        579949624.4,
+        19965706.0,
+        -95996649.7
       ],
       "velocity": [
         3996.8,
@@ -7808,7 +7808,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7824,9 +7824,9 @@
     {
       "name": "Zephyr 08",
       "position": [
-        579106642.6,
-        19259316.9,
-        -94404443.4
+        579939834.6,
+        19965706.0,
+        -95994610.1
       ],
       "velocity": [
         3996.8,
@@ -7845,7 +7845,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7861,9 +7861,9 @@
     {
       "name": "Zephyr 09",
       "position": [
-        579008744.5,
-        19259316.9,
-        -94384047.9
+        579930044.8,
+        19965706.0,
+        -95992570.6
       ],
       "velocity": [
         3996.8,
@@ -7882,7 +7882,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7898,9 +7898,9 @@
     {
       "name": "Zephyr 10",
       "position": [
-        578910846.5,
-        19259316.9,
-        -94363652.5
+        579920255.0,
+        19965706.0,
+        -95990531.0
       ],
       "velocity": [
         3996.8,
@@ -7919,7 +7919,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7935,9 +7935,9 @@
     {
       "name": "Zephyr 11",
       "position": [
-        579306514.5,
-        19357299.7,
-        -94425670.2
+        579959821.8,
+        19975504.3,
+        -95996732.8
       ],
       "velocity": [
         3996.8,
@@ -7956,7 +7956,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -7972,9 +7972,9 @@
     {
       "name": "Zephyr 12",
       "position": [
-        579208616.4,
-        19357299.7,
-        -94405274.8
+        579950032.0,
+        19975504.3,
+        -95994693.3
       ],
       "velocity": [
         3996.8,
@@ -7993,7 +7993,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8009,9 +8009,9 @@
     {
       "name": "Zephyr 13",
       "position": [
-        579110718.4,
-        19357299.7,
-        -94384879.4
+        579940242.2,
+        19975504.3,
+        -95992653.7
       ],
       "velocity": [
         3996.8,
@@ -8030,7 +8030,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8046,9 +8046,9 @@
     {
       "name": "Zephyr 14",
       "position": [
-        579012820.4,
-        19357299.7,
-        -94364484.0
+        579930452.4,
+        19975504.3,
+        -95990614.2
       ],
       "velocity": [
         3996.8,
@@ -8067,7 +8067,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8083,9 +8083,9 @@
     {
       "name": "Zephyr 15",
       "position": [
-        578914922.3,
-        19357299.7,
-        -94344088.5
+        579920662.6,
+        19975504.3,
+        -95988574.7
       ],
       "velocity": [
         3996.8,
@@ -8104,7 +8104,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8120,9 +8120,9 @@
     {
       "name": "Zephyr 16",
       "position": [
-        579310590.3,
-        19455282.6,
-        -94406106.3
+        579960229.4,
+        19985302.6,
+        -95994776.4
       ],
       "velocity": [
         3996.8,
@@ -8141,7 +8141,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8157,9 +8157,9 @@
     {
       "name": "Zephyr 17",
       "position": [
-        579212692.3,
-        19455282.6,
-        -94385710.8
+        579950439.6,
+        19985302.6,
+        -95992736.9
       ],
       "velocity": [
         3996.8,
@@ -8178,7 +8178,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8194,9 +8194,9 @@
     {
       "name": "Zephyr 18",
       "position": [
-        579114794.2,
-        19455282.6,
-        -94365315.4
+        579940649.8,
+        19985302.6,
+        -95990697.3
       ],
       "velocity": [
         3996.8,
@@ -8215,7 +8215,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8231,9 +8231,9 @@
     {
       "name": "Zephyr 19",
       "position": [
-        579016896.2,
-        19455282.6,
-        -94344920.0
+        579930860.0,
+        19985302.6,
+        -95988657.8
       ],
       "velocity": [
         3996.8,
@@ -8252,7 +8252,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
@@ -8268,9 +8268,9 @@
     {
       "name": "Zephyr 20",
       "position": [
-        578918998.1,
-        19455282.6,
-        -94324524.6
+        579921070.2,
+        19985302.6,
+        -95986618.3
       ],
       "velocity": [
         3996.8,
@@ -8289,7 +8289,7 @@
       ],
       "design": "Light Fighter",
       "team": "Blue",
-      "squadron": "Zephyr",
+      "squadron": "Wind Wing 4",
       "goal": "destroy",
       "crew": {
         "pilot": 3,
