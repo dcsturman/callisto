@@ -5,13 +5,14 @@ This FAQ gives additional detail on the state of the Callisto project.
 ## The big one: no capital ships
 
 **Callisto supports hulls up to 5,000 tons.** Traveller goes to 1,000,000, and closing that gap is a
-substantial piece of work rather than a few missing stats.  Spinal mounts block it; weapon batteries, the
-other half of the problem, are now in:
+substantial piece of work rather than a few missing stats.  The two weapons problems, spinal mounts and
+weapon batteries, are now both in; no shipped design carries a spinal yet, and the large-ship critical
+hit rules are still to come:
 
-* **Spinal mounts.** There is no such mount in Callisto at all.  They are not simply a bigger bay: a spinal
-  weapon carries a x1,000 damage multiple, scales its damage dice with its own tonnage, takes a Hardpoint per
-  100 tons, cannot exceed half its ship's displacement, and suffers escalating penalties against small or
-  nearby targets.
+* **Spinal mounts** are supported: a design gives a weapon the mount `{"Spinal": 3}`, a multiple of its
+  type's Base Size, and it has the book's x1,000 damage multiple, dice and Power by the multiple, a Hardpoint
+  per 100 tons, the half-hull limit, and the penalties against small or nearby targets.  See *Weapons*
+  below.
 * **Weapon batteries** — grouping many identical turrets, barbettes or bays so they are aimed as one weapon
   — **are** supported: a design gives a weapon entry a `count`, and it becomes batteries of up to 4, 8, 16 or
   32 mounts by hull size (Imperial Navy p. 113), each with one gunner and one target.  See *Weapons* below.
@@ -39,6 +40,7 @@ Everything below is a smaller deviation within the tonnage we do support.
 * Weapons:
   * Supported: beam and pulse lasers, missiles, torpedoes, sandcasters, particle beams, fusion guns, plasma
     guns, railguns, meson guns, mass drivers, ion cannons, repulsors and point defence laser batteries.
+  * Spinal mounts: mass drivers, mesons, particle accelerators and railguns (High Guard pp. 34-36).
   * Damage, range, armour penetration and hit modifiers depend on the **mount** as much as the weapon -- a
     railgun reaches Short from a turret but Medium from a barbette, and a particle beam only reaches Distant
     out of a large bay.
@@ -455,6 +457,91 @@ mount's shot can draw a cloud while the target has any to throw, as that many si
 A battery is one weapon, so a Weapons critical of severity 2 or more that picks it switches all of it off,
 as it would a single mount. High Guard's large-ship tables, which take a percentage of a battery, are still
 to come.
+
+#### Addition — spinal mounts
+A design gives a weapon the mount `{"Spinal": 3}`: one weapon the length of the ship, a whole multiple of
+its type's Base Size (HG pp. 34-35). Mass drivers, mesons, particle accelerators and railguns come as
+spinals, and nothing else does. Its damage dice and Power are the table's figures times the multiple, so a
+3× meson is 18D and draws 3,000 Power; its range and traits are the type's; its damage multiple is 1,000
+(HG p. 29). A spinal is always a single weapon with one gunner and never a battery; an entry with a
+`count` is that many spinals, which the book allows but calls rare (HG p. 35).
+
+#### Rule enforced — a spinal is sized by its multiple and its TL
+Its tons are the Base Size times the multiple, less 10%, 15% or 20% for building it one, two or three TLs
+above the weapon's own (HG p. 35, Spinal Mounts Improvement): a TL15 3× meson is 18,000 tons, the
+Wind-class's (HG p. 266). It takes a Hardpoint per 100 tons, and it may not be bigger than its type's
+largest or than half the ship (HG p. 34). A design that breaks either, or carries a spinal below its
+weapon's TL, is refused when it loads, and Add Ship refuses such a ship.
+- **Decision — the weapon's TL is the design's unless stated.** Published ships often carry an older
+  spinal: the Azhanti High Lightning is a TL14 hull with a TL12 particle spinal (HG p. 258, as the HG
+  FAQ corrects it). `{"Spinal": {"multiple": 2, "tl": 12}}` says so. The TL only sets the tonnage; the
+  weapon fires the same at any TL.
+
+#### Rule enforced — spinals struggle against small and close ships
+- **Size:** DM-4 against a ship of 10,000 tons or less, DM-8 against 5,000 or less (HG p. 34), in a
+  shot's breakdown as "small target".
+- **Under 2,000 tons:** a spinal "cannot attack targets of less than 2,000 tons unless they are
+  stationary" (HG p. 34). The gunner is told before anything is spent, and the gunner's card does not
+  offer the shot. A target that is stationary takes the DM-8.
+- **Close range:** the Spinal Weapon Range Adjustments, which grow with the *firing* ship's size (HG
+  p. 35): from DM-1 at Short on a ship under 10,000 tons to DM-10 at Adjacent on one over 250,000. The
+  table's columns meet at 50,000 and 250,000 tons; a ship of exactly that size takes the smaller column.
+- **No facing:** a spinal fires at any bearing, like any other weapon (Companion p. 169). Its
+  clumsiness is these DMs.
+
+#### Interpretation — "stationary" means she held still last round
+HG never says what stationary is, and in Newtonian space nothing is at rest. A ship under 2,000 tons is
+open to a spinal if, in the last round flown, she spent no Thrust and took no evasive action (a pilot
+holding Thrust back to dodge). A ship drifting with dead drives, or simply holding still, can be hit. A
+ship fresh from a scenario has not yet flown a round, so she has not held still. "Caught in the blast by
+accident" is not modelled: there is no splash damage.
+
+#### Interpretation — the close-range table by distance, not by band
+Callisto folds Adjacent and Close into Short (see *Point Defence reaches one band, then two*), but
+distance is continuous, so the spinal table uses the Core Rulebook's own limits: Adjacent under 1 km,
+Close to 10 km, Short beyond. Only spinal fire looks at these.
+
+#### Rule enforced — particle and railgun spinals lose a share to armour
+"The damage dealt by a particle spinal mount is reduced by 3% per point of armour ... before applying the
+Damage Multiple" (HG p. 36), and a railgun's by 2%. Taken with the ×1,000 in one step, so nothing is
+rounded away first. Armour 34 stops a particle spinal entirely. A meson spinal ignores all armour (HG
+p. 35); meson screens work against it as normal.
+- **Interpretation — a railgun spinal has AP 20 and the 2% rule.** The table gives it AP 20 and the text
+  2% a point, without saying how they combine. The AP comes off the armour first, and what is left costs
+  2% a point: against armour 20 or less a railgun spinal loses nothing, which is what AP 20 means
+  anywhere else.
+
+#### Rule enforced — a spinal hit that does damage is always a critical
+"Spinal mount weapons can always (and will!) cause critical hits" (HG p. 27), read literally: every spinal
+hit that gets damage through scores a critical, at the usual Effect − 5 but never less than severity 1.
+Sustained damage adds its own as for any hit, and a 10⁵-point hit can cross several tenths of a hull at
+once.
+
+#### Decision — all the dice are rolled
+A spinal can roll 60D or more, and HG suggests rolling a tenth of them and multiplying by ten (HG
+p. 35). That is a convenience for a referee with a fistful of dice; the server rolls all of them, which
+gives the right spread.
+
+#### Addition — spinal rounds feed the mount from stores
+A railgun spinal "come[s] equipped with five rounds" (HG p. 36), and a mass driver's are 50 tons an attack
+(HG p. 35). They are counted as `rounds` in the magazine: five for each railgun spinal, plus any the
+design states; a mass driver has only what is stated. Each attack spends one, and the spinal feeds from
+stores, so it never needs a Reload. Railgun and mass driver rounds share one count, since no design
+carries both.
+
+#### Rule enforced — mass drivers are bombardment weapons
+Mass drivers carry the Orbital Bombardment trait, in a bay (HG pp. 32-33) or a spinal (HG p. 35), and so
+take DM-12 against anything that can manoeuvre (HG p. 30): any ship with Thrust left. There are no ground
+targets, so they exist so that published designs can be built.
+
+#### Decision — a spinal draws Power like any other weapon
+A spinal's Power is on the engineer's board with the other weapons (see *a power budget, with weapons in
+it*). The high-efficiency batteries HG suggests for charging one over several rounds (HG p. 35) are not
+modelled, and no rule gives a charge time, so a spinal fires every round it has Power.
+
+#### Omission — weapon readiness
+Imperial Navy gives a spinal 4D+12 minutes from weapons safe to ready (IN p. 82). Scenarios open at
+action stations, so it does not arise.
 
 #### Omission — detecting missile launch
 A launch can be missed and picked up later (HG p. 76: Routine 6+, or Average 8+

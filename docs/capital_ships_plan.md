@@ -32,7 +32,7 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
 - **Weapons are a flat `Vec<Weapon>`,** addressed by index, and `MAX_SHIP_WEAPONS = 64` (`player.rs`).
   - The Wind-class strike carrier has 361 mounts. The Tigress has more than 900, including 430 small missile bays.
   - The only grouping there is lives in the frontend (`groupWeapons` in `lib/hardpoints.ts`).
-- **Mounts:** `WeaponMount::{Turret, Barbette, Bay(Small|Medium|Large), FixedMount, Battery(type)}`. `Battery` is only the point-defence laser battery. There is no spinal mount.
+- **Mounts:** `WeaponMount::{Turret, Barbette, Bay(Small|Medium|Large), FixedMount, Battery(type)}`. `Battery` is only the point-defence laser battery. There is no spinal mount. **Done** (step 5): `WeaponMount::Spinal { multiple, tl }`.
 - **Damage multiples** are Barbette ×3 and bays ×10/×20/×100 (`rules_tables::damage_multiple`). They are applied after armour and screens.
 - **Small-target DMs** for bays and torpedoes are already enforced (HG p. 32, p. 39; the FAQ cites p. 31, one page early).
 - **Criticals** follow the CRB:
@@ -666,7 +666,7 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
   "radiation_shielding": true, // new: HG p. 31
   "frozen_watch": 0,           // new: spare crew
   "weapons": [                 // illustrative; PD battery type not checked
-    { "kind": "Meson",   "mount": { "Spinal": 3 } },              // new: multiple; arc defaults to "Fore" (§2)
+    { "kind": "Meson",   "mount": { "Spinal": 3 } },              // new: multiple; {"multiple": 3, "tl": 14} when the weapon's TL is not the design's
     { "kind": "Missile", "mount": { "Bay": "Small" },  "count": 32 },  // new: count
     { "kind": "Repulsor","mount": { "Bay": "Medium" }, "count": 9 },
     { "kind": "Beam",    "mount": { "Turret": 3 },     "count": 200 },
@@ -684,7 +684,7 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
 }
 ```
 
-- **Mount:** `WeaponMount::Spinal(u8)` holds the multiple. The weapon's TL, and so the improvement, comes from the design's `tl`.
+- **Mount:** `WeaponMount::Spinal(u8)` holds the multiple. The weapon's TL, and so the improvement, comes from the design's `tl`. *As built (step 5):* `Spinal { multiple, tl: Option<u8> }`, the TL defaulting to the design's, because published ships carry older spinals (the Azhanti is TL14 with a TL12 particle spinal).
   - Profiles: `weapon_profile(kind, MountClass::Spinal)` gives the base and `spinal_profile(kind, multiple, design_tl)` scales it.
   - `damage_multiple` returns 1,000.
   - A `SpinalArmour::{Subtract, Percent(3), Percent(2)}` field on the profile carries the particle and railgun rules.
@@ -796,7 +796,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 | 2 | Weapon batteries — **done** (branch `batteries`) | L | No (evaluate) |
 | 3 | Missile salvos as one entity — **done** (branch `salvos`) | M | No (evaluate) |
 | 4 | Reloading: mount loads, spare gunners, the Reload choice — **done** | M | No (evaluate) |
-| 5 | Spinal mounts | L | No |
+| 5 | Spinal mounts — **done** | L | No |
 | 6 | Large-ship criticals, frozen watch, sensor operators | M | No |
 | 7 | Capital designs to the Tigress, scenarios, the remaining size hardening | M | No |
 | 8 | **Retrain 1:** capital ships and reloading | M + GPU run | **Yes** |
@@ -841,7 +841,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
      - old scenario JSON loads with the same totals.
    - *Evaluation:* 200 games of Fighter Screen before and after. The heavy fighter's 60-missile magazine becomes 4 loaded and 56 in stores, and the Kinunir's racks now need reloading.
    - *Risk:* fighters that today fire every round from a shared pool will pause to reload.
-5. **Spinal mounts.**
+5. **Spinal mounts.** **Done**; see "Step 5: what was built" below.
    - The mount, profiles and scaling, the size and sub-band DMs, the stationary rule, the armour-percentage rules, ×1,000. It fires at any bearing (§2).
    - Ammunition, power, builder validation.
    - **Damage dice:** already wide enough (`caa590be`: a `u16` total, to 255 dice). The ×1,000 damage arithmetic moves to `u64`.
@@ -973,6 +973,50 @@ On `epic-fleet-control`.
 - The gunner card on a missile ship with a spare gunner in its crew: the header, `<Reload>`, both notes, and withdrawing.
 - The magazine section's per-mount lines.
 - A results log with a spare-crewed reload and an own-gunner reload.
+
+### Step 5: what was built (2026-10-29)
+
+On `epic-fleet-control`.
+
+**The mount** (`ship.rs`, `rules_tables.rs`).
+- `WeaponMount::Spinal { multiple, tl }`, on the wire `{"Spinal": 3}` or `{"Spinal": {"multiple": 2, "tl": 12}}`. `MountClass::Spinal` carries the type's per-multiple profile (HG p. 35); `profile_for` multiplies the dice, `weapon_mount_power` the Power. `damage_multiple` is 1,000.
+- `spinal_spec` is the Spinal Mount Weapons table, `spinal_improvement` the TL table, `spinal_tons` the tonnage. Table-driven tests check the book's 15,000-ton example and the Wind (18,000), Ghalalk (2,800), Azhanti (6,300), Atlantic (6,375) and Tigress (66,000).
+- `spinal_problem` refuses a spinal over its type's largest or half the hull, below its weapon's TL, of a weapon with no spinal, or as a battery. A template that fails is skipped on load with the reason logged; Add Ship refuses a ship whose own armament fails.
+- `WeaponProfile` gained `armour_percent` (3 particle, 2 railgun) and `bombardment`.
+- A spinal is never a battery, sorts first in the armament, and is named "meson spinal mount (3×)".
+
+**Firing** (`combat.rs`).
+- `attack_terms` holds every DM, so combat and the AI agree: the size DMs under "small target"; "spinal range", the close-range table by the attacker's size and the CRB's sub-bands (`ShortBand`); "bombardment", DM-12. It returns `None` for a target under 2,000 tons that did not hold still, and `do_fire_actions` says so before any dodge or sand is spent. `AttackSituation.distance` carries the metres.
+- Damage: dice + Effect, then armour by subtraction or by percentage, screens, then ×1,000 with the percentage, in `u64`.
+- A spinal hit that does damage always scores a primary critical, at severity max(1, Effect − 5).
+- `Ship::held_still` is set as each round is flown: no Thrust spent, and no dodge thrust held. Written to the wire only when true.
+- `Magazine.rounds`: five per railgun spinal, plus stated rounds; mass drivers only stated. A spinal fires from stores and is debited on the live ship.
+
+**AI** (no new features or heads).
+- `tactics::engagement` prices a spinal through the same terms, with the armour percentage in `expected_hit_damage`; `BandOdds.mounts` counts only the mounts that can attack. `tactics::orders` leaves a spinal off a target it cannot attack, so a later engagement can have it.
+- `share_fire` frees a spinal that cannot lay on the priority for the next target.
+- The LLM prompt's mount line and the admiral's design line say "spinal 3x" and that it cannot attack under 2,000 tons unless the target held still.
+- **The network sees bit-identical inputs.** `side.rs` `fingerprint_tests` hashes the side network's whole encoding (own, foe, side, pair features and masks) for every shipped design against itself and the P.F. Sloan, both ways, at five ranges, against `ai-ships/tests/fixtures/side_encoding_fingerprints.txt`, written on the code before this step. It passes unchanged.
+
+**Frontend.**
+- `lib/spinal.ts` mirrors the tables and DMs. The gunner card draws a spinal as the large-bay glyph with its multiple and does not offer it against a ship under 2,000 tons that did not hold still. Shot Odds adds the size, close-range and bombardment DMs, and says "too small; stationary targets only" (it also gained the bay's small-target DM, which it was missing).
+- Design summaries read "Spinal – Meson (TL15) – 3× of 18,000 tons". The Add Ship editor charges a spinal a Hardpoint per 100 tons and flags one too large; it does not offer a spinal as a new mount, since spinals come from designs.
+- Spinal rounds in the magazine section; Power per multiple on the board.
+
+**Rulings made on the way** (also in the FAQ):
+- **The weapon's TL is the design's unless the mount states one.** The plan had the design's TL only; HG's Azhanti (TL14 hull, TL12 spinal) needs the field. The TL changes only the tonnage.
+- **Exactly 50,000 and 250,000 tons** take the smaller column of the range table, whose columns are printed overlapping.
+- **A ship fresh from a scenario has not held still**, since no round has been flown. A ship with dodge thrust held has taken evasive action even if she burns nothing.
+- **Spinal rounds feed from stores**, so a spinal never needs a Reload; railgun and mass driver rounds share one count.
+- **Orbital Bombardment applies to mass driver bays too**, as the bay tables give them the trait (HG pp. 32-33). "Can manoeuvre" is any Thrust left. No shipped design carries a mass driver.
+- **A percentage hit reduced to nothing** is absorbed by armour and scores no critical.
+
+**Left for step 6 (large-ship criticals).**
+- HG p. 27's size thresholds (turret and barbette criticals ignored over 2,000 tons, and so on) are not built; step 1 has not been done either. When they are, a spinal is exempt from them all ("Spinal mount weapons can always (and will!) cause critical hits"): key the exemption on `MountClass::Spinal`.
+- A Weapons critical of severity 2 or more already switches off whichever weapon it picks, a spinal included, which is what §3's "any severity of 2 or more puts it out" asks. Choosing by entry and the percentage table are step 6's.
+- The crew of 1 per 100 tons of spinal is only the design's `crew` count; crew criticals reaching it belong with the crew table.
+
+**For the user to check by eye:** no shipped design has a spinal yet (step 7 adds them), so try one by giving a scenario ship or a test design a `{"Spinal": 3}` meson. Then look at: the gunner card's spinal button and its "3×", greyed against a fighter; Shot Odds against a fighter and a cruiser at Short; the design tooltip in Add Ship; a results line, and the hover's "x1000 mount" and "-30% armour" for a particle spinal; and the magazine's spinal rounds on a railgun spinal.
 
 ## 9. Decisions and open questions
 
