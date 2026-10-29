@@ -428,6 +428,14 @@ pub fn situation(
   out
 }
 
+/// The same schema, with what it is for where it is used put first.
+fn described(schema: &Value, what: &str) -> Value {
+  let mut schema = schema.clone();
+  let also = schema["description"].as_str().map(|d| format!(" {d}")).unwrap_or_default();
+  schema["description"] = json!(format!("{what}{also}"));
+  schema
+}
+
 /// The `give_orders` tool's parameters, as JSON Schema: a [`Directive`].
 #[must_use]
 pub fn schema() -> Value {
@@ -438,8 +446,8 @@ pub fn schema() -> Value {
     "type": "object",
     "description": "Which enemies: any of the designs or ships named (any at all if neither), within the tonnage limits.",
     "properties": {
-      "designs": names("Design names, exactly as listed."),
-      "ships": names("Ship names, exactly as listed."),
+      "designs": names("Enemy design names, exactly as listed."),
+      "ships": names("Enemy ship names, exactly as listed under Enemy; never our own."),
       "max_tons": {"type": "integer"},
       "min_tons": {"type": "integer"}
     }
@@ -471,20 +479,22 @@ pub fn schema() -> Value {
     "properties": {
       "mode": {"type": "string", "enum": ["network", "burn", "arrive"],
         "description": "network: the crews manoeuvre (default). burn: toward a place, or away from it, at up to thrust G. arrive: at a place, or at band of it, by round, together."},
-      "toward": place,
-      "away": {"type": "boolean"},
-      "thrust": {"type": "number", "description": "G."},
-      "at": place,
-      "band": band,
-      "round": {"type": "integer"}
-    }
+      "toward": described(&place, "burn only: the place burned toward, or away from."),
+      "away": {"type": "boolean", "description": "burn only: away from `toward` instead."},
+      "thrust": {"type": "number", "description": "burn only: G, at most; leave it out for full thrust."},
+      "at": described(&place, "arrive only: the place arrived at."),
+      "band": described(&band, "arrive only: arrive at this range band of `at`, on this side, rather than on it."),
+      "round": {"type": "integer", "description": "arrive only: the round to be there by."}
+    },
+    // Without a mode the rest is ignored: say which, every time.
+    "required": ["mode"]
   });
   let step = json!({
     "type": "object",
     "description": "What the squadron does until `until`; the last step has no `until`.",
     "properties": {
       "goal": {"type": "string", "enum": ["destroy", "hold", "raid", "escape"]},
-      "post": place,
+      "post": described(&place, "hold only: where a hold step holds; the squadron's starting point if left out. Without goal hold it does nothing."),
       "post_radius_km": {"type": "number"},
       "engage": rule,
       "threats": {"type": "integer", "description": "Enemies that can hit the squadron it may also engage. Default 8."},
@@ -503,11 +513,11 @@ pub fn schema() -> Value {
         "items": {
           "type": "object",
           "properties": {
-            "squadron": text("A squadron's name as listed, or *."),
+            "squadron": text("A squadron's name exactly as listed under Our squadrons, or * for every squadron without a script of its own. For a ship's own script, the squadron she is in."),
             "ship": text("A ship's name, for a ship with orders of her own."),
             "steps": {"type": "array", "items": step}
           },
-          "required": ["steps"]
+          "required": ["squadron", "steps"]
         }
       },
       "call_me_when": {

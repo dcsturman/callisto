@@ -235,3 +235,90 @@ With no orders at all it is never asked. If an answer cannot be read, the squadr
 - call me on new enemies, or 25% losses.
 
 Blue won.
+
+## Phase 2e: how well orders are translated (2026-10-29)
+
+**The test.** `ai-ships/corpus/admiral_orders.json` holds 61 cases (written by `corpus/make_admiral_orders.py`). Each takes a side of a scenario: Fighter Screen, Aslan Border Clash, Fighter Swarm, Picket at the Refuelling Point, Convoy Escape or Thebus.
+- The side's ships are put in squadrons, the scenario's orders are swapped for the case's (fleet, squadron and ship), and the model is called once.
+- Each case checks the `Directive` that comes back, e.g. "Lance engages Light Fighters", "every group holds", "dodge ≥ 3", "Flag arrives at Long of CS Tarsis by round 4", "CS Hesperus has her own script, ending in escape", "`say` explains what could not be ordered".
+- Every case also checks that the answer names only squadrons, ships, designs and planets the situation gave, and that rules name only enemies.
+
+**The runner.** `cargo run --release --example admiral_eval -- --model gemini --model gemini:gemini-3.5-flash-lite --repeat 3 --out runs/x.jsonl`.
+- It writes a JSON line per call: answer, checks, tokens, cost and seconds. Then it prints the summary tables.
+- `--rescore` checks old answers against the cases as they are now, at no cost.
+- It estimates the spend before starting and stops at `--budget`.
+
+**Models.** Gemini 3.8 Flash (the default) and Gemini 3.5 Flash-Lite. Claude Haiku 5.5 could not be tested:
+- Vertex answers 429, "quota exceeded for anthropic-claude-haiku", on `global`. Sonnet gets the same answer.
+- The regional endpoints answer 404.
+- No Anthropic API key is set.
+
+**Results.** Three tries per case with the original prompt, then four with the final one (two of the four were with the last version but one). A case counts only if every check passes. Calls that failed on transport are left out of the accuracy.
+
+| Model | Prompt | Cases right | Checks right | Cost/call | Median s | p90 s |
+|---|---|---|---|---|---|---|
+| Gemini 3.8 Flash | original | 177/183 (97%) | 99.0% | $0.0031 | 2.9 | 15.8 |
+| Gemini 3.8 Flash | final | 235/240 (98%); 61/61 on the very last | 99.1% | $0.0040 | 5.5 | 21.4 |
+| Gemini 3.5 Flash-Lite | original | 127/183 (69%) | 85.8% | $0.0015 | 1.2 | 3.2 |
+| Gemini 3.5 Flash-Lite | final | 203/244 (83%) | 95.3% | $0.0013 | 1.2 | 3.5 |
+
+- **Size of a call:** about 3.8k tokens in and 170–380 out.
+- **Reliability:** in two runs of 6–8 calls at a time, 15 of 3.8 Flash's ~610 calls failed: three 40-second timeouts in a row, or a 429. The slowest answer took about 2 minutes. Flash-Lite never failed.
+- **Spend:** about $4.30 for the whole evaluation, with every rerun.
+
+By category (cases right; original prompt, then final):
+
+| Category | 3.8 Flash | Flash-Lite |
+|---|---|---|
+| plain goals | 9/9, then 11/11 | 9/9, then 12/12 |
+| hold, with a post | 15/15, then 20/20 | 10/15, then 14/20 |
+| targets (design, tonnage, name) | 27/27, then 36/36 | 18/27, then 32/36 |
+| timed arrivals | 15/15, then 17/19 | 13/15, then 17/20 |
+| burns | 12/12, then 16/16 | 10/12, then 15/16 |
+| dodge | 12/12, then 16/16 | 10/12, then 15/16 |
+| ship-level orders | 15/15, then 20/20 | 15/15, then 18/20 |
+| layered fleet + squadron + ship | 15/15, then 20/20 | 7/15, then 13/20 |
+| ambiguous (least change) | 12/12, then 15/15 | 9/12, then 8/16 |
+| cannot be expressed | 9/15, then 19/19 | 4/15, then 17/20 |
+| withdrawals | 12/12, then 16/16 | 8/12, then 16/16 |
+| tricky phrasings (the user's own among them) | 24/24, then 29/32 | 14/24, then 26/32 |
+
+**What went wrong.**
+- **3.8 Flash, original prompt:**
+  - it named an enemy not yet found (Thebus: "HMS Executor", still a blip) and burned toward her, which the executor ignores;
+  - it carried out "board CS Tarsis" and "take her alive" as attacks without saying it could not do the rest.
+- **3.8 Flash, final prompt:**
+  - twice it gave an arrival with no `mode`, so the ships did not move. `mode` is now required, and the last run had none of these;
+  - "hang back at Long range" became a hold whose post was the enemy with a 25,000 km radius. The prompt now says to `arrive` at a band.
+- **Flash-Lite:**
+  - **Scripts with no `squadron`:** 32 of its 183 original answers had one. The executor silently drops them.
+  - **Layering:** it read squadron orders as replacing the fleet's, which dropped the fleet's hold.
+  - **Copying example 1:** with Lance and Flag on the plot, it split the targets "fighters / cruiser" when nobody asked.
+  - **Our own ships as targets:** for "Support the escorts" it engaged IMS Steadfast and IMS Valiant.
+  - **Wrong field or step:** `toward` where an arrival needs `at`; `until` on the wrong step.
+  - **Wrong names:** "Kald0r", "squadron E1", "planet Valiant".
+  - **What remains:** mostly layering, needless engage limits on ambiguous orders, and holds without `goal: hold`.
+
+**Changes to the prompt and schema** (`prompt/admiral.md`, `admiral::schema`):
+- **Layering:**
+  - squadron orders add to the fleet's, and win only where the two conflict, with a one-line example;
+  - a ship's own script still carries her fleet's and squadron's orders.
+- **What cannot be expressed:** a list (boarding, taking a ship alive, aiming at drives or weapons, formations, ends the scripts cannot test). `say` must name the part not ordered.
+- **Names:** use only names the situation lists. An unidentified enemy cannot be named: say so, and ask for `new_enemies`.
+- **`until`:** it goes on the step it ends, with an example.
+- **Range:** to stand off at a range, `arrive` at a band; a post is a place, not a range.
+- **The examples** now use made-up names (Wasps, Line, Arbiter), with a note that they show only the form. This stopped Flash-Lite copying example 1.
+- **Schema:**
+  - a script's `squadron` is required (for a ship's own script, it is her squadron);
+  - movement's `mode` is required;
+  - `toward`, `away` and `thrust` are marked burn only, and `at`, `band` and `round` arrive only;
+  - rules are marked enemies only;
+  - a post works only with `goal: hold`.
+
+The executor (`fleet.rs`) is unchanged. Two orders show a real gap: "until she is destroyed", and "cover the merchants until they are gone". No `until` or `call_me_when` can test whether a ship or squadron is destroyed or has jumped. With the final prompt, 3.8 Flash says so and holds. A `gone` condition (ships or a squadron destroyed or jumped) would let the Convoy Escape escort be ordered properly. It is worth adding before Phase 5.
+
+**Recommendation: keep Gemini 3.8 Flash as the default.**
+- It gets 98–100% of cases right, and its mistakes were all closed by the prompt and schema changes.
+- Flash-Lite costs a third as much and answers in about a second. But it still gets about one order in six wrong, and its mistakes are silent: a script that does something else. Phase 2a showed that a bad order costs about 25 wins in 100.
+- At about 0.4¢ a call and a few calls a game, the saving is not worth it.
+- Watch 3.8 Flash's occasional stalls of 40 s or more. The admiral already keeps the old scripts and asks again next round when a call fails.
