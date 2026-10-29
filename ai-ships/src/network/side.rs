@@ -24,7 +24,8 @@ use cgmath::InnerSpace;
 
 use crate::network::action::{self, Head};
 use crate::network::encode::{
-  direction, log_distance, log_speed, odds, posture_of, rounds_to_reach, share, Memory, Picture, GOALS, MAX_SHIPS,
+  direction, hull_size, log_distance, log_speed, odds, posture_of, rounds_to_reach, share, Memory, Picture, GOALS,
+  MAX_SHIPS,
 };
 use crate::network::history::History;
 use crate::network::orders;
@@ -384,7 +385,7 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
     watchers.fold((0, 0), |(seen, locked), watcher| (seen + 1, locked + usize::from(watcher.lock)));
   row[70] = watching.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
   row[71] = locking.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
-  row[72] = (f64::from(me.design.hull.max(1)).log10() / 4.0) as f32;
+  row[72] = hull_size(me.design.hull);
   // A Hold side's post, from this ship: which way and how far, and whether
   // she is within its radius.
   if let Some((post, radius)) = ctx.post {
@@ -403,7 +404,7 @@ fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mu
   match foe.contact {
     Some(contact) => {
       row[10] = share(contact.current_hull, contact.design_hull);
-      row[12] = (f64::from(contact.design_hull.max(1)).log10() / 4.0) as f32;
+      row[12] = hull_size(contact.design_hull);
       row[13] = f32::from(contact.current_maneuver) / 10.0;
       row[14] = contact.crit_level.iter().map(|level| f32::from(*level)).sum::<f32>().min(20.0) / 20.0;
       row[15] = contact.stealth.map_or(0.0, |stealth| (stealth as usize + 1) as f32 / 4.0);
@@ -417,7 +418,7 @@ fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mu
       Some(seen) => {
         row[10] = seen.hull_share;
         row[11] = (ctx.round.saturating_sub(seen.round).min(20) as f32) / 20.0;
-        row[12] = (f64::from(seen.design_hull.max(1)).log10() / 4.0) as f32;
+        row[12] = hull_size(seen.design_hull);
         row[13] = f32::from(seen.thrust) / 10.0;
       }
       None => row[11] = 1.0,

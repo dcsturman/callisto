@@ -114,6 +114,19 @@ pub(crate) fn share(part: u32, whole: u32) -> f32 {
   (part as f32 / whole.max(1) as f32).min(1.0)
 }
 
+/// The largest value [`hull_size`] gives: a hull of 1,000,000 points, a
+/// ship of about 1,500,000 tons (High Guard p. 10). The largest published
+/// warship, the 500,000-ton Tigress, comes to about 1.38; every design the
+/// network was trained on is under 1.
+pub(crate) const MAX_HULL_SIZE: f64 = 1.5;
+
+/// A hull's size as the network sees it: `log10(hull) / 4`, capped at
+/// [`MAX_HULL_SIZE`] so a billion-ton station stays in range.  Below the cap
+/// the value is bit-for-bit what it always was.
+pub(crate) fn hull_size(hull: u32) -> f32 {
+  (f64::from(hull.max(1)).log10() / 4.0).min(MAX_HULL_SIZE) as f32
+}
+
 /// Where another ship is and how she moves, relative to us: direction (3), log
 /// distance, velocity direction (3), log speed, closing rate. Nine numbers.
 fn relative(out: &mut [f32], me: &Ship, position: Vec3, velocity: Vec3) {
@@ -220,7 +233,7 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     relative(&mut row[1..10], me, friend.get_position(), friend.get_velocity());
     row[10] = share(friend.current_hull, friend.design.hull);
     row[11] = f32::from(friend.max_acceleration()) / 10.0;
-    row[12] = (f64::from(friend.design.hull.max(1)).log10() / 4.0) as f32;
+    row[12] = hull_size(friend.design.hull);
     row[13] = band_index(me, friend.get_position());
     row[14] = friend.contacts.len().min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
     row[15] = f32::from(friend.get_dodge_thrust()) / 3.0;
@@ -393,7 +406,7 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     Some(contact) => {
       row[12] = share(contact.current_hull, contact.design_hull);
       row[13] = 0.0;
-      row[14] = (f64::from(contact.design_hull.max(1)).log10() / 4.0) as f32;
+      row[14] = hull_size(contact.design_hull);
       row[15] = f32::from(contact.current_maneuver) / 10.0;
       row[20] = contact.crit_level.iter().map(|level| f32::from(*level)).sum::<f32>().min(20.0) / 20.0;
       if let Some(table) = view.engagement(name, &contact.name) {
@@ -407,7 +420,7 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
       if let Some(seen) = seen {
         row[12] = seen.hull_share;
         row[13] = (ctx.round.saturating_sub(seen.round).min(20) as f32) / 20.0;
-        row[14] = (f64::from(seen.design_hull.max(1)).log10() / 4.0) as f32;
+        row[14] = hull_size(seen.design_hull);
         row[15] = f32::from(seen.thrust) / 10.0;
       } else {
         row[13] = 1.0;
@@ -579,5 +592,42 @@ pub fn believed_hull(memory: &Memory) -> f32 {
     left / whole
   } else {
     1.0
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{hull_size, MAX_HULL_SIZE};
+
+  /// The trained network must see exactly what it always saw for every design
+  /// we ship: the cap may only bite above them.
+  #[test]
+  fn hull_size_is_unchanged_for_every_shipped_design() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../callisto/ship_templates");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).expect("ship_templates") {
+      let path = entry.expect("entry").path();
+      if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+        continue;
+      }
+      let design: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("read")).expect("json");
+      let hull = u32::try_from(design["hull"].as_u64().expect("hull")).expect("u32 hull");
+      let before = (f64::from(hull.max(1)).log10() / 4.0) as f32;
+      assert_eq!(hull_size(hull).to_bits(), before.to_bits(), "{}", path.display());
+      checked += 1;
+    }
+    assert!(checked > 40, "only {checked} designs found");
+  }
+
+  #[test]
+  fn hull_size_is_capped_for_huge_hulls() {
+    // The Tigress (500,000 t, about 333,333 hull points) is under the cap.
+    assert!(hull_size(333_333) < MAX_HULL_SIZE as f32);
+    assert_eq!(hull_size(1_000_000), 1.5);
+    // A billion-ton highport (High Guard p. 64) and the largest u32.
+    assert_eq!(hull_size(666_666_667), 1.5);
+    assert_eq!(hull_size(u32::MAX), 1.5);
+    assert_eq!(hull_size(0), 0.0);
   }
 }
