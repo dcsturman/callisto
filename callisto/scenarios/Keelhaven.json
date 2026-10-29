@@ -1,0 +1,8306 @@
+{
+  "metadata": {
+    "rounds": 30,
+    "name": "Keelhaven",
+    "owner": "dcsturman@gmail.com",
+    "description": "Oroth II, \"Keelhaven\", is the subsector's naval depot, 600,000 km out from the gas giant Oroth. An Imperial strike force has jumped in to take it: the Wind-class carrier Sirocco and her eighty light fighters, two Valiant light cruisers and six escorts, coming in from the jump limit 100,000 km out and under way. Keelhaven is held by the Hadrian-class battle rider Cleon, the planetoid monitor Keelhaven Bastion and eighty heavy fighters, while twenty-five system defence boats lie dark at the outer moon Oroth V.\n\nRed holds Keelhaven for 30 rounds; Blue must break the defence. Capital ships, spinal mounts and 166 hulls."
+  },
+  "planets": [
+    {
+      "name": "Oroth",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "!saturn",
+      "radius": 60000000.0,
+      "mass": 1.5e+27
+    },
+    {
+      "name": "Keelhaven",
+      "position": [
+        600000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "!mars",
+      "primary": "Oroth",
+      "radius": 2500000.0,
+      "mass": 1e+23
+    },
+    {
+      "name": "Oroth V",
+      "position": [
+        850000000.0,
+        0.0,
+        150000000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "!moon",
+      "primary": "Oroth",
+      "radius": 400000.0,
+      "mass": 1e+20
+    }
+  ],
+  "ships": [
+    {
+      "name": "Cleon",
+      "position": [
+        597532328.4,
+        999201.0,
+        -4490233.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Battle Rider - Hadrian",
+      "team": "Red",
+      "squadron": "Battle Line",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          3,
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 3
+      },
+      "orders": "Flagship of the Oroth squadron and the missile wall. Hold Keelhaven: break the enemy capitals with massed missile bays and the meson spinal, and do not be drawn away from the moon."
+    },
+    {
+      "name": "Keelhaven Bastion",
+      "position": [
+        600469269.7,
+        999201.0,
+        -5102096.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Planetoid Monitor - Jaellemo",
+      "team": "Red",
+      "squadron": "Battle Line",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2,
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "The depot's monitor. Stay at Keelhaven and kill whatever comes within reach of the spinal and the barbettes."
+    },
+    {
+      "name": "Bastion A 01",
+      "position": [
+        601188426.2,
+        961170.2,
+        -5572593.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 02",
+      "position": [
+        601090528.1,
+        961170.2,
+        -5552197.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 03",
+      "position": [
+        600992630.1,
+        961170.2,
+        -5531802.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 04",
+      "position": [
+        600894732.0,
+        961170.2,
+        -5511407.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 05",
+      "position": [
+        600796834.0,
+        961170.2,
+        -5491011.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 06",
+      "position": [
+        601192502.0,
+        1059153.1,
+        -5553029.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 07",
+      "position": [
+        601094603.9,
+        1059153.1,
+        -5532633.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 08",
+      "position": [
+        600996705.9,
+        1059153.1,
+        -5512238.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 09",
+      "position": [
+        600898807.9,
+        1059153.1,
+        -5491843.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 10",
+      "position": [
+        600800909.8,
+        1059153.1,
+        -5471447.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 11",
+      "position": [
+        601196577.8,
+        1157135.9,
+        -5533465.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 12",
+      "position": [
+        601098679.8,
+        1157135.9,
+        -5513069.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 13",
+      "position": [
+        601000781.7,
+        1157135.9,
+        -5492674.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 14",
+      "position": [
+        600902883.7,
+        1157135.9,
+        -5472279.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion A 15",
+      "position": [
+        600804985.6,
+        1157135.9,
+        -5451883.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion A",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 01",
+      "position": [
+        600013649.6,
+        961170.2,
+        -5327848.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 02",
+      "position": [
+        599915751.6,
+        961170.2,
+        -5307452.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 03",
+      "position": [
+        599817853.6,
+        961170.2,
+        -5287057.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 04",
+      "position": [
+        599719955.5,
+        961170.2,
+        -5266661.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 05",
+      "position": [
+        599622057.5,
+        961170.2,
+        -5246266.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 06",
+      "position": [
+        600017725.5,
+        1059153.1,
+        -5308284.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 07",
+      "position": [
+        599919827.4,
+        1059153.1,
+        -5287888.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 08",
+      "position": [
+        599821929.4,
+        1059153.1,
+        -5267493.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 09",
+      "position": [
+        599724031.3,
+        1059153.1,
+        -5247097.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 10",
+      "position": [
+        599626133.3,
+        1059153.1,
+        -5226702.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 11",
+      "position": [
+        600021801.3,
+        1157135.9,
+        -5288720.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 12",
+      "position": [
+        599923903.3,
+        1157135.9,
+        -5268324.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 13",
+      "position": [
+        599826005.2,
+        1157135.9,
+        -5247929.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 14",
+      "position": [
+        599728107.2,
+        1157135.9,
+        -5227533.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Bastion B 15",
+      "position": [
+        599630209.1,
+        1157135.9,
+        -5207138.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Bastion B",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "The Bastion's fighters. Keep the enemy's light fighters off her and strike at anything that reaches Keelhaven."
+    },
+    {
+      "name": "Talon 01",
+      "position": [
+        600733572.6,
+        1777940.5,
+        -10207420.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 02",
+      "position": [
+        600586725.6,
+        1777940.5,
+        -10176826.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 03",
+      "position": [
+        600439878.5,
+        1777940.5,
+        -10146233.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 04",
+      "position": [
+        600293031.5,
+        1777940.5,
+        -10115640.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 05",
+      "position": [
+        600146184.4,
+        1777940.5,
+        -10085047.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 06",
+      "position": [
+        600739686.4,
+        1924914.8,
+        -10178074.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 07",
+      "position": [
+        600592839.3,
+        1924914.8,
+        -10147480.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 08",
+      "position": [
+        600445992.3,
+        1924914.8,
+        -10116887.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 09",
+      "position": [
+        600299145.2,
+        1924914.8,
+        -10086294.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 10",
+      "position": [
+        600152298.1,
+        1924914.8,
+        -10055701.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 11",
+      "position": [
+        600745800.1,
+        2071889.1,
+        -10148728.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 12",
+      "position": [
+        600598953.1,
+        2071889.1,
+        -10118135.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 13",
+      "position": [
+        600452106.0,
+        2071889.1,
+        -10087541.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 14",
+      "position": [
+        600305258.9,
+        2071889.1,
+        -10056948.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 15",
+      "position": [
+        600158411.9,
+        2071889.1,
+        -10026355.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 16",
+      "position": [
+        600751913.9,
+        2218863.3,
+        -10119382.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Talon 17",
+      "position": [
+        600605066.8,
+        2218863.3,
+        -10088789.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Talon",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 01",
+      "position": [
+        598286121.6,
+        1777940.5,
+        -9697534.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 02",
+      "position": [
+        598139274.5,
+        1777940.5,
+        -9666941.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 03",
+      "position": [
+        597992427.5,
+        1777940.5,
+        -9636348.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 04",
+      "position": [
+        597845580.4,
+        1777940.5,
+        -9605755.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 05",
+      "position": [
+        597698733.3,
+        1777940.5,
+        -9575161.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 06",
+      "position": [
+        598292235.3,
+        1924914.8,
+        -9668188.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 07",
+      "position": [
+        598145388.3,
+        1924914.8,
+        -9637595.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 08",
+      "position": [
+        597998541.2,
+        1924914.8,
+        -9607002.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 09",
+      "position": [
+        597851694.2,
+        1924914.8,
+        -9576409.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 10",
+      "position": [
+        597704847.1,
+        1924914.8,
+        -9545815.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 11",
+      "position": [
+        598298349.1,
+        2071889.1,
+        -9638842.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 12",
+      "position": [
+        598151502.0,
+        2071889.1,
+        -9608249.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 13",
+      "position": [
+        598004655.0,
+        2071889.1,
+        -9577656.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 14",
+      "position": [
+        597857807.9,
+        2071889.1,
+        -9547063.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 15",
+      "position": [
+        597710960.8,
+        2071889.1,
+        -9516470.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 16",
+      "position": [
+        598304462.8,
+        2218863.3,
+        -9609496.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Spur 17",
+      "position": [
+        598157615.8,
+        2218863.3,
+        -9578903.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Spur",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 01",
+      "position": [
+        595838670.6,
+        1777940.5,
+        -9187648.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 02",
+      "position": [
+        595691823.5,
+        1777940.5,
+        -9157055.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 03",
+      "position": [
+        595544976.4,
+        1777940.5,
+        -9126462.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 04",
+      "position": [
+        595398129.4,
+        1777940.5,
+        -9095869.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 05",
+      "position": [
+        595251282.3,
+        1777940.5,
+        -9065276.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 06",
+      "position": [
+        595844784.3,
+        1924914.8,
+        -9158302.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 07",
+      "position": [
+        595697937.2,
+        1924914.8,
+        -9127709.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 08",
+      "position": [
+        595551090.2,
+        1924914.8,
+        -9097116.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 09",
+      "position": [
+        595404243.1,
+        1924914.8,
+        -9066523.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 10",
+      "position": [
+        595257396.0,
+        1924914.8,
+        -9035930.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 11",
+      "position": [
+        595850898.0,
+        2071889.1,
+        -9128956.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 12",
+      "position": [
+        595704051.0,
+        2071889.1,
+        -9098363.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 13",
+      "position": [
+        595557203.9,
+        2071889.1,
+        -9067770.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 14",
+      "position": [
+        595410356.8,
+        2071889.1,
+        -9037177.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 15",
+      "position": [
+        595263509.8,
+        2071889.1,
+        -9006584.3
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Claw 16",
+      "position": [
+        595857011.8,
+        2218863.3,
+        -9099610.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Claw",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Keelhaven's fighter screen. Meet the attack forward of the moon, kill their fighters and missiles, and fall back on the Cleon if pressed."
+    },
+    {
+      "name": "Wyvern",
+      "position": [
+        847770518.4,
+        -100000.0,
+        149828501.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Basilisk",
+      "position": [
+        847821968.0,
+        -100000.0,
+        149742752.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Lindworm",
+      "position": [
+        847873417.5,
+        -100000.0,
+        149657002.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Fafnir",
+      "position": [
+        847924867.1,
+        -100000.0,
+        149571253.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Tiamat",
+      "position": [
+        847976316.7,
+        -100000.0,
+        149485504.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Ladon",
+      "position": [
+        847770518.4,
+        0.0,
+        149828501.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Ryujin",
+      "position": [
+        847821968.0,
+        0.0,
+        149742752.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Zmey",
+      "position": [
+        847873417.5,
+        0.0,
+        149657002.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Vritra",
+      "position": [
+        847924867.1,
+        0.0,
+        149571253.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Typhon",
+      "position": [
+        847976316.7,
+        0.0,
+        149485504.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Jormungand",
+      "position": [
+        847770518.4,
+        100000.0,
+        149828501.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Nidhogg",
+      "position": [
+        847821968.0,
+        100000.0,
+        149742752.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Apep",
+      "position": [
+        847873417.5,
+        100000.0,
+        149657002.8
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Python",
+      "position": [
+        847924867.1,
+        100000.0,
+        149571253.5
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Draco",
+      "position": [
+        847976316.7,
+        100000.0,
+        149485504.2
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Red",
+      "squadron": "Dragons",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V. Come in on the attackers' flank once they are committed to Keelhaven; go for their escorts and damaged capitals."
+    },
+    {
+      "name": "Mastiff",
+      "position": [
+        848593711.6,
+        -50000.0,
+        148456512.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Wolfhound",
+      "position": [
+        848645161.2,
+        -50000.0,
+        148370763.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Terrier",
+      "position": [
+        848696610.8,
+        -50000.0,
+        148285014.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Boxer",
+      "position": [
+        848748060.3,
+        -50000.0,
+        148199264.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Ridgeback",
+      "position": [
+        848799509.9,
+        -50000.0,
+        148113515.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Akita",
+      "position": [
+        848593711.6,
+        50000.0,
+        148456512.7
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Malamute",
+      "position": [
+        848645161.2,
+        50000.0,
+        148370763.4
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Bulldog",
+      "position": [
+        848696610.8,
+        50000.0,
+        148285014.1
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Saluki",
+      "position": [
+        848748060.3,
+        50000.0,
+        148199264.9
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Borzoi",
+      "position": [
+        848799509.9,
+        50000.0,
+        148113515.6
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Pickets",
+      "goal": "hold",
+      "post": "Keelhaven",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Lying at Oroth V with the Dragons. Follow them in and finish what they cripple."
+    },
+    {
+      "name": "Sirocco",
+      "position": [
+        580000000.0,
+        20000000.0,
+        -96000000.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Strike Carrier - Wind",
+      "team": "Blue",
+      "squadron": "Battle Line",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          3,
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 3
+      },
+      "orders": "Flagship. Take Keelhaven's defences apart: the Hadrian and the monitor are the targets that matter. Keep the fighters between you and their fighters."
+    },
+    {
+      "name": "Intrepid",
+      "position": [
+        581758120.6,
+        20199840.2,
+        -97367141.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Cruiser - Valiant",
+      "team": "Blue",
+      "squadron": "Battle Line",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2,
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Line cruiser. Close with the Sirocco and pour missiles into the Hadrian; spinal on the monitor when she is in reach."
+    },
+    {
+      "name": "Dauntless",
+      "position": [
+        577842199.0,
+        20199840.2,
+        -96551324.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Cruiser - Valiant",
+      "team": "Blue",
+      "squadron": "Battle Line",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2,
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Line cruiser. Close with the Sirocco and pour missiles into the Hadrian; spinal on the monitor when she is in reach."
+    },
+    {
+      "name": "Arcturus",
+      "position": [
+        580599520.6,
+        19400479.4,
+        -93122301.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Fleet Escort - P.F. Sloan",
+      "team": "Blue",
+      "squadron": "Screen",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          },
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Escort the battle line. Screen it from fighters and missiles, and run down the system defence boats if they show."
+    },
+    {
+      "name": "Ishkur",
+      "position": [
+        583436541.7,
+        19500399.5,
+        -94213780.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Midu Agasham",
+      "team": "Blue",
+      "squadron": "Screen",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Escort the battle line. Screen it from fighters and missiles, and run down the system defence boats if they show."
+    },
+    {
+      "name": "Ninurta",
+      "position": [
+        577562659.2,
+        19500399.5,
+        -92990054.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Midu Agasham",
+      "team": "Blue",
+      "squadron": "Screen",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "screen_gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Escort the battle line. Screen it from fighters and missiles, and run down the system defence boats if they show."
+    },
+    {
+      "name": "Taipan",
+      "position": [
+        585225151.8,
+        19690553.5,
+        -92983042.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Screen",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Escort the battle line. Screen it from fighters and missiles, and run down the system defence boats if they show."
+    },
+    {
+      "name": "Mamba",
+      "position": [
+        580819739.9,
+        19690553.5,
+        -92065248.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Screen",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Escort the battle line. Screen it from fighters and missiles, and run down the system defence boats if they show."
+    },
+    {
+      "name": "Krait",
+      "position": [
+        576414328.0,
+        19690553.5,
+        -91147454.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Screen",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "sensors": [
+          2
+        ],
+        "engineers": [
+          {
+            "jump": 2,
+            "power": 2,
+            "maneuver": 2,
+            "mechanic": 2
+          }
+        ],
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Escort the battle line. Screen it from fighters and missiles, and run down the system defence boats if they show."
+    },
+    {
+      "name": "Gale 01",
+      "position": [
+        581680522.4,
+        19945196.8,
+        -94797776.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 02",
+      "position": [
+        581582624.4,
+        19945196.8,
+        -94777381.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 03",
+      "position": [
+        581484726.4,
+        19945196.8,
+        -94756985.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 04",
+      "position": [
+        581386828.3,
+        19945196.8,
+        -94736590.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 05",
+      "position": [
+        581288930.3,
+        19945196.8,
+        -94716195.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 06",
+      "position": [
+        581684598.3,
+        20043179.7,
+        -94778212.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 07",
+      "position": [
+        581586700.2,
+        20043179.7,
+        -94757817.3
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 08",
+      "position": [
+        581488802.2,
+        20043179.7,
+        -94737421.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 09",
+      "position": [
+        581390904.1,
+        20043179.7,
+        -94717026.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 10",
+      "position": [
+        581293006.1,
+        20043179.7,
+        -94696631.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 11",
+      "position": [
+        581688674.1,
+        20141162.5,
+        -94758648.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 12",
+      "position": [
+        581590776.0,
+        20141162.5,
+        -94738253.3
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 13",
+      "position": [
+        581492878.0,
+        20141162.5,
+        -94717857.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 14",
+      "position": [
+        581394980.0,
+        20141162.5,
+        -94697462.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 15",
+      "position": [
+        581297081.9,
+        20141162.5,
+        -94677067.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 16",
+      "position": [
+        581692749.9,
+        20239145.4,
+        -94739084.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 17",
+      "position": [
+        581594851.9,
+        20239145.4,
+        -94718689.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 18",
+      "position": [
+        581496953.8,
+        20239145.4,
+        -94698293.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 19",
+      "position": [
+        581399055.8,
+        20239145.4,
+        -94677898.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Gale 20",
+      "position": [
+        581301157.7,
+        20239145.4,
+        -94657503.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Gale",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 01",
+      "position": [
+        579330969.4,
+        19945196.8,
+        -94308286.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 02",
+      "position": [
+        579233071.4,
+        19945196.8,
+        -94287891.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 03",
+      "position": [
+        579135173.3,
+        19945196.8,
+        -94267495.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 04",
+      "position": [
+        579037275.3,
+        19945196.8,
+        -94247100.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 05",
+      "position": [
+        578939377.3,
+        19945196.8,
+        -94226704.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 06",
+      "position": [
+        579335045.3,
+        20043179.7,
+        -94288722.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 07",
+      "position": [
+        579237147.2,
+        20043179.7,
+        -94268327.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 08",
+      "position": [
+        579139249.2,
+        20043179.7,
+        -94247931.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 09",
+      "position": [
+        579041351.1,
+        20043179.7,
+        -94227536.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 10",
+      "position": [
+        578943453.1,
+        20043179.7,
+        -94207140.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 11",
+      "position": [
+        579339121.1,
+        20141162.5,
+        -94269158.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 12",
+      "position": [
+        579241223.0,
+        20141162.5,
+        -94248763.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 13",
+      "position": [
+        579143325.0,
+        20141162.5,
+        -94228367.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 14",
+      "position": [
+        579045427.0,
+        20141162.5,
+        -94207972.3
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 15",
+      "position": [
+        578947528.9,
+        20141162.5,
+        -94187576.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 16",
+      "position": [
+        579343196.9,
+        20239145.4,
+        -94249594.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 17",
+      "position": [
+        579245298.9,
+        20239145.4,
+        -94229199.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 18",
+      "position": [
+        579147400.8,
+        20239145.4,
+        -94208803.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 19",
+      "position": [
+        579049502.8,
+        20239145.4,
+        -94188408.3
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Squall 20",
+      "position": [
+        578951604.7,
+        20239145.4,
+        -94168012.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Squall",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 01",
+      "position": [
+        581647915.8,
+        19161334.0,
+        -94954288.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 02",
+      "position": [
+        581550017.8,
+        19161334.0,
+        -94933892.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 03",
+      "position": [
+        581452119.7,
+        19161334.0,
+        -94913497.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 04",
+      "position": [
+        581354221.7,
+        19161334.0,
+        -94893102.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 05",
+      "position": [
+        581256323.7,
+        19161334.0,
+        -94872706.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 06",
+      "position": [
+        581651991.7,
+        19259316.9,
+        -94934724.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 07",
+      "position": [
+        581554093.6,
+        19259316.9,
+        -94914329.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 08",
+      "position": [
+        581456195.6,
+        19259316.9,
+        -94893933.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 09",
+      "position": [
+        581358297.5,
+        19259316.9,
+        -94873538.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 10",
+      "position": [
+        581260399.5,
+        19259316.9,
+        -94853142.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 11",
+      "position": [
+        581656067.5,
+        19357299.7,
+        -94915160.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 12",
+      "position": [
+        581558169.4,
+        19357299.7,
+        -94894765.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 13",
+      "position": [
+        581460271.4,
+        19357299.7,
+        -94874369.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 14",
+      "position": [
+        581362373.4,
+        19357299.7,
+        -94853974.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 15",
+      "position": [
+        581264475.3,
+        19357299.7,
+        -94833578.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 16",
+      "position": [
+        581660143.3,
+        19455282.6,
+        -94895596.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 17",
+      "position": [
+        581562245.3,
+        19455282.6,
+        -94875201.1
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 18",
+      "position": [
+        581464347.2,
+        19455282.6,
+        -94854805.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 19",
+      "position": [
+        581366449.2,
+        19455282.6,
+        -94834410.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Tempest 20",
+      "position": [
+        581268551.1,
+        19455282.6,
+        -94814014.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Tempest",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 01",
+      "position": [
+        579298362.8,
+        19161334.0,
+        -94464798.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 02",
+      "position": [
+        579200464.8,
+        19161334.0,
+        -94444402.7
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 03",
+      "position": [
+        579102566.7,
+        19161334.0,
+        -94424007.3
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 04",
+      "position": [
+        579004668.7,
+        19161334.0,
+        -94403611.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 05",
+      "position": [
+        578906770.7,
+        19161334.0,
+        -94383216.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 06",
+      "position": [
+        579302438.7,
+        19259316.9,
+        -94445234.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 07",
+      "position": [
+        579204540.6,
+        19259316.9,
+        -94424838.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 08",
+      "position": [
+        579106642.6,
+        19259316.9,
+        -94404443.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 09",
+      "position": [
+        579008744.5,
+        19259316.9,
+        -94384047.9
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 10",
+      "position": [
+        578910846.5,
+        19259316.9,
+        -94363652.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 11",
+      "position": [
+        579306514.5,
+        19357299.7,
+        -94425670.2
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 12",
+      "position": [
+        579208616.4,
+        19357299.7,
+        -94405274.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 13",
+      "position": [
+        579110718.4,
+        19357299.7,
+        -94384879.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 14",
+      "position": [
+        579012820.4,
+        19357299.7,
+        -94364484.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 15",
+      "position": [
+        578914922.3,
+        19357299.7,
+        -94344088.5
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 16",
+      "position": [
+        579310590.3,
+        19455282.6,
+        -94406106.3
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 17",
+      "position": [
+        579212692.3,
+        19455282.6,
+        -94385710.8
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 18",
+      "position": [
+        579114794.2,
+        19455282.6,
+        -94365315.4
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 19",
+      "position": [
+        579016896.2,
+        19455282.6,
+        -94344920.0
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    },
+    {
+      "name": "Zephyr 20",
+      "position": [
+        578918998.1,
+        19455282.6,
+        -94324524.6
+      ],
+      "velocity": [
+        3996.8,
+        -3996.8,
+        19184.7
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Zephyr",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 3,
+        "sensors": [
+          2
+        ],
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "The Sirocco's fighters. Clear their fighters away from the battle line, then go for the boats."
+    }
+  ]
+}

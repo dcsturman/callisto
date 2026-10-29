@@ -60,6 +60,23 @@ async fn the_built_in_network_plays_and_beats_a_side_that_sits_still() {
   assert_eq!(outcome.winner.as_deref(), Some("Blue"), "{outcome:?}");
 }
 
+/// Keelhaven, 196 ships with High Guard's capitals, plays its opening: the
+/// attacker comes in from Distant and both sides have lost hull by round 12.
+#[tokio::test]
+async fn keelhaven_plays_its_opening_rounds() {
+  replace_ship_templates(load_ship_templates_from_dir("../callisto/ship_templates").await.unwrap());
+  let commanders = |_: &str, seed: u64| -> Option<(String, Box<dyn Commander>)> {
+    named("close", seed).map(|c| ("close".to_string(), c))
+  };
+  let outcome = play("../callisto/scenarios/Keelhaven.json", &commanders, 12, 1, None)
+    .await
+    .unwrap();
+  let (red, blue) = (&outcome.sides["Red"], &outcome.sides["Blue"]);
+  assert_eq!((red.ships_at_start, blue.ships_at_start), (107, 89), "{outcome:?}");
+  assert!(red.hull_at_end < red.hull_at_start, "{outcome:?}");
+  assert!(blue.hull_at_end < blue.hull_at_start, "{outcome:?}");
+}
+
 #[test]
 fn a_side_with_a_post_holds_it_rather_than_its_course() {
   use ai_ships::network::side::hold_at_post;

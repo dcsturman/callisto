@@ -6668,6 +6668,59 @@ mod tests {
     );
   }
 
+  /// Keelhaven as the capital ships plan sets it: Red holds Keelhaven with
+  /// the Hadrian, the Jaellemo and their boats and fighters, Blue attacks
+  /// with the Wind and her escorts, every attacker starts at Distant of every
+  /// defender, and no squadron is over twenty.
+  #[test_log::test(tokio::test)]
+  async fn keelhaven_opens_at_distant() {
+    config_test_ship_templates().await;
+    let bytes = fs::read("./scenarios/Keelhaven.json").unwrap();
+    let entities =
+      Entities::parse_bytes_with_ship_templates(&bytes, "Keelhaven", get_ship_templates_snapshot()).unwrap();
+    assert_eq!(entities.metadata.rounds, Some(30));
+    let ships: Vec<Ship> = entities.ships.values().map(|ship| ship.read().unwrap().clone()).collect();
+    let side = |team: Team| ships.iter().filter(move |ship| ship.team == Some(team));
+    assert_eq!((side(Team::Red).count(), side(Team::Blue).count()), (107, 89));
+
+    let count = |team: Team, design: &str| side(team).filter(|ship| ship.design.name == design).count();
+    assert_eq!(count(Team::Red, "Battle Rider - Hadrian"), 1);
+    assert_eq!(count(Team::Red, "Planetoid Monitor - Jaellemo"), 1);
+    assert_eq!(count(Team::Red, "System Defence Boat - Dragon"), 15);
+    assert_eq!(count(Team::Red, "System Defense Boat"), 10);
+    assert_eq!(count(Team::Red, "Heavy Fighter"), 80);
+    assert_eq!(count(Team::Blue, "Strike Carrier - Wind"), 1);
+    assert_eq!(count(Team::Blue, "Light Cruiser - Valiant"), 2);
+    assert_eq!(count(Team::Blue, "Light Fighter"), 80);
+
+    let keelhaven = crate::ship::Post::Body("Keelhaven".to_string());
+    assert!(
+      side(Team::Red).all(|ship| ship.goal == Some(crate::ship::Goal::Hold) && ship.post.as_ref() == Some(&keelhaven))
+    );
+    assert!(side(Team::Blue).all(|ship| ship.goal == Some(crate::ship::Goal::Destroy)));
+
+    let distant_km = f64::from(crate::rules_tables::RANGE_BANDS[3]) / 1000.0;
+    for attacker in side(Team::Blue) {
+      for defender in side(Team::Red) {
+        let km = (attacker.get_position() - defender.get_position()).magnitude() / 1000.0;
+        assert!(
+          km > distant_km,
+          "{} starts {km:.0} km from {}",
+          attacker.get_name(),
+          defender.get_name()
+        );
+      }
+    }
+
+    let mut squadrons: HashMap<(Option<Team>, &str), usize> = HashMap::new();
+    for ship in &ships {
+      *squadrons
+        .entry((ship.team, ship.squadron.as_deref().unwrap_or("")))
+        .or_default() += 1;
+    }
+    assert!(squadrons.values().all(|&n| n <= 20), "{squadrons:?}");
+  }
+
   /// The band sets the to-hit modifier, so a change is worth saying even when
   /// nothing is rolled -- and for an unstealthed target nothing ever is.
   #[test]
