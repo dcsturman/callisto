@@ -2061,7 +2061,7 @@ async fn test_add_ship_rejects_illegal_armament() {
   // than one gun is equally illegal.
   assert!(error.contains("Illegal mount holding 4 weapons"), "unexpected error: {error}");
 
-  let many = (0..65)
+  let many = (0..257)
     .map(|_| json!({"kind": "Beam", "mount": {"Turret": 1}}))
     .collect::<Vec<_>>();
   let too_many = json!({"name":"ship2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
