@@ -73,19 +73,44 @@ behaviour (`docs/fleet_control_plan.md`, phase 0).
   excellent against fighters, which carry no point defence.
 - **Callisto AI finding** under RAW point defence.
 
-## Missile salvos: armour is paid per missile either way
+## Missile salvos: per-missile rolls are about a third weaker than RAW
 
-**Finding.** RAW salvo damage is (4D − armour) × Effect, with Effect capped at
-the missiles left (CRB p. 173), and the attack roll gets DM+1 per missile in
-the salvo. Armour is subtracted once, before the multiply, so every missile
-that counts still pays the target's armour. Callisto rolls each missile
-separately (user's ruling, 2026-10-29) and each hit does its own 4D − armour.
-Neither version lets missiles beat armour that a single missile cannot.
+**Finding** (2026-10-29). RAW salvo damage is (4D − armour) × Effect, with
+Effect capped at the missiles left, and the single attack roll gets DM+1 per
+missile in the salvo (CRB p. 173). Callisto rolls each missile separately (the
+user's ruling, 2026-10-29): each needs 8+ on its own, and each hit does 4D −
+armour. Armour is paid per missile in both, so neither lets missiles beat armour
+a single missile cannot. But the per-missile DM is what separates them.
 
-- **Open:** how many missiles count differs. RAW gives one roll for the whole
-  salvo; Callisto gives one per missile. They should agree for big salvos, but
-  RAW may favour small ones (one lucky roll counts them all). Compare the
-  distributions for salvos of 1–12 against a few armour values.
+Simulated, 40,000 salvos a cell: standard 4D missiles, Smart at equal TL (DM+1,
+CRB p. 79), no dodge, point defence or jamming. Mean damage of one salvo:
+
+| Salvo | Armour 0: RAW / ours | Armour 5 | Armour 10 | Armour 15 |
+|---|---|---|---|---|
+| 1 | 8.2 / 8.2 | 5.2 / 5.3 | 2.5 / 2.4 | 0.5 / 0.5 |
+| 2 | 18.2 / 16.4 | 11.7 / 10.5 | 5.4 / 4.9 | 1.2 / 1.1 |
+| 4 | 42.7 / 32.6 | 27.5 / 21.0 | 12.8 / 9.8 | 2.9 / 2.2 |
+| 6 | 70.2 / 48.9 | 45.2 / 31.5 | 21.1 / 14.7 | 4.7 / 3.2 |
+| 8 | 98.5 / 65.3 | 63.4 / 42.1 | 29.5 / 19.6 | 6.5 / 4.3 |
+| 12 | 154.3 / 97.9 | 99.5 / 63.0 | 46.3 / 29.4 | 10.3 / 6.5 |
+
+- **Ours is 0.63–0.70 of RAW for salvos of 6 or more, at every armour value.**
+  A lone missile is the same either way.
+- **Why:** under RAW, DM+1 per missile makes the Effect of a big salvo close to
+  its size, so nearly every missile counts. Per missile, each needs 8+ on 2D+1:
+  58%.
+- **Ours is steadier.** RAW's single roll is all or nothing: against armour 10
+  a salvo of 12 does nothing 16% of the time and ranges widely (s.d. 35 against
+  ours 11). Against armour 15 a RAW salvo of 12 does damage only 34% of the
+  time, ours 93%, for less damage on average.
+- **Doctrine:** under either rule, salvo size raises hit chance or damage, and
+  armour sets the ceiling. Callisto's missiles are a third weaker than the
+  book's against everything; that affects every missile-armed design and the
+  missile-versus-gun balance.
+- **Callisto ruling**, not RAW. **Open:** whether to restore RAW's strength
+  (for example a per-missile DM that grows with salvo size, or RAW's single
+  roll) is the user's decision. The 126–68 Fighter Screen result and the
+  missile planner were measured under the weaker rule.
 
 ## The faster side chooses the range
 
