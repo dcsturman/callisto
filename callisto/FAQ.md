@@ -634,13 +634,18 @@ throws what is in its mount, and an empty mount says so. A sandcaster with no
 canisters in it cannot react, whatever is in stores. A scenario reset
 restocks everything.
 
-**Where the stock comes from.** Sixteen designs state their stock in their
+**Where the stock comes from.** Eighteen designs state their stock in their
 write-ups, and that is the ship's total: the mounts are filled first, in
 order, and the rest goes to stores. A design that states nothing carries
 twelve missiles per rack, twenty canisters per sandcaster and three torpedoes
 per launcher, as the small ships that do state a load carry. Where the book
 gives the mount more (a barbette's 25, a bay's twelve salvos), it carries
-that instead. No design file changed, and no ship carries less than it did.
+that instead. No ship carries less than it did.
+
+**Book storage is beyond the bays** (user, 2026-10-29). A write-up's "Missile
+Storage" is extra stores, not the bays' own load. The Dragon states 480 and
+the Sloan 240 (High Guard), so their design files state their whole stock:
+the Dragon 624 (one bay of 144 plus 480), the Sloan 528 (two bays plus 240).
 
 **Rule enforced — the load is per turret, not per rack** (confirmed by the user, 2026-10-29). Both books say "each
 turret with one or more missile racks holds 12 missiles" and "each turret

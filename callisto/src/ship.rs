@@ -5657,6 +5657,24 @@ mod tests {
     }
   }
 
+  /// The book's missile storage is in addition to what the bays hold: the
+  /// Dragon's 480 (HG) and the Sloan's 240 (HG) sit in stores behind full bays.
+  #[tokio::test]
+  async fn book_missile_storage_is_beyond_the_bays() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    for (name, bays, storage) in [
+      ("System Defence Boat - Dragon", 1, 480),
+      ("Fleet Escort - P.F. Sloan", 2, 240),
+    ] {
+      let design = templates.get(name).unwrap_or_else(|| panic!("{name} should be shipped"));
+      let ship = Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+      let loaded: u32 = (0..design.weapons.len()).map(|mount| ship.loaded(mount).missiles).sum();
+      assert_eq!(loaded, bays * 144, "{name}");
+      assert_eq!(ship.aboard().missiles, bays * 144 + storage, "{name}");
+    }
+  }
+
   /// A client reading the world sees each ship's criticals: they survive the
   /// trip to the wire and back.
   #[tokio::test]
