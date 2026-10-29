@@ -999,7 +999,7 @@ On `epic-fleet-control`.
 - **The network sees bit-identical inputs.** `side.rs` `fingerprint_tests` hashes the side network's whole encoding (own, foe, side, pair features and masks) for every shipped design against itself and the P.F. Sloan, both ways, at five ranges, against `ai-ships/tests/fixtures/side_encoding_fingerprints.txt`, written on the code before this step. It passes unchanged.
 
 **Frontend.**
-- `lib/spinal.ts` mirrors the tables and DMs. The gunner card draws a spinal as the large-bay glyph with its multiple and does not offer it against a ship under 2,000 tons that did not hold still. Shot Odds adds the size, close-range and bombardment DMs, and says "too small; stationary targets only" (it also gained the bay's small-target DM, which it was missing).
+- `lib/spinal.ts` mirrors the tables and DMs. The gunner card draws a spinal with its own icon (`assets/icons/spinal.svg`, a barrel the length of the hull) and its multiple and does not offer it against a ship under 2,000 tons that did not hold still. Shot Odds adds the size, close-range and bombardment DMs, and says "too small; stationary targets only" (it also gained the bay's small-target DM, which it was missing).
 - Design summaries read "Spinal – Meson (TL15) – 3× of 18,000 tons". The Add Ship editor charges a spinal a Hardpoint per 100 tons and flags one too large; it does not offer a spinal as a new mount, since spinals come from designs.
 - Spinal rounds in the magazine section; Power per multiple on the board.
 

@@ -64,6 +64,7 @@ import FixedMount from "assets/icons/fixed-mount.svg?react";
 import SmallBay from "assets/icons/bay-s.svg?react";
 import MediumBay from "assets/icons/bay-m.svg?react";
 import LargeBay from "assets/icons/bay-l.svg?react";
+import Spinal from "assets/icons/spinal.svg?react";
 
 // Icons to show fire states.
 import RayIcon from "assets/icons/laser.svg?react";
@@ -237,8 +238,8 @@ export const WeaponButton = (props: {
   }
   const spinal = spinalOf(props.mount);
   if (spinal != null) {
-    // A spinal is the ship's main gun: drawn as the largest mount, with its
-    // multiple of the Base Size beside it.
+    // A spinal is the ship's main gun: a barrel the length of the hull, with
+    // its multiple of the Base Size beside it.
     const id = props.weapon + "spinal-" + spinal.multiple;
     return (
       <>
@@ -253,8 +254,9 @@ export const WeaponButton = (props: {
           data-tooltip-delay-show={700}
           disabled={props.disabled}
         >
-          <LargeBay
-            className="weapon-symbol bay-button"
+          <Spinal
+            className="weapon-symbol spinal-button"
+            data-testid="spinal-icon"
             style={{
               fill,
             }}

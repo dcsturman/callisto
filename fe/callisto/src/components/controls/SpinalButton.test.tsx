@@ -35,6 +35,11 @@ describe("a spinal mount on the gunner card", () => {
     const button = container.querySelector("#Meson-spinal-button");
     expect(button).not.toBeNull();
     expect(button!.textContent).toContain("3×");
+    // Its own icon, a barrel the length of the hull, not a bay's.
+    const icon = button!.querySelector("svg.spinal-button");
+    expect(icon).not.toBeNull();
+    expect(icon!.getAttribute("data-testid")).toBe("spinal-icon");
+    expect(button!.querySelector("svg.bay-button")).toBeNull();
     const tip = button!.getAttribute("data-tooltip-content") ?? "";
     expect(tip).toContain("Meson Spinal Mount (3×)");
     expect(tip).toContain("2,000 tons");
