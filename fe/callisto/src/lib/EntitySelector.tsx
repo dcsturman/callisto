@@ -18,7 +18,8 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
   setChoice: (entity: Entity | null) => void;
   current: Entity | string  | null;
   exclude?: string;
-  extra?: Entity;
+  /** Choices that are not entities, listed first: "<Point Defense>", "<Reload>". */
+  extra?: Entity | Entity[];
   formatter?: (name: string, entity: Entity) => string;
   /**
    * The ship doing the looking. Ships it has no sensor contact on are listed
@@ -115,6 +116,8 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
     return null;
   }, [current, entities, filter]);
 
+  const extras = extra == null ? [] : Array.isArray(extra) ? extra : [extra];
+
   // Create a formatter that handles one not being provided.
   const nf = (name: string, entity: Entity) =>
     formatter ? formatter(name, entity) : name;
@@ -122,8 +125,9 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
 
-    if (extra && value === extra.name) {
-      setChoice(extra);
+    const pseudo = extras.find((entry) => entry.name === value);
+    if (pseudo) {
+      setChoice(pseudo);
       return;
     }
 
@@ -180,11 +184,11 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         onChange={handleSelectChange}
         {...props}>
         <option key="el-none" value="">{noneLabel ?? ""}</option>
-        {extra && (
-          <option key={"extra"} value={extra.name}>
-            {extra.name}
+        {extras.map((entry) => (
+          <option key={"extra-" + entry.name} value={entry.name}>
+            {entry.name}
           </option>
-        )}
+        ))}
         {filter.includes(EntitySelectorType.Ship) &&
           entities.ships
             .filter((candidate) => candidate.name !== exclude)

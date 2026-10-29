@@ -9,6 +9,14 @@ export type ActionType = {
     fire: FireState;
     unfire: UnfireState;
     pointDefense: PointDefenseState;
+    /**
+     * Mounts to reload this round, in the order they were chosen: spare
+     * gunners take them in that order, and the rest are done by the mount's
+     * own gunner instead of firing. Absent in state written before reloads.
+     */
+    reload?: number[];
+    /** Reloads withdrawn and not yet seen gone from the server. Transient. */
+    unreload?: number[];
     /** One slot per engineer, on the same terms. */
     engineers: EngineerState[];
     /**
@@ -162,6 +170,11 @@ export function actionPayload(actions: ActionType) {
     if (value.pointDefense) {
       fire_actions = [...fire_actions, ...value.pointDefense.map((pointDefenseAction) => pointDefenseActionPayload(pointDefenseAction))];
     }
+    // Reloads in the order they were chosen, which is the order the server
+    // hands out spare gunners.
+    for (const weapon_id of value.reload ?? []) {
+      fire_actions.push({ReloadAction: {weapon_id}});
+    }
     // Anti-actions go last, after everything they might cancel. The client
     // re-sends its whole action list each time, so a delete placed before the
     // point-defence orders was applied and then immediately undone by the very
@@ -170,6 +183,9 @@ export function actionPayload(actions: ActionType) {
     // this only because they happened to be listed before the delete.
     if (value.unfire) {
       fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
+    }
+    for (const weapon_id of value.unreload ?? []) {
+      fire_actions.push({DeleteReloadAction: {weapon_id}});
     }
     // One action per operator and per engineer, each naming whose it is.
     (value.sensors ?? []).forEach((sensor, operator) => {
@@ -426,6 +442,13 @@ export function payloadToAction(payload: object[]): ActionType {
         }
       });
     result[shipName] = {...result[shipName], pointDefense: point_defense_actions};
+
+    const reload: number[] = actions.flatMap((action) =>
+      typeof action !== "string" && Object.hasOwn(action, "ReloadAction")
+        ? [(action as unknown as {ReloadAction: {weapon_id: number}}).ReloadAction.weapon_id]
+        : [],
+    );
+    result[shipName] = {...result[shipName], reload, unreload: []};
 
     // Sensor and engineer actions each name the crew member working them, so
     // they go back into that person's slot. A list with a hole in it is a

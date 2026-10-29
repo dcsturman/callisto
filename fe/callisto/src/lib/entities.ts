@@ -4,6 +4,7 @@ import { Team } from "lib/teams";
 export { availablePower } from "lib/power";
 import { PowerSystem } from "lib/power";
 import {Software} from "lib/software";
+import {Magazine} from "lib/magazine";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -175,11 +176,13 @@ export interface Ship extends Entity {
   /** Which of it the computer is running. Bandwidth limits this. */
   software_running?: Software[];
   /**
-   * Missiles, torpedoes and sandcaster barrels still aboard.
-   *
-   * Spent as they are fired and thrown; a reset restocks the ship.
+   * Missiles, torpedoes and sandcaster canisters in stores: what is aboard
+   * beyond what the mounts hold. A Reload refills a mount from here; a reset
+   * restocks the ship.
    */
-  magazine?: {missiles: number; torpedoes: number; sand: number};
+  magazine?: Magazine;
+  /** What each mount holds ready to fire, index-aligned with its weapons. */
+  loaded?: Magazine[];
   /**
    * Switchable features to start running, by index into the design's list.
    *

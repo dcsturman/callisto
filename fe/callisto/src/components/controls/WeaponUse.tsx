@@ -42,6 +42,16 @@ import { ViewMode, hasRole } from "lib/view";
 import { PowerSystem } from "lib/power";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 import { setCrewActions } from "lib/serverManager";
+import {
+  EMPTY_MAGAZINE,
+  Magazine,
+  bySpare,
+  canReload,
+  describeLoad,
+  mountCapacity,
+  reloadLabel,
+  spareGunners,
+} from "lib/magazine";
 
 // Icons for each type of weapon
 import Turret1 from "assets/icons/turret1.svg?react";
@@ -67,6 +77,8 @@ import {
   pointDefenseWeapon,
   fireWeapon,
   unfireWeapon,
+  reloadWeapon,
+  unreloadWeapon,
   updateFireCalledShot,
   updateFireSalvo,
   updateFireControl,
@@ -440,6 +452,104 @@ function CalledShotMenu(args: {
   );
 }
 
+/** One launcher or sandcaster mount, as the Reload choice lists it. */
+export type ReloadMount = {
+  weapon_id: number;
+  weapon: Weapon;
+  capacity: Magazine;
+  loaded: Magazine;
+};
+
+/** The ship's launcher and sandcaster mounts, with what each holds. */
+export function reloadMounts(ship: Ship | null | undefined, weapons: Weapon[], displacement: number): ReloadMount[] {
+  return weapons.flatMap((weapon, weapon_id) => {
+    const capacity = mountCapacity(weapon, displacement);
+    if (capacity.missiles + capacity.torpedoes + capacity.sand === 0) {
+      return [];
+    }
+    return [{weapon_id, weapon, capacity, loaded: ship?.loaded?.[weapon_id] ?? EMPTY_MAGAZINE}];
+  });
+}
+
+/** "Spare gunners: 2 of 3 free": the gunners beyond the mounts, less those the Reloads chosen have taken. */
+export function SpareGunners(args: {spares: number; reloads: number[]}) {
+  const free = Math.max(0, args.spares - args.reloads.length);
+  return (
+    <div className="spare-gunners" data-tutorial="spare-gunners">
+      Spare gunners: {free} of {args.spares} free
+    </div>
+  );
+}
+
+/**
+ * The Reload choice: one row per launcher and sandcaster mount. A mount below
+ * its load, on a ship with stores left, can be reloaded. While a spare gunner
+ * is free that costs the mount nothing and it keeps its target; with none
+ * free its own gunner reloads it instead of firing. A chosen Reload can be
+ * withdrawn, which gives its spare back.
+ */
+export function ReloadChoices(args: {
+  mounts: ReloadMount[];
+  stores: Magazine;
+  spares: number;
+  reloads: number[];
+  /** Mounts with a target or on point defence, by index. */
+  ordered: number[];
+  onReload: (weapon_id: number) => void;
+  onWithdraw: (weapon_id: number) => void;
+}) {
+  const free = args.spares - args.reloads.length;
+  return (
+    <div className="reload-list" data-tutorial="reload-choices">
+      {args.mounts.map((mount) => {
+        const name = `Mount ${mount.weapon_id + 1}: ${weaponToString(mount.weapon)}`;
+        const chosen = args.reloads.includes(mount.weapon_id);
+        if (chosen) {
+          const spare = bySpare(args.reloads, args.spares, mount.weapon_id);
+          const waits = !spare && args.ordered.includes(mount.weapon_id) ? "; its order waits a round" : "";
+          return (
+            <div key={mount.weapon_id} className="reload-row reload-chosen">
+              <span className="reload-mount">{name}</span>{" "}
+              <span className="reload-note">
+                reloading, {spare ? "reloaded by spare crew" : `reloads instead of firing${waits}`}
+              </span>{" "}
+              <button className="control-button" onClick={() => args.onWithdraw(mount.weapon_id)}>
+                Withdraw
+              </button>
+            </div>
+          );
+        }
+        const possible = canReload(mount.capacity, mount.loaded, args.stores);
+        return (
+          <div key={mount.weapon_id} className="reload-row">
+            <span className="reload-mount">{name}</span>{" "}
+            {possible ? (
+              <>
+                <button className="control-button" onClick={() => args.onReload(mount.weapon_id)}>
+                  {reloadLabel(mount.capacity, mount.loaded, args.stores)}
+                </button>{" "}
+                <span className="reload-note">
+                  {free > 0 ? "reloaded by spare crew" : "reloads instead of firing"}
+                </span>
+              </>
+            ) : (
+              <span className="reload-note">
+                {describeLoad(mount.capacity, mount.loaded)}
+                {isFull(mount) ? "" : "; nothing in stores"}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const isFull = (mount: ReloadMount) =>
+  mount.loaded.missiles >= mount.capacity.missiles &&
+  mount.loaded.torpedoes >= mount.capacity.torpedoes &&
+  mount.loaded.sand >= mount.capacity.sand;
+
 type FireControlProps = unknown;
 
 export const FireControl: React.FC<FireControlProps> = () => {
@@ -532,6 +642,36 @@ export const FireControl: React.FC<FireControlProps> = () => {
         velocity: [0, 0, 0],
       }) as Entity,
     [POINT_DEFENSE_NAME],
+  );
+
+  const RELOAD_NAME = "<Reload>";
+  const PSEUDO_TARGETS = useMemo(
+    () => [
+      POINT_DEFENSE_PHANTOM,
+      {name: RELOAD_NAME, position: [0, 0, 0], velocity: [0, 0, 0]} as Entity,
+    ],
+    [POINT_DEFENSE_PHANTOM],
+  );
+
+  const displacement = computerShip?.design ? (shipTemplates[computerShip.design]?.displacement ?? 0) : 0;
+  const launchers = useMemo(
+    () => reloadMounts(computerShip, computerShipWeapons, displacement),
+    [computerShip, computerShipWeapons, displacement],
+  );
+  const spares = spareGunners(computerShip?.crew?.gunnery, computerShipWeapons.length);
+  const queuedReloads = useMemo(
+    () => (computerShipName ? (actions[computerShipName]?.reload ?? []) : []),
+    [actions, computerShipName],
+  );
+  const orderedMounts = useMemo(
+    () =>
+      computerShipName
+        ? [
+            ...(actions[computerShipName]?.fire ?? []).map((action) => action.weapon_id),
+            ...(actions[computerShipName]?.pointDefense ?? []).map((action) => action.weapon_id),
+          ]
+        : [],
+    [actions, computerShipName],
   );
 
   const handleFireCommand = useCallback(
@@ -713,6 +853,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
 
   return (
     <>
+      {launchers.length > 0 && <SpareGunners spares={spares} reloads={queuedReloads} />}
       <div className="control-launch-div" data-tutorial="fire-target">
         target:
         <EntitySelector
@@ -721,15 +862,27 @@ export const FireControl: React.FC<FireControlProps> = () => {
           setChoice={setFireTarget}
           current={fireTarget}
           exclude={computerShipName!}
-          extra={POINT_DEFENSE_PHANTOM}
+          extra={launchers.length > 0 ? PSEUDO_TARGETS : POINT_DEFENSE_PHANTOM}
           formatter={formatter}
           observer={computerShip}
           excludeSameTeam
         />
       </div>
-      <div className="weapon-list" data-tutorial="weapon-buttons">
-        {weaponButtons}
-      </div>
+      {fireTarget?.name === RELOAD_NAME && computerShipName ? (
+        <ReloadChoices
+          mounts={launchers}
+          stores={computerShip?.magazine ?? EMPTY_MAGAZINE}
+          spares={spares}
+          reloads={queuedReloads}
+          ordered={orderedMounts}
+          onReload={(weapon_id) => dispatch(reloadWeapon({shipName: computerShipName, weapon_id}))}
+          onWithdraw={(weapon_id) => dispatch(unreloadWeapon({shipName: computerShipName, weapon_id}))}
+        />
+      ) : (
+        <div className="weapon-list" data-tutorial="weapon-buttons">
+          {weaponButtons}
+        </div>
+      )}
       {passiveDefences.length > 0 && (
         <div className="weapon-passive-list" data-tutorial="automatic-defences">
           <span className="weapon-passive-label">Automatic:</span>{" "}

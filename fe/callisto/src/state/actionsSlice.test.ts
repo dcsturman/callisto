@@ -248,3 +248,26 @@ describe("two consoles on one ship agree", () => {
     expect(boostsOf(state)).toHaveLength(0);
   });
 });
+
+describe("reloads", () => {
+  test("go to the server in the order chosen, once each, and withdrawing one says so", async () => {
+    const {reloadWeapon, unreloadWeapon} = await import("state/actionsSlice");
+    const {actionPayload, payloadToAction} = await import("components/controls/Actions");
+    let state = reduce(undefined, reloadWeapon({shipName: SHIP, weapon_id: 3}));
+    state = reduce(state, reloadWeapon({shipName: SHIP, weapon_id: 2}));
+    state = reduce(state, reloadWeapon({shipName: SHIP, weapon_id: 3}));
+    expect(state[SHIP].reload).toEqual([3, 2]);
+    expect(actionPayload(state)).toEqual([
+      [SHIP, [{ReloadAction: {weapon_id: 3}}, {ReloadAction: {weapon_id: 2}}]],
+    ]);
+
+    state = reduce(state, unreloadWeapon({shipName: SHIP, weapon_id: 3}));
+    expect(state[SHIP].reload).toEqual([2]);
+    expect(actionPayload(state)[0][1]).toEqual([{ReloadAction: {weapon_id: 2}}, {DeleteReloadAction: {weapon_id: 3}}]);
+
+    // What the server sends back is read in its order.
+    const parsed = payloadToAction([[SHIP, [{ReloadAction: {weapon_id: 1}}, {ReloadAction: {weapon_id: 0}}]]]);
+    expect(parsed[SHIP].reload).toEqual([1, 0]);
+    expect(parsed[SHIP].unreload).toEqual([]);
+  });
+});

@@ -35,6 +35,8 @@ const newShipAction = () => {
     fire: [],
     unfire: [],
     pointDefense: [],
+    reload: [] as number[],
+    unreload: [] as number[],
     engineers: [] as EngineerState[],
     computerRepairs: [] as ShipSystem[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
@@ -289,6 +291,30 @@ export const actionsSlice = createSlice({
       state[item.payload.shipName].pointDefense.push(new_action);
       updateActions(state);
     },
+    /**
+     * Reload a mount this round. A spare gunner does it while one is free,
+     * and the mount keeps its orders; otherwise its own gunner does, instead
+     * of firing. Choosing it twice is a slip, not two reloads.
+     */
+    reloadWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
+      const slot = (state[item.payload.shipName] ??= newShipAction());
+      slot.reload ??= [];
+      if (!slot.reload.includes(item.payload.weapon_id)) {
+        slot.reload.push(item.payload.weapon_id);
+      }
+      slot.unreload = (slot.unreload ?? []).filter((id) => id !== item.payload.weapon_id);
+      updateActions(state);
+    },
+    /** Withdraw a mount's Reload, giving back the spare gunner it took. */
+    unreloadWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
+      const slot = state[item.payload.shipName];
+      if (!slot) {
+        return;
+      }
+      slot.reload = (slot.reload ?? []).filter((id) => id !== item.payload.weapon_id);
+      slot.unreload = [...(slot.unreload ?? []), item.payload.weapon_id];
+      updateActions(state);
+    },
     unfireWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
       const new_action: UnfireAction = {weapon_id: item.payload.weapon_id};
       state[item.payload.shipName].unfire.push(new_action);
@@ -416,6 +442,8 @@ export const {
   fireWeapon,
   pointDefenseWeapon,
   unfireWeapon,
+  reloadWeapon,
+  unreloadWeapon,
   updateFireCalledShot,
   updateFireSalvo,
   updateFireControl,
