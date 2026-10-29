@@ -396,13 +396,17 @@ impl Entities {
   #[must_use]
   pub fn sides(&self) -> Vec<ScenarioSide> {
     let mut sides = std::collections::BTreeMap::<String, Vec<ScenarioShip>>::new();
+    // The craft aboard a carrier are the side's ships too: they are what the
+    // new-game screen hands to the AI or to people, and they launch later.
     for ship in self.ships.values() {
       let ship = ship.read().unwrap();
-      let team = ship.team.map_or_else(|| "Unaligned".to_string(), |team| format!("{team:?}"));
-      sides.entry(team).or_default().push(ScenarioShip {
-        name: ship.get_name().to_string(),
-        ai: ship.controller == Controller::Ai,
-      });
+      for ship in std::iter::once(&*ship).chain(&ship.embarked) {
+        let team = ship.team.map_or_else(|| "Unaligned".to_string(), |team| format!("{team:?}"));
+        sides.entry(team).or_default().push(ScenarioShip {
+          name: ship.get_name().to_string(),
+          ai: ship.controller == Controller::Ai,
+        });
+      }
     }
     sides
       .into_iter()
@@ -636,7 +640,24 @@ impl Entities {
       missiles: Vec<Missile>,
     }
 
-    let mut ships: Vec<_> = self.ships.values().map(|s| s.read().unwrap().clone()).collect();
+    // Every ship at the top level, the craft aboard a carrier marked `aboard`
+    // rather than nested, so a file reads the same way whoever wrote it.
+    let mut ships: Vec<Ship> = self
+      .ships
+      .values()
+      .flat_map(|s| {
+        let mut carrier = s.read().unwrap().clone();
+        let name = carrier.get_name().to_string();
+        let craft: Vec<Ship> = std::mem::take(&mut carrier.embarked)
+          .into_iter()
+          .map(|mut craft| {
+            craft.aboard = Some(name.clone());
+            craft
+          })
+          .collect();
+        std::iter::once(carrier).chain(craft)
+      })
+      .collect();
     let mut planets: Vec<_> = self.planets.values().map(|p| p.read().unwrap().clone()).collect();
     let mut missiles: Vec<_> = self.missiles.values().map(|m| m.read().unwrap().clone()).collect();
     // Stable ordering matches the existing wire-level Serialize impl, so file diffs are clean.
@@ -1433,10 +1454,21 @@ impl Entities {
             UpdateAction::ShipDestroyed => {
               debug!("(Entity.update_all) Ship {} destroyed at position {:?}.", name, pos);
               cleanup_ships_list.push(name.to_string());
-              Some(vec![
+              let mut effects = vec![
                 EffectMsg::ShipDestroyed { position: pos },
                 EffectMsg::about(name, MessageCategory::Destruction, "%s destroyed.".to_string()),
-              ])
+              ];
+              // The carrier's loss is her craft's loss: everything in her
+              // berths goes with her.
+              effects.extend(ship.embarked.iter().map(|craft| {
+                EffectMsg::about(
+                  craft.get_name(),
+                  MessageCategory::Destruction,
+                  "%s destroyed in her berth aboard %t.".to_string(),
+                )
+                .at(name)
+              }));
+              Some(effects)
             }
             update => panic!("(Entity.update_all) Unexpected update {update:?} during ship updates."),
           }
@@ -1582,6 +1614,9 @@ impl Entities {
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
           | ShipAction::ReviveWatch { .. }
+          | ShipAction::Launch { .. }
+          | ShipAction::Land { .. }
+          | ShipAction::ClearLand
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => {
@@ -3168,6 +3203,9 @@ impl Entities {
           }
           // Keep JamMissiles and PointDefense in all cases.
           ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles { .. } => true,
+          // A Land order stands until the craft is aboard, or the carrier is
+          // gone. A Launch is one round's order.
+          ShipAction::Land { carrier } => self.ships.contains_key(carrier),
           // Engineer actions should be scrubbed each turn - they are one-time actions.
           // LeadershipCheck is also one-shot (the captain re-queues it each
           // turn through the Captain HUD).
@@ -3186,6 +3224,8 @@ impl Entities {
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
           | ShipAction::ReviveWatch { .. }
+          | ShipAction::Launch { .. }
+          | ShipAction::ClearLand
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => false,
@@ -3310,6 +3350,23 @@ impl Entities {
                 team,
                 safe: result.success,
               });
+              // The craft aboard go with her, as her ships of the side.
+              let craft: Vec<(String, Option<Team>)> = self.ships.get(ship_name).map_or_else(Vec::new, |ship| {
+                ship
+                  .read()
+                  .unwrap()
+                  .embarked
+                  .iter()
+                  .map(|craft| (craft.get_name().to_string(), craft.team))
+                  .collect()
+              });
+              for (name, team) in craft {
+                self.departed.push(Departure {
+                  name,
+                  team,
+                  safe: result.success,
+                });
+              }
             }
             result
           }
@@ -3950,7 +4007,17 @@ impl Serialize for Entities {
       filename: &self.filename,
       round: self.round,
       departed: &self.departed,
-      ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
+      // What each carrier's deck can do is worked out as the world goes out,
+      // so a console or an AI reads it rather than deriving it.
+      ships: self
+        .ships
+        .values()
+        .map(|s| {
+          let mut ship = s.read().unwrap().clone();
+          ship.flight_deck = ship.flight_deck();
+          ship
+        })
+        .collect::<Vec<Ship>>(),
       missiles: self
         .missiles
         .values()
@@ -4006,9 +4073,28 @@ impl<'de> Deserialize<'de> for Entities {
     }
 
     let guts = Entities::deserialize(deserializer)?;
+    // A ship that starts aboard a carrier (`aboard`) is listed at the top
+    // level of the file for the author's sake, and goes into the carrier's
+    // berths here, so the world opens with her off the plot.
+    let (boarding, mut ships): (Vec<Ship>, Vec<Ship>) = guts.ships.into_iter().partition(|ship| ship.aboard.is_some());
+    for craft in boarding {
+      let carrier = craft.aboard.clone().unwrap_or_default();
+      let Some(host) = ships.iter_mut().find(|ship| ship.get_name() == carrier) else {
+        return Err(serde::de::Error::custom(format!(
+          "{} is aboard {carrier}, which is no ship in the scenario (or is itself aboard something)",
+          craft.get_name()
+        )));
+      };
+      if !host.is_carrier() {
+        return Err(serde::de::Error::custom(format!(
+          "{} is aboard {carrier}, which has no docking space or hangar",
+          craft.get_name()
+        )));
+      }
+      host.embarked.push(craft);
+    }
     Ok(crate::entity::Entities {
-      ships: guts
-        .ships
+      ships: ships
         .into_iter()
         .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
         .collect(),
@@ -6681,19 +6767,20 @@ mod tests {
     let entities =
       Entities::parse_bytes_with_ship_templates(&bytes, "Keelhaven", get_ship_templates_snapshot()).unwrap();
     assert_eq!(entities.metadata.rounds, Some(60));
+    // On the plot: the carriers' wings start in their berths.
     let ships: Vec<Ship> = entities.ships.values().map(|ship| ship.read().unwrap().clone()).collect();
     let side = |team: Team| ships.iter().filter(move |ship| ship.team == Some(team));
-    assert_eq!((side(Team::Red).count(), side(Team::Blue).count()), (107, 89));
+    assert_eq!((side(Team::Red).count(), side(Team::Blue).count()), (77, 9));
 
     let count = |team: Team, design: &str| side(team).filter(|ship| ship.design.name == design).count();
     assert_eq!(count(Team::Red, "Battle Rider - Hadrian"), 1);
     assert_eq!(count(Team::Red, "Planetoid Monitor - Jaellemo"), 1);
     assert_eq!(count(Team::Red, "System Defence Boat - Dragon"), 15);
     assert_eq!(count(Team::Red, "System Defense Boat"), 10);
-    assert_eq!(count(Team::Red, "Heavy Fighter"), 80);
+    assert_eq!(count(Team::Red, "Heavy Fighter"), 50);
     assert_eq!(count(Team::Blue, "Strike Carrier - Wind"), 1);
     assert_eq!(count(Team::Blue, "Light Cruiser - Valiant"), 2);
-    assert_eq!(count(Team::Blue, "Light Fighter"), 80);
+    assert_eq!(count(Team::Blue, "Light Fighter"), 0);
 
     let keelhaven = crate::ship::Post::Body("Keelhaven".to_string());
     assert!(
@@ -6701,24 +6788,35 @@ mod tests {
     );
     assert!(side(Team::Blue).all(|ship| ship.goal == Some(crate::ship::Goal::Destroy)));
 
-    // Each carrier's air group flies in squadrons named for her, right beside
-    // her, ready for step 9 to embark them.
-    let position = |name: &str| ships.iter().find(|ship| ship.get_name() == name).unwrap().get_position();
-    for (carrier, wing, design, size) in [
-      ("Keelhaven Bastion", "Jaellemo Wing", "Heavy Fighter", 30),
-      ("Sirocco", "Wind Wing", "Light Fighter", 80),
+    // Each carrier's air group is aboard her, in the wing squadrons it will
+    // launch into, on her team, at her position, with its home set.
+    for (carrier, wing, design, size, wings) in [
+      ("Keelhaven Bastion", "Jaellemo Wing", "Heavy Fighter", 30, 2),
+      ("Sirocco", "Wind Wing", "Light Fighter", 80, 4),
     ] {
-      let air_group: Vec<&Ship> = ships
-        .iter()
-        .filter(|ship| ship.squadron.as_deref().is_some_and(|squadron| squadron.starts_with(wing)))
-        .collect();
-      assert_eq!(air_group.len(), size, "{wing}");
-      for fighter in air_group {
-        assert_eq!(fighter.design.name, design, "{}", fighter.get_name());
-        let km = (fighter.get_position() - position(carrier)).magnitude() / 1000.0;
-        assert!(km < 200.0, "{} starts {km:.0} km from {carrier}", fighter.get_name());
+      let host = ships.iter().find(|ship| ship.get_name() == carrier).unwrap();
+      assert_eq!(host.embarked.len(), size, "{carrier}");
+      assert!(host
+        .flight_deck()
+        .is_some_and(|deck| deck.berths_free == u32::from(carrier == "Keelhaven Bastion")));
+      let mut names: Vec<&str> = host.embarked.iter().filter_map(|c| c.squadron.as_deref()).collect();
+      names.sort_unstable();
+      names.dedup();
+      assert_eq!(names.len(), wings, "{wing}: {names:?}");
+      for craft in &host.embarked {
+        assert_eq!(craft.design.name, design, "{}", craft.get_name());
+        assert!(craft.squadron.as_deref().is_some_and(|s| s.starts_with(wing)));
+        assert_eq!(craft.team, host.team);
+        assert_eq!(craft.carrier.as_deref(), Some(carrier));
+        assert_eq!(craft.get_position(), host.get_position());
+        assert!(craft.aboard.is_none());
       }
     }
+    // The whole order of battle is still 196 ships.
+    let aboard: usize = ships.iter().map(|ship| ship.embarked.len()).sum();
+    assert_eq!(ships.len() + aboard, 196);
+    let sides = entities.sides();
+    assert_eq!(sides.iter().map(|side| side.ships.len()).sum::<usize>(), 196);
 
     let distant_km = f64::from(crate::rules_tables::RANGE_BANDS[3]) / 1000.0;
     for attacker in side(Team::Blue) {
@@ -7769,6 +7867,176 @@ mod tests {
       assert!(serde_json::to_string(&entities).unwrap().contains("\"departed\""));
       assert_eq!(entities.deep_copy().unwrap().departed, entities.departed);
     }
+  }
+
+  /// A carrier that jumps takes the craft in her berths with her, and they
+  /// count as departed with her.
+  #[tokio::test]
+  async fn a_carrier_that_jumps_takes_her_craft() {
+    use crate::software::SoftwareKind;
+    config_test_ship_templates().await;
+    let name = "./scenarios/tutorial-8-jump.json";
+    let bytes = fs::read(name).expect("the jump lesson's scenario");
+    let mut entities = Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+    let fighter = get_ship_template("Light Fighter").unwrap();
+    {
+      let mut killer = entities.ships["Killer"].write().unwrap();
+      killer.enable_jump();
+      killer.set_software_running(
+        Software {
+          kind: SoftwareKind::FireControl,
+          level: 2,
+        },
+        false,
+      );
+      killer.set_software_running(
+        Software {
+          kind: SoftwareKind::JumpControl,
+          level: 2,
+        },
+        true,
+      );
+      killer.embark(Ship::new("Flea".to_string(), Vec3::zero(), Vec3::zero(), &fighter, None, None));
+    }
+    let mut rng = SmallRng::seed_from_u64(3);
+    entities.engineer_actions(
+      &[("Killer".to_string(), vec![ShipAction::Jump { engineer: 0 }])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(!entities.ships.contains_key("Killer"));
+    assert!(!entities.ships.contains_key("Flea"), "she was never on the plot");
+    let names: Vec<&str> = entities.departed.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(names, vec!["Killer", "Flea"]);
+    assert_eq!(
+      entities.departed[1].team,
+      Some(crate::ship::Team::Blue),
+      "she took the carrier's team"
+    );
+    assert_eq!(entities.departed[0].safe, entities.departed[1].safe);
+  }
+
+  /// A carrier destroyed takes the craft in her berths with her, each with a
+  /// line of its own.
+  #[tokio::test]
+  async fn a_carrier_lost_is_her_crafts_loss() {
+    config_test_ship_templates().await;
+    let mut entities = Entities::new();
+    let wind = get_ship_template("Strike Carrier - Wind").unwrap();
+    let fighter = get_ship_template("Light Fighter").unwrap();
+    entities.add_ship("Sirocco".to_string(), Vec3::zero(), Vec3::zero(), &wind, None, None);
+    {
+      let mut carrier = entities.ships["Sirocco"].write().unwrap();
+      for n in 1..=3 {
+        carrier.embark(Ship::new(format!("Gale {n}"), Vec3::zero(), Vec3::zero(), &fighter, None, None));
+      }
+      carrier.current_hull = 0;
+    }
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(1);
+    let effects = entities.update_all(&snapshot, &BoostMap::default(), &mut rng);
+    assert!(entities.ships.is_empty());
+    let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+    assert!(lines.iter().any(|l| l == "Sirocco destroyed."), "{lines:?}");
+    for n in 1..=3 {
+      assert!(
+        lines
+          .iter()
+          .any(|l| l == &format!("Gale {n} destroyed in her berth aboard Sirocco.")),
+        "{lines:?}"
+      );
+    }
+  }
+
+  /// A scenario file lists craft that start aboard at the top level with
+  /// `aboard`; they are in their carrier's berths once read, and written
+  /// back out the same way.
+  #[tokio::test]
+  async fn a_scenario_round_trips_its_embarked_craft() {
+    config_test_ship_templates().await;
+    let bytes = fs::read("./scenarios/Keelhaven.json").unwrap();
+    let entities =
+      Entities::parse_bytes_with_ship_templates(&bytes, "Keelhaven", get_ship_templates_snapshot()).unwrap();
+    let aboard = |entities: &Entities, carrier: &str| -> Vec<String> {
+      let mut names: Vec<String> = entities.ships[carrier]
+        .read()
+        .unwrap()
+        .embarked
+        .iter()
+        .map(|c| c.get_name().to_string())
+        .collect();
+      names.sort();
+      names
+    };
+    assert_eq!(aboard(&entities, "Sirocco").len(), 80);
+    assert_eq!(aboard(&entities, "Keelhaven Bastion").len(), 30);
+
+    let written = entities.to_scenario_file_json().unwrap();
+    let file: serde_json::Value = serde_json::from_slice(&written).unwrap();
+    let ships = file["ships"].as_array().unwrap();
+    assert_eq!(ships.len(), 196, "every ship at the top level");
+    assert_eq!(ships.iter().filter(|s| s["aboard"] == "Sirocco").count(), 80);
+    assert_eq!(ships.iter().filter(|s| s["aboard"] == "Keelhaven Bastion").count(), 30);
+    assert!(ships.iter().all(|s| s.get("embarked").is_none()), "nothing nested");
+    assert!(ships.iter().all(|s| s.get("flight_deck").is_none()));
+
+    let again =
+      Entities::parse_bytes_with_ship_templates(&written, "Keelhaven", get_ship_templates_snapshot()).unwrap();
+    assert_eq!(again.ships.len(), entities.ships.len());
+    for carrier in ["Sirocco", "Keelhaven Bastion"] {
+      assert_eq!(aboard(&again, carrier), aboard(&entities, carrier));
+      let craft = &again.ships[carrier].read().unwrap().embarked[0];
+      assert!(craft.squadron.is_some());
+      assert_eq!(craft.carrier.as_deref(), Some(carrier));
+    }
+
+    // Nested `embarked` is read too, as a game copy carries it, and the
+    // wire names the carrier's deck.
+    let wire = serde_json::to_string(&entities).unwrap();
+    let nested: Entities =
+      with_ship_templates_for_deserialization(get_ship_templates_snapshot(), || serde_json::from_str(&wire)).unwrap();
+    assert_eq!(aboard(&nested, "Sirocco").len(), 80);
+    let wire: serde_json::Value = serde_json::from_str(&wire).unwrap();
+    let sirocco = wire["ships"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .find(|s| s["name"] == "Sirocco")
+      .unwrap();
+    assert_eq!(sirocco["flight_deck"]["launch_per_round"], 10);
+    assert_eq!(sirocco["flight_deck"]["recover_per_round"], 10);
+    assert_eq!(sirocco["flight_deck"]["berths_free"], 0);
+    assert_eq!(sirocco["embarked"].as_array().unwrap().len(), 80);
+  }
+
+  /// A craft aboard a ship the scenario does not have, or one with no
+  /// berth, is a broken file.
+  #[tokio::test]
+  async fn a_craft_aboard_nothing_is_refused() {
+    config_test_ship_templates().await;
+    let scenario = |carrier: &str, design: &str| {
+      format!(
+        r#"{{"ships": [
+          {{"name": "Host", "position": [0,0,0], "velocity": [0,0,0], "plan": [[[0,0,0],0]], "design": "{design}"}},
+          {{"name": "Flea", "position": [0,0,0], "velocity": [0,0,0], "plan": [[[0,0,0],0]], "design": "Light Fighter", "aboard": "{carrier}"}}
+        ]}}"#
+      )
+    };
+    let load =
+      |json: String| Entities::parse_bytes_with_ship_templates(json.as_bytes(), "t", get_ship_templates_snapshot());
+    let missing = load(scenario("Nobody", "Strike Carrier - Wind"))
+      .err()
+      .map(|e| e.to_string())
+      .unwrap_or_default();
+    assert!(missing.contains("Flea is aboard Nobody"), "{missing}");
+    let no_berth = load(scenario("Host", "Buccaneer"))
+      .err()
+      .map(|e| e.to_string())
+      .unwrap_or_default();
+    assert!(no_berth.contains("no docking space or hangar"), "{no_berth}");
+    let fine = load(scenario("Host", "Strike Carrier - Wind")).unwrap();
+    assert_eq!(fine.ships.len(), 1);
+    assert_eq!(fine.ships["Host"].read().unwrap().embarked.len(), 1);
   }
 
   /// No astrogation, no jump -- and the engineer is told why.

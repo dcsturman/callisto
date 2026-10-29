@@ -137,5 +137,16 @@
     "sand": 1820
   },
   "computer_fib": true,
-  "radiation_shielding": true
+  "radiation_shielding": true,
+  "features": [
+    {
+      "name": "Docking space (50 t) x5",
+      "kind": {
+        "DockingSpace": {
+          "craft_tons": 50,
+          "count": 5
+        }
+      }
+    }
+  ]
 }

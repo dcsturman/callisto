@@ -73,8 +73,21 @@ export interface ShipFeature {
   power?: number;
   default_on?: boolean;
   /** What the rules know it as, where they know it at all. */
-  kind?: "RepairDrones" | "HolographicHull";
+  kind?: FeatureKind;
 }
+
+/**
+ * A feature the rules reach for by name. The carrier facilities carry the
+ * largest craft they take and how many there are (High Guard pp. 57, 61-63).
+ */
+export type FeatureKind =
+  | "RepairDrones"
+  | "HolographicHull"
+  | {DockingSpace: {craft_tons: number; count?: number}}
+  | {FullHangar: {craft_tons: number; count?: number}}
+  | {LaunchTube: {craft_tons: number; count?: number}}
+  | {RecoveryDeck: {craft_tons: number; count?: number}}
+  | {DockingClamp: {max_tons: number; count?: number}};
 
 /** One line of the budget. */
 export interface PowerLine {

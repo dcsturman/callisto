@@ -157,6 +157,10 @@ impl Server {
           let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
           ship.controller = Controller::Human;
           ship.ai_report = None;
+          for craft in &mut ship.embarked {
+            craft.controller = Controller::Human;
+            craft.ai_report = None;
+          }
         }
       };
       to_people(&self.initial_scenario);
@@ -170,15 +174,23 @@ impl Server {
   /// screen. A name that is no ship here is ignored.
   #[must_use]
   pub fn with_ai_ships(mut self, ships: &[String]) -> Self {
+    // The craft aboard a carrier are chosen on the same screen, by name,
+    // and launch under whoever was given them.
+    let assign_one = |ship: &mut crate::ship::Ship| {
+      ship.controller = if ships.contains(&crate::entity::Entity::get_name(ship).to_string()) {
+        Controller::Ai
+      } else {
+        ship.ai_report = None;
+        Controller::Human
+      };
+    };
     let assign = |entities: &Entities| {
-      for (name, ship) in &entities.ships {
+      for ship in entities.ships.values() {
         let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-        ship.controller = if ships.contains(name) {
-          Controller::Ai
-        } else {
-          ship.ai_report = None;
-          Controller::Human
-        };
+        assign_one(&mut ship);
+        for craft in &mut ship.embarked {
+          assign_one(craft);
+        }
       }
     };
     assign(&self.initial_scenario);
@@ -519,6 +531,37 @@ mod ai_tests {
         .controller,
       Controller::Human
     );
+  }
+
+  /// A reset puts a launched craft back in her berth, and the new-game
+  /// screen's choice reaches the craft aboard.
+  #[tokio::test]
+  async fn a_reset_puts_the_craft_back_aboard() {
+    config_test_ship_templates().await;
+    let server = Server::new("game", "./scenarios/Keelhaven.json")
+      .await
+      .with_ai_ships(&["Sirocco".to_string(), "Gale 01".to_string()]);
+    {
+      let mut entities = server.get_unlocked_entities().unwrap();
+      let craft = entities.ships["Sirocco"]
+        .write()
+        .unwrap()
+        .release("Gale 01", Vec3::zero())
+        .unwrap();
+      assert_eq!(craft.controller, Controller::Ai, "chosen for the AI in her berth");
+      entities
+        .ships
+        .insert("Gale 01".to_string(), std::sync::Arc::new(std::sync::RwLock::new(craft)));
+      assert_eq!(entities.ships["Sirocco"].read().unwrap().embarked.len(), 79);
+    }
+    server.reset();
+    let entities = server.get_unlocked_entities().unwrap();
+    assert!(!entities.ships.contains_key("Gale 01"));
+    let sirocco = entities.ships["Sirocco"].read().unwrap();
+    assert_eq!(sirocco.embarked.len(), 80);
+    let gale = sirocco.craft_aboard("Gale 01").unwrap();
+    assert_eq!(gale.controller, Controller::Ai);
+    assert_eq!(sirocco.craft_aboard("Gale 02").unwrap().controller, Controller::Human);
   }
 
   /// The new-game screen's choice decides who crews each ship, whatever the

@@ -177,5 +177,36 @@
     "sand": 5000
   },
   "computer_fib": true,
-  "radiation_shielding": true
+  "radiation_shielding": true,
+  "features": [
+    {
+      "name": "Docking space (10 t) x80",
+      "kind": {
+        "DockingSpace": {
+          "craft_tons": 10,
+          "count": 80
+        }
+      }
+    },
+    {
+      "name": "Launch tube (100 t)",
+      "power": 100,
+      "default_on": true,
+      "kind": {
+        "LaunchTube": {
+          "craft_tons": 100
+        }
+      }
+    },
+    {
+      "name": "Recovery deck (100 t)",
+      "power": 100,
+      "default_on": true,
+      "kind": {
+        "RecoveryDeck": {
+          "craft_tons": 100
+        }
+      }
+    }
+  ]
 }

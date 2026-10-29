@@ -230,6 +230,44 @@
     {
       "name": "Repair drones",
       "kind": "RepairDrones"
+    },
+    {
+      "name": "Docking space (50 t) x28",
+      "kind": {
+        "DockingSpace": {
+          "craft_tons": 50,
+          "count": 28
+        }
+      }
+    },
+    {
+      "name": "Full hangar (50 t) x3",
+      "kind": {
+        "FullHangar": {
+          "craft_tons": 50,
+          "count": 3
+        }
+      }
+    },
+    {
+      "name": "Launch tube (500 t)",
+      "power": 500,
+      "default_on": true,
+      "kind": {
+        "LaunchTube": {
+          "craft_tons": 500
+        }
+      }
+    },
+    {
+      "name": "Recovery deck (500 t)",
+      "power": 500,
+      "default_on": true,
+      "kind": {
+        "RecoveryDeck": {
+          "craft_tons": 500
+        }
+      }
     }
   ],
   "magazine": {

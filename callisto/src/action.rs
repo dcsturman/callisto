@@ -420,6 +420,26 @@ pub enum ShipAction {
   ReviveWatch {
     count: u32,
   },
+  /// The carrier's captain launches these craft from her berths this
+  /// round: through a powered launch tube, ten a tube (HG FAQ), and they are
+  /// on the plot as the round ends; with no working tube, through the berths
+  /// in D3 rounds (1D for craft of 2,000 tons and up), the carrier pinned
+  /// meanwhile (HG p. 61). One list per ship: a new list replaces the last,
+  /// and an empty one withdraws it. Does not replace the leadership check:
+  /// flight operations are an order, not the captain's own roll.
+  Launch {
+    craft: Vec<String>,
+  },
+  /// A craft's pilot brings her in to `carrier` at the end of this round's
+  /// movement: on a Pilot check through a recovery deck (HG p. 104), or
+  /// through a berth with both ships pinned for D3 (1D) rounds. Stands until
+  /// she is aboard or the order is cleared, so a craft that fails, or finds
+  /// the deck full, tries again next round.
+  Land {
+    carrier: String,
+  },
+  /// Anti-action: withdraw the craft's Land order.
+  ClearLand,
   // Anti-actions: explicit "clear queued sensor/engineer action" intents.
   // Sent by the client when the user cancels a queued action (chooser → none,
   // or click-to-remove from the Actions list). Consumed in `merge`; never
@@ -598,6 +618,22 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
               current_actions.push(next_action.clone());
             }
           }
+          // One launch list a carrier: the newest is the whole order, and an
+          // empty list is the captain standing the deck down.
+          ShipAction::Launch { ref craft } => {
+            current_actions.retain(|action| !matches!(action, ShipAction::Launch { .. }));
+            if !craft.is_empty() {
+              current_actions.push(next_action.clone());
+            }
+          }
+          // One carrier to land on; the newest order is the one that stands.
+          ShipAction::Land { .. } => {
+            current_actions.retain(|action| !matches!(action, ShipAction::Land { .. }));
+            current_actions.push(next_action.clone());
+          }
+          ShipAction::ClearLand => {
+            current_actions.retain(|action| !matches!(action, ShipAction::Land { .. }));
+          }
           // Anti-actions: strip the matching kind, don't push anything.
           ShipAction::ClearSensorAction { operator } => {
             current_actions.retain(|action| sensor_operator_of(action) != Some(operator));
@@ -630,7 +666,8 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
               | ShipAction::ReviveWatch { count: 0 }
               | ShipAction::DeleteFireAction { .. }
               | ShipAction::DeleteReloadAction { .. }
-          )
+              | ShipAction::ClearLand
+          ) && !matches!(a, ShipAction::Launch { craft } if craft.is_empty())
         })
         .collect();
       if !filtered.is_empty() {
@@ -834,6 +871,80 @@ mod tests {
       vec![("Exec".to_string(), vec![ShipAction::DeleteReloadAction { weapon_id: 1 }])],
     );
     assert_eq!(queued(&entities), vec![reload(0), fire]);
+  }
+
+  /// A carrier's launch list is one order: resent, it replaces the last;
+  /// empty, it withdraws it. It sits beside the captain's leadership check.
+  #[test]
+  fn a_launch_list_replaces_the_last_and_an_empty_one_withdraws_it() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Wind".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    let queued = |entities: &Entities| -> Vec<ShipAction> {
+      entities
+        .actions
+        .iter()
+        .find(|(ship, _)| ship == "Wind")
+        .map(|(_, actions)| actions.clone())
+        .unwrap_or_default()
+    };
+    let launch = |names: &[&str]| ShipAction::Launch {
+      craft: names.iter().map(ToString::to_string).collect(),
+    };
+    let inspire = ShipAction::LeadershipCheck { boosts: vec![] };
+    // An empty list for a ship with nothing queued queues nothing.
+    merge(&mut entities, vec![("Wind".to_string(), vec![launch(&[])])]);
+    assert_eq!(queued(&entities), vec![]);
+    merge(
+      &mut entities,
+      vec![("Wind".to_string(), vec![inspire.clone(), launch(&["A", "B"])])],
+    );
+    assert_eq!(queued(&entities), vec![inspire.clone(), launch(&["A", "B"])]);
+    merge(&mut entities, vec![("Wind".to_string(), vec![launch(&["C"])])]);
+    assert_eq!(queued(&entities), vec![inspire.clone(), launch(&["C"])]);
+    merge(&mut entities, vec![("Wind".to_string(), vec![launch(&[])])]);
+    assert_eq!(queued(&entities), vec![inspire]);
+  }
+
+  /// A craft has one carrier to land on, the latest ordered, until the
+  /// order is cleared.
+  #[test]
+  fn a_land_order_is_replaced_or_cleared() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Gale".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    let queued = |entities: &Entities| -> Vec<ShipAction> {
+      entities
+        .actions
+        .iter()
+        .find(|(ship, _)| ship == "Gale")
+        .map(|(_, actions)| actions.clone())
+        .unwrap_or_default()
+    };
+    let land = |carrier: &str| ShipAction::Land {
+      carrier: carrier.to_string(),
+    };
+    merge(&mut entities, vec![("Gale".to_string(), vec![ShipAction::ClearLand])]);
+    assert_eq!(queued(&entities), vec![]);
+    merge(&mut entities, vec![("Gale".to_string(), vec![land("Wind")])]);
+    merge(&mut entities, vec![("Gale".to_string(), vec![land("Sirocco")])]);
+    assert_eq!(queued(&entities), vec![land("Sirocco")]);
+    merge(&mut entities, vec![("Gale".to_string(), vec![ShipAction::ClearLand])]);
+    assert_eq!(queued(&entities), vec![]);
   }
 
   #[test]

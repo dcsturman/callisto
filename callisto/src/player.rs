@@ -11,6 +11,7 @@ use crate::action::{boost_target_alive, describe_boost, merge, BoostMap, BoostTa
 use crate::authentication::Authenticator;
 use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
+use crate::flight;
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
   FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, RenameSquadron, Role, SetAiReport,
@@ -1191,10 +1192,15 @@ impl PlayerManager {
         // through it belongs nowhere either.
         // Reloads are worked out per ship below, and applied after fire.
         // A revive is applied as the round ends, below.
+        // Flight operations are read before fire (Launch) and resolved
+        // after movement (Land), by the flight passes below.
         ShipAction::LeadershipCheck { .. }
         | ShipAction::ReviveWatch { .. }
         | ShipAction::ReloadAction { .. }
         | ShipAction::DeleteReloadAction { .. }
+        | ShipAction::Launch { .. }
+        | ShipAction::Land { .. }
+        | ShipAction::ClearLand
         | ShipAction::ClearSensorAction { .. }
         | ShipAction::ClearEngineerAction { .. }
         | ShipAction::ClearLeadershipCheck => (None, None, None, None, None),
@@ -1250,6 +1256,18 @@ impl PlayerManager {
       });
     }
 
+    // The round's Launch orders become flight operations, and a ship a berth
+    // operation holds still is pinned: no Thrust, no dodge, and no attacks
+    // (High Guard p. 61), so her fire orders are set aside for the round.
+    // Reactions stand: the deck is busy, the gunners are not.
+    let mut flight_lines = flight::begin_round(&mut entities, &mut rng);
+    let pinned = flight::pinned_ships(&entities);
+    for (ship_name, ship_actions) in &mut fire_actions {
+      if pinned.contains(ship_name) {
+        ship_actions.retain(|action| !matches!(action, ShipAction::FireAction { .. }));
+      }
+    }
+
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
     // or destroyed they still get to take their actions.
@@ -1258,6 +1276,7 @@ impl PlayerManager {
     // First emit the leadership-action effects so the FE knows the +1
     // assignments before any sensor/fire results land.
     let mut effects = leadership_effects;
+    effects.append(&mut flight_lines);
 
     // A ship still running dark as the round runs loses its locks, before any
     // shot could use them. Not when the switch was thrown: a crew that turned
@@ -1313,6 +1332,13 @@ impl PlayerManager {
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
+
+    // Flight operations resolve after movement: craft due out take the plot
+    // (to act from next round), Land orders are checked where the ships now
+    // are, and a craft that has had a round aboard is rearmed. Before the
+    // engineers, so a carrier that jumps this round takes aboard what landed
+    // and leaves behind what launched.
+    effects.append(&mut flight::end_round(&mut entities, &ship_snapshot, &mut rng));
 
     // Jumps are now resolved as part of `engineer_actions` below (Jump is an
     // engineer-class action) — no separate phase here.

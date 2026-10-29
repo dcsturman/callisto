@@ -189,6 +189,15 @@
     {
       "name": "Repair drones",
       "kind": "RepairDrones"
+    },
+    {
+      "name": "Docking space (40 t) x6",
+      "kind": {
+        "DockingSpace": {
+          "craft_tons": 40,
+          "count": 6
+        }
+      }
     }
   ],
   "magazine": {

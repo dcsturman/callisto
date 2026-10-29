@@ -47,12 +47,16 @@ pub fn side_of(team: Option<callisto::ship::Team>, ship: &str) -> String {
 #[must_use]
 pub fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
   let mut sides = BTreeMap::<String, Vec<String>>::new();
+  // The craft aboard a carrier are the side's ships too: off the plot
+  // until launched, and crewed by the side once they are.
   for ship in world.ships.values() {
     let ship = ship.read().unwrap();
-    sides
-      .entry(side_of(ship.team, ship.get_name()))
-      .or_default()
-      .push(ship.get_name().to_string());
+    for ship in std::iter::once(&*ship).chain(&ship.embarked) {
+      sides
+        .entry(side_of(ship.team, ship.get_name()))
+        .or_default()
+        .push(ship.get_name().to_string());
+    }
   }
   for ships in sides.values_mut() {
     ships.sort();

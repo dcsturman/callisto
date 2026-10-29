@@ -578,6 +578,48 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub ai_report: Option<AiReport>,
+  /// The craft aboard this ship, whole: hull, criticals, crew, loads, orders
+  /// and squadron, exactly as they will be when launched. Not entities on
+  /// the plot: nothing detects, targets or orders a craft in a berth. On the
+  /// wire inside the carrier, which is what a flight-deck console shows.
+  /// Omitted when none.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub embarked: Vec<Ship>,
+  /// Launches and recoveries this carrier has under way through her
+  /// berths, or through a tube this round. Omitted when none.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub flight_ops: Vec<FlightOp>,
+  /// The carrier a craft belongs to: set when she is embarked and kept when
+  /// she launches, so a pilot or an AI knows where home is. Omitted when
+  /// the ship is nobody's craft.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub carrier: Option<String>,
+  /// Whole rounds a craft has spent aboard since she last came in. One is
+  /// enough to rearm from the carrier's stores. Omitted at zero.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub rounds_aboard: u32,
+  /// Scenario files only: the carrier this ship starts aboard. A ship read
+  /// with this set is moved into that carrier's `embarked` as the file is
+  /// read, and written back out this way, so a file lists every ship at the
+  /// top level. Never set on a ship in play.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub aboard: Option<String>,
+  /// Held still by a flight operation this round: a carrier with a craft
+  /// going out or coming in through a berth, or the craft coming in. No
+  /// Thrust, no dodge, no attacks (HG p. 61). Set as the round's orders are
+  /// read and cleared as it ends; on the wire while set.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub pinned: bool,
+  /// What the flight deck can do, filled in as the world is sent (see
+  /// [`Ship::flight_deck`]) and never read back.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
+  pub flight_deck: Option<FlightDeck>,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -2096,6 +2138,107 @@ pub enum FeatureKind {
   RepairDrones,
   /// A projected false image of another ship.
   HolographicHull,
+  /// Internal bays that each hold one craft of up to `craft_tons` (High
+  /// Guard p. 61). A craft aboard lives in one of these or a hangar.
+  DockingSpace {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// As a docking space, with room to work on the craft (HG p. 61).
+  FullHangar {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// Launches up to ten craft of up to `craft_tons` a round (HG pp. 61-62,
+  /// and the HG FAQ for the rate). Draws Power: an unpowered tube launches
+  /// nothing, and the carrier falls back to her docking spaces.
+  LaunchTube {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// Recovers up to ten craft of up to `craft_tons` a round (HG pp. 62-63,
+  /// rate from the FAQ), on a Pilot check (p. 104). Draws Power.
+  RecoveryDeck {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// An external clamp for a ship of up to `max_tons` (HG p. 57). Read
+  /// from designs and shown, but not yet a berth: nothing docks to one.
+  DockingClamp {
+    max_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+}
+
+fn one_facility() -> u32 {
+  1
+}
+
+/// How many craft a launch tube or a recovery deck handles in a round (HG
+/// 2022 FAQ p. 3, which raised the deck's one a round to ten).
+pub const CRAFT_PER_FACILITY_ROUND: u32 = 10;
+
+/// What a craft of `tons` needs of a berth, tube or deck: one sized at
+/// least for it.
+fn facility_fits(craft_tons: u32, tons: u32) -> bool {
+  craft_tons >= tons
+}
+
+/// A flight operation a carrier has under way: a craft on its way out of
+/// a berth or into one. While any is under way the carrier is pinned: no
+/// Thrust and no attacks (HG p. 61), and so is a craft being recovered.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct FlightOp {
+  pub craft: String,
+  pub kind: FlightOpKind,
+  /// Rounds to go, counting this one. The craft is out, or aboard, as the
+  /// round in which this reaches zero ends.
+  pub rounds_left: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum FlightOpKind {
+  /// Out through a launch tube: one round, and nothing is pinned.
+  TubeLaunch,
+  /// Out through her berth, the carrier having no working tube for her:
+  /// D3 rounds (1D at 2,000 tons and up), the carrier pinned (HG p. 61).
+  BerthLaunch,
+  /// In through a berth, the carrier having no working deck for her: the
+  /// same rounds, both ships pinned, and no Pilot check.
+  BerthRecovery,
+}
+
+impl FlightOpKind {
+  /// Whether this operation holds the carrier still.
+  #[must_use]
+  pub fn pins_carrier(self) -> bool {
+    !matches!(self, FlightOpKind::TubeLaunch)
+  }
+}
+
+/// What a carrier's flight deck can do this round, worked out from her
+/// facilities and her Power as the world is sent, so a console or an AI need
+/// not re-derive it. `None` on a ship with no berths at all.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+pub struct FlightDeck {
+  /// Berths of every size: docking spaces and full hangars.
+  pub berths: u32,
+  /// Berths with nothing in them.
+  pub berths_free: u32,
+  /// Craft the powered launch tubes release a round, at the largest size
+  /// they take. Zero means launching goes through the berths and pins her.
+  pub launch_per_round: u32,
+  /// Craft the powered recovery decks take a round. Zero means recovery
+  /// goes through the berths, pinning both ships, with no Pilot check.
+  pub recover_per_round: u32,
+  /// The largest craft a powered tube takes, and a powered deck.
+  pub tube_tons: u32,
+  pub deck_tons: u32,
 }
 
 /// One line of a ship's power budget.
@@ -2274,6 +2417,13 @@ impl Ship {
       goal: None,
       post: None,
       post_radius: None,
+      embarked: vec![],
+      flight_ops: vec![],
+      carrier: None,
+      rounds_aboard: 0,
+      aboard: None,
+      pinned: false,
+      flight_deck: None,
     };
     ship.stock(ship.full_stock());
     ship
@@ -2375,9 +2525,47 @@ impl Ship {
     self.dodge_thrust = 0;
     self.dodge_spent = 0;
     self.held_still = false;
+    self.flight_ops.clear();
+    self.pinned = false;
+    for craft in &mut self.embarked {
+      craft.reset_current_values_to_design();
+    }
+    self.stow_embarked();
   }
 
   pub fn fixup_current_values(&mut self) {
+    self.fixup_own_values();
+    // The craft aboard arrive whole too, and in their berths.
+    for craft in &mut self.embarked {
+      craft.fixup_own_values();
+    }
+    self.stow_embarked();
+  }
+
+  /// Settle every craft aboard into her berth: at the carrier's position
+  /// and velocity, on her team if she had none, with no plan, no contacts
+  /// and nothing pending. The scenario-file `aboard` marker is spent.
+  pub fn stow_embarked(&mut self) {
+    let (name, position, velocity, team) = (self.name.clone(), self.position, self.velocity, self.team);
+    for craft in &mut self.embarked {
+      craft.position = position;
+      craft.velocity = velocity;
+      craft.plan = FlightPlan::default();
+      craft.contacts.clear();
+      craft.sensor_locks.clear();
+      craft.reset_pilot_actions();
+      craft.carrier = Some(name.clone());
+      craft.aboard = None;
+      craft.pinned = false;
+      craft.flight_ops.clear();
+      craft.embarked.clear();
+      if craft.team.is_none() {
+        craft.team = team;
+      }
+    }
+  }
+
+  fn fixup_own_values(&mut self) {
     self.current_hull = u32::max(self.current_hull, self.design.hull);
     self.current_armor = u32::max(self.current_armor, self.design.armor);
     self.current_power = u32::max(self.current_power, self.design.power);
@@ -3092,6 +3280,33 @@ impl Ship {
         on_demand: false,
       });
     }
+    // Flight facilities are fed ahead of the drive, like the weapons: a
+    // launch tube is operational kit in the printed Power budget. Other
+    // features (a hologram projector) are luxuries that come after it.
+    let feature_line = |index: usize, feature: &ShipFeature| PowerLine {
+      system: PowerSystem::Feature(index),
+      label: feature.name.clone(),
+      draw: feature.power,
+      received: 0,
+      online: self.is_online(PowerSystem::Feature(index)),
+      on_demand: false,
+    };
+    let is_flight = |feature: &ShipFeature| {
+      matches!(
+        feature.kind,
+        Some(FeatureKind::LaunchTube { .. } | FeatureKind::RecoveryDeck { .. })
+      )
+    };
+    // A fitting with no draw is not a line on the power board.
+    let powered = |flight: bool| {
+      self
+        .design
+        .features
+        .iter()
+        .enumerate()
+        .filter(move |(_, feature)| feature.power > 0 && is_flight(feature) == flight)
+    };
+    lines.extend(powered(true).map(|(index, feature)| feature_line(index, feature)));
     lines.push(PowerLine {
       system: PowerSystem::Maneuver,
       label: format!("M-drive (thrust {})", self.design.maneuver),
@@ -3100,20 +3315,7 @@ impl Ship {
       online: self.is_online(PowerSystem::Maneuver),
       on_demand: false,
     });
-    for (index, feature) in self.design.features.iter().enumerate() {
-      // A fitting with no draw is not a line on the power board.
-      if feature.power == 0 {
-        continue;
-      }
-      lines.push(PowerLine {
-        system: PowerSystem::Feature(index),
-        label: feature.name.clone(),
-        draw: feature.power,
-        received: 0,
-        online: self.is_online(PowerSystem::Feature(index)),
-        on_demand: false,
-      });
-    }
+    lines.extend(powered(false).map(|(index, feature)| feature_line(index, feature)));
     if self.design.jump > 0 {
       lines.push(PowerLine {
         system: PowerSystem::Jump,
@@ -3436,7 +3638,8 @@ impl Ship {
   /// has already been dodged. None without a pilot at their station.
   #[must_use]
   pub fn get_dodge_thrust(&self) -> u8 {
-    if self.station_working(BridgeStation::Pilot) {
+    // A pinned ship expends no Thrust, and a dodge is Thrust (HG p. 61).
+    if self.station_working(BridgeStation::Pilot) && !self.pinned {
       self.dodge_thrust.saturating_sub(self.dodge_spent)
     } else {
       0
@@ -3694,6 +3897,204 @@ impl Ship {
   }
 }
 
+/// Flight operations: the berths, tubes and decks of a carrier and the craft
+/// in them. See `docs/capital_ships_plan.md` §4 and the FAQ.
+impl Ship {
+  /// Every berth aboard -- docking spaces and full hangars -- by the tonnage
+  /// it takes, one entry a berth, smallest first.
+  #[must_use]
+  pub fn berths(&self) -> Vec<u32> {
+    let mut berths: Vec<u32> = self
+      .design
+      .features
+      .iter()
+      .filter_map(|feature| match feature.kind {
+        Some(FeatureKind::DockingSpace { craft_tons, count } | FeatureKind::FullHangar { craft_tons, count }) => {
+          Some(std::iter::repeat_n(craft_tons, count as usize))
+        }
+        _ => None,
+      })
+      .flatten()
+      .collect();
+    berths.sort_unstable();
+    berths
+  }
+
+  /// Whether this ship has anywhere to put a craft.
+  #[must_use]
+  pub fn is_carrier(&self) -> bool {
+    self.design.features.iter().any(|feature| {
+      matches!(
+        feature.kind,
+        Some(FeatureKind::DockingSpace { .. } | FeatureKind::FullHangar { .. })
+      )
+    })
+  }
+
+  /// The berths nothing is in, by tonnage, smallest first, with each craft
+  /// aboard in the smallest berth that takes her, largest craft first.
+  #[must_use]
+  pub fn berths_free(&self) -> Vec<u32> {
+    let mut free = self.berths();
+    let mut aboard: Vec<u32> = self.embarked.iter().map(|craft| craft.design.displacement).collect();
+    aboard.sort_unstable_by(|a, b| b.cmp(a));
+    for tons in aboard {
+      if let Some(slot) = free.iter().position(|berth| facility_fits(*berth, tons)) {
+        free.remove(slot);
+      }
+    }
+    free
+  }
+
+  /// Whether a craft of `tons` has a free berth to come in to.
+  #[must_use]
+  pub fn has_berth_for(&self, tons: u32) -> bool {
+    self.berths_free().iter().any(|berth| facility_fits(*berth, tons))
+  }
+
+  /// The powered facilities of one kind that take a craft of `tons`, as
+  /// (how many, the largest craft they take).
+  fn facilities_for(&self, tons: u32, pick: impl Fn(FeatureKind) -> Option<(u32, u32)>) -> (u32, u32) {
+    self
+      .design
+      .features
+      .iter()
+      .enumerate()
+      .filter(|(index, _)| self.is_powered(PowerSystem::Feature(*index)))
+      .filter_map(|(_, feature)| feature.kind.and_then(&pick))
+      .filter(|(craft_tons, _)| facility_fits(*craft_tons, tons))
+      .fold((0, 0), |(count, largest), (craft_tons, n)| (count + n, largest.max(craft_tons)))
+  }
+
+  /// Craft of `tons` the powered launch tubes release in a round (HG FAQ:
+  /// ten a tube). Zero means they go out through the berths instead.
+  #[must_use]
+  pub fn launch_per_round(&self, tons: u32) -> u32 {
+    let (tubes, _) = self.facilities_for(tons, |kind| match kind {
+      FeatureKind::LaunchTube { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    tubes * CRAFT_PER_FACILITY_ROUND
+  }
+
+  /// Craft of `tons` the powered recovery decks take in a round (HG FAQ:
+  /// ten a deck). Zero means they come in through the berths instead.
+  #[must_use]
+  pub fn recover_per_round(&self, tons: u32) -> u32 {
+    let (decks, _) = self.facilities_for(tons, |kind| match kind {
+      FeatureKind::RecoveryDeck { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    decks * CRAFT_PER_FACILITY_ROUND
+  }
+
+  /// What the flight deck can do this round, or `None` on a ship with no
+  /// berths. The rates are for the smallest craft, which is every craft a
+  /// tube or deck of that size takes; `tube_tons` and `deck_tons` say how
+  /// big a craft they go up to.
+  #[must_use]
+  pub fn flight_deck(&self) -> Option<FlightDeck> {
+    if !self.is_carrier() {
+      return None;
+    }
+    let (tubes, tube_tons) = self.facilities_for(0, |kind| match kind {
+      FeatureKind::LaunchTube { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    let (decks, deck_tons) = self.facilities_for(0, |kind| match kind {
+      FeatureKind::RecoveryDeck { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    Some(FlightDeck {
+      berths: u32::try_from(self.berths().len()).unwrap_or(u32::MAX),
+      berths_free: u32::try_from(self.berths_free().len()).unwrap_or(u32::MAX),
+      launch_per_round: tubes * CRAFT_PER_FACILITY_ROUND,
+      recover_per_round: decks * CRAFT_PER_FACILITY_ROUND,
+      tube_tons,
+      deck_tons,
+    })
+  }
+
+  /// The craft aboard named `name`.
+  #[must_use]
+  pub fn craft_aboard(&self, name: &str) -> Option<&Ship> {
+    self.embarked.iter().find(|craft| craft.name == name)
+  }
+
+  /// Whether `name` is in a flight operation already.
+  #[must_use]
+  pub fn in_flight_op(&self, name: &str) -> bool {
+    self.flight_ops.iter().any(|op| op.craft == name)
+  }
+
+  /// Take `craft` aboard: into a berth, at rest relative to the carrier,
+  /// with her plan, contacts and locks gone. Fresh aboard, so not yet
+  /// rearmed.
+  pub fn embark(&mut self, mut craft: Ship) {
+    craft.rounds_aboard = 0;
+    self.embarked.push(craft);
+    self.stow_embarked();
+  }
+
+  /// Put the craft named `name` out of her berth: at `position` with the
+  /// carrier's velocity and sensor picture, on the plot from the round's
+  /// end. `None` if no such craft is aboard.
+  pub fn release(&mut self, name: &str, position: Vec3) -> Option<Ship> {
+    let index = self.embarked.iter().position(|craft| craft.name == name)?;
+    let mut craft = self.embarked.remove(index);
+    craft.position = position;
+    craft.velocity = self.velocity;
+    craft.plan = FlightPlan::default();
+    // The air group launches with the carrier's picture: a contact she holds
+    // is passed to the craft the way a hand-off would, locks are not.
+    craft.contacts.clone_from(&self.contacts);
+    craft.sensor_locks.clear();
+    craft.held_still = false;
+    craft.rounds_aboard = 0;
+    craft.carrier = Some(self.name.clone());
+    self.flight_ops.retain(|op| op.craft != name);
+    Some(craft)
+  }
+
+  /// Refill the mounts of the craft at `index` from this ship's stores, as
+  /// far as they go, each mount in order. What each mount came to, with the
+  /// stores left, for the log; `None` when the craft wanted nothing or the
+  /// stores had none of it.
+  pub fn rearm_craft(&mut self, index: usize) -> Option<Magazine> {
+    let craft = self.embarked.get_mut(index)?;
+    let mut taken = Magazine::default();
+    for weapon_id in 0..craft.weapons().len() {
+      let want = craft.capacity(weapon_id).saturating_sub(craft.loaded(weapon_id));
+      let got = want.min(self.magazine);
+      if got.is_empty() {
+        continue;
+      }
+      self.magazine = self.magazine.saturating_sub(got);
+      taken = taken.plus(got);
+      let after = craft.loaded(weapon_id).plus(got);
+      if let Some(load) = craft.loaded.get_mut(weapon_id) {
+        *load = after;
+      }
+    }
+    (!taken.is_empty()).then_some(taken)
+  }
+
+  /// Whether the craft at `index` has a mount below its load that the
+  /// stores could fill.
+  #[must_use]
+  pub fn craft_wants_rearming(&self, index: usize) -> bool {
+    self.embarked.get(index).is_some_and(|craft| {
+      (0..craft.weapons().len()).any(|weapon_id| {
+        !craft
+          .capacity(weapon_id)
+          .saturating_sub(craft.loaded(weapon_id))
+          .min(self.magazine)
+          .is_empty()
+      })
+    })
+  }
+}
+
 impl PartialOrd for Ship {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     self.name.partial_cmp(&other.name)
@@ -3752,7 +4153,9 @@ impl Entity for Ship {
     // Evasive action is thrust held back to dodge with (CRB p. 171), so a
     // ship dodging is not holding still even if she burns nothing.
     let evading = self.dodge_thrust > 0;
-    if self.plan.empty() || !self.can_accelerate() {
+    // A ship pinned by a flight operation spends no Thrust (HG p. 61): she
+    // coasts, keeping her plan for when the deck is clear.
+    if self.pinned || self.plan.empty() || !self.can_accelerate() {
       // Just move at current velocity. A ship that cannot fly its plan this
       // round keeps it, and picks it up again once the station is back.
       self.held_still = !evading;
@@ -6665,6 +7068,81 @@ mod capital_design_tests {
       stores: (9_600, 1_320),
     },
   ];
+
+  /// The carriers' facilities as HG prints them (plan, Keelhaven table):
+  /// berths, and the tube and deck rates from the FAQ. A design without
+  /// any is no carrier, and loads as it always has.
+  #[test_log::test(tokio::test)]
+  async fn the_keelhaven_carriers_state_their_facilities() {
+    let templates = load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR).await.unwrap();
+    let ship = |name: &str| Ship::new(name.to_string(), Vec3::zero(), Vec3::zero(), &templates[name], None, None);
+    let jaellemo = ship("Planetoid Monitor - Jaellemo");
+    assert_eq!(jaellemo.berths().len(), 31, "28 docking spaces and 3 hangars");
+    assert!(jaellemo.berths().iter().all(|b| *b == 50));
+    assert_eq!(jaellemo.launch_per_round(50), 10);
+    assert_eq!(jaellemo.recover_per_round(50), 10);
+    assert_eq!(jaellemo.launch_per_round(500), 10, "the tube is sized for 500 tons");
+    assert_eq!(jaellemo.launch_per_round(501), 0);
+    assert!(jaellemo.has_berth_for(50) && !jaellemo.has_berth_for(51));
+    let deck = jaellemo.flight_deck().unwrap();
+    assert_eq!(
+      (deck.berths, deck.berths_free, deck.tube_tons, deck.deck_tons),
+      (31, 31, 500, 500)
+    );
+
+    let wind = ship("Strike Carrier - Wind");
+    assert_eq!(wind.berths(), vec![10; 80]);
+    assert_eq!((wind.launch_per_round(10), wind.recover_per_round(10)), (10, 10));
+    assert!(!wind.has_berth_for(50), "her berths take light fighters only");
+    // The tube and deck draw Power; switched off, they launch nothing.
+    let mut dark = ship("Strike Carrier - Wind");
+    for (index, feature) in dark.design.features.clone().iter().enumerate() {
+      if feature.power > 0 {
+        dark.set_online(PowerSystem::Feature(index), false);
+      }
+    }
+    assert_eq!((dark.launch_per_round(10), dark.recover_per_round(10)), (0, 0));
+    assert!(dark.is_carrier(), "the berths are still there");
+
+    let hadrian = ship("Battle Rider - Hadrian");
+    assert_eq!(hadrian.berths(), vec![40; 6]);
+    assert_eq!(hadrian.launch_per_round(40), 0, "no tube: launching pins her");
+    let valiant = ship("Light Cruiser - Valiant");
+    assert_eq!(valiant.berths(), vec![50; 5]);
+
+    let buccaneer = ship("Buccaneer");
+    assert!(!buccaneer.is_carrier());
+    assert_eq!(buccaneer.flight_deck(), None);
+    assert!(!serde_json::to_string(&buccaneer).unwrap().contains("embarked"));
+  }
+
+  /// A facility's `count` is one unless stated, and the kinds round-trip.
+  #[test]
+  fn facilities_round_trip_with_a_default_count() {
+    let kind: FeatureKind = serde_json::from_str(r#"{"LaunchTube": {"craft_tons": 100}}"#).unwrap();
+    assert_eq!(
+      kind,
+      FeatureKind::LaunchTube {
+        craft_tons: 100,
+        count: 1
+      }
+    );
+    let kind: FeatureKind = serde_json::from_str(r#"{"DockingClamp": {"max_tons": 300, "count": 2}}"#).unwrap();
+    assert_eq!(
+      kind,
+      FeatureKind::DockingClamp {
+        max_tons: 300,
+        count: 2
+      }
+    );
+    let written = serde_json::to_string(&FeatureKind::DockingSpace {
+      craft_tons: 50,
+      count: 28,
+    })
+    .unwrap();
+    assert_eq!(written, r#"{"DockingSpace":{"craft_tons":50,"count":28}}"#);
+    assert_eq!(serde_json::to_string(&FeatureKind::RepairDrones).unwrap(), r#""RepairDrones""#);
+  }
 
   #[test_log::test(tokio::test)]
   async fn the_keelhaven_capitals_are_built_as_printed() {

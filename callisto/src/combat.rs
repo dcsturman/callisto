@@ -1856,6 +1856,21 @@ fn apply_large_ship_crit(
         SystemLoss::Disabled(percent) | SystemLoss::Destroyed(percent) => (format!("{percent}%"), false),
         SystemLoss::AllDestroyed { hull } => ("all".to_string(), hull),
       };
+      // The craft rows take the severity's share of the craft aboard of that
+      // kind -- fighters by their design's role, anything else as other
+      // craft -- and a craft destroyed in her berth is gone. A row with
+      // nothing aboard of its kind is cargo.
+      let is_fighter = |craft: &Ship| craft.design.role.as_deref().is_some_and(|role| role.contains("Fighter"));
+      let craft_hit: Vec<usize> = match row {
+        CargoHit::Fighters => (0..defender.embarked.len())
+          .filter(|index| is_fighter(&defender.embarked[*index]))
+          .collect(),
+        CargoHit::SmallCraft => (0..defender.embarked.len())
+          .filter(|index| !is_fighter(&defender.embarked[*index]))
+          .collect(),
+        CargoHit::FrozenWatch | CargoHit::Cargo => vec![],
+      };
+      let mut lost_craft: Vec<String> = Vec::new();
       let line = match row {
         CargoHit::FrozenWatch if defender.frozen_watch > 0 => {
           let before = defender.frozen_watch;
@@ -1863,6 +1878,29 @@ fn apply_large_ship_crit(
           defender.frozen_watch = before.saturating_sub(lost);
           format!(
             "%s's cargo critical hit (level {level}): the frozen watch hit, {lost} of {before} lost in their berths."
+          )
+        }
+        CargoHit::Fighters | CargoHit::SmallCraft if !craft_hit.is_empty() => {
+          let aboard = craft_hit.len();
+          let lost = usize::from(loss.of(u16::try_from(aboard).unwrap_or(u16::MAX)));
+          // Which ones is the dice's business; the list is shuffled by
+          // drawing without replacement.
+          let mut pool = craft_hit;
+          let mut picked: Vec<usize> = Vec::new();
+          for _ in 0..lost.min(pool.len()) {
+            let at = usize::try_from(rng.next_u32()).unwrap_or(0) % pool.len();
+            picked.push(pool.swap_remove(at));
+          }
+          picked.sort_unstable_by(|a, b| b.cmp(a));
+          for index in picked {
+            lost_craft.push(defender.embarked.remove(index).get_name().to_string());
+          }
+          lost_craft.sort();
+          let what = if row == CargoHit::Fighters { "fighters" } else { "craft" };
+          format!(
+            "%s's cargo critical hit (level {level}): the hangar hit, {} of {aboard} {what} aboard destroyed in their berths: {}.",
+            lost_craft.len(),
+            lost_craft.join(", ")
           )
         }
         CargoHit::Fighters | CargoHit::SmallCraft | CargoHit::FrozenWatch | CargoHit::Cargo => {
@@ -1875,6 +1913,14 @@ fn apply_large_ship_crit(
         vec![]
       };
       effects.push(EffectMsg::about(&crit_ship, MessageCategory::Critical, line));
+      effects.extend(lost_craft.iter().map(|craft| {
+        EffectMsg::about(
+          craft,
+          MessageCategory::Destruction,
+          "%s destroyed in her berth aboard %t.".to_string(),
+        )
+        .at(&crit_ship)
+      }));
       Some(effects)
     }
     _ => None,
@@ -7437,6 +7483,76 @@ mod large_ship_tests {
     let effects = apply_crit(5, ShipSystem::Cargo, &mut ship, &mut rng);
     assert_eq!(ship.crit_level[ShipSystem::Hull as usize], 1);
     assert_eq!(criticals(&effects), 2);
+  }
+
+  /// On a carrier, the fighter row of the cargo table takes the severity's
+  /// share of the fighters aboard, the other-craft row the other craft, and a
+  /// craft destroyed in her berth is gone. Severity 4 takes them all.
+  #[tokio::test]
+  async fn cargo_criticals_on_a_carrier_destroy_craft_in_their_berths() {
+    crate::ship::config_test_ship_templates().await;
+    let fighter = crate::ship::get_ship_template("Heavy Fighter").unwrap();
+    let pinnace = crate::ship::get_ship_template("Pinnace").unwrap();
+    let design = design(6_000, 2_400, 400, vec![]);
+    let carrier = || {
+      let mut ship = ship("Big", &design, 0.0);
+      for n in 1..=10 {
+        ship.embark(Ship::new(format!("F{n}"), Vec3::zero(), Vec3::zero(), &fighter, None, None));
+      }
+      for n in 1..=2 {
+        ship.embark(Ship::new(format!("P{n}"), Vec3::zero(), Vec3::zero(), &pinnace, None, None));
+      }
+      ship
+    };
+    let (mut fighters_hit, mut craft_hit, mut other) = (0, 0, 0);
+    for seed in 0..60 {
+      let mut rng = StdRng::seed_from_u64(seed);
+      let mut ship = carrier();
+      let effects = apply_crit(2, ShipSystem::Cargo, &mut ship, &mut rng);
+      let line = effects
+        .iter()
+        .map(EffectMsg::rendered)
+        .find(|l| l.contains("cargo critical"))
+        .unwrap();
+      let fighters = ship.embarked.iter().filter(|c| c.design.name == "Heavy Fighter").count();
+      let pinnaces = ship.embarked.len() - fighters;
+      if line.contains("of 10 fighters aboard destroyed") {
+        fighters_hit += 1;
+        assert!((1..=3).contains(&(10 - fighters)), "D3 x 10% of 10: {line}");
+        assert_eq!(pinnaces, 2);
+        assert_eq!(
+          effects
+            .iter()
+            .filter(|e| e.rendered().contains("destroyed in her berth aboard Big"))
+            .count(),
+          10 - fighters
+        );
+      } else if line.contains("of 2 craft aboard destroyed") {
+        craft_hit += 1;
+        assert_eq!(fighters, 10);
+        assert!(pinnaces < 2, "{line}");
+      } else {
+        other += 1;
+        assert_eq!(ship.embarked.len(), 12, "{line}");
+      }
+    }
+    assert!(
+      fighters_hit > 0 && craft_hit > 0 && other > 0,
+      "{fighters_hit} / {craft_hit} / {other}"
+    );
+
+    // Severity 4 is "all": the fighter row empties the fighter berths.
+    let all = (0..40).find_map(|seed| {
+      let mut rng = StdRng::seed_from_u64(seed);
+      let mut ship = carrier();
+      let effects = apply_crit(4, ShipSystem::Cargo, &mut ship, &mut rng);
+      effects
+        .iter()
+        .any(|e| e.rendered().contains("10 of 10 fighters aboard destroyed"))
+        .then_some(ship)
+    });
+    let ship = all.expect("some seed rolls the fighter row");
+    assert_eq!(ship.embarked.len(), 2, "only the pinnaces are left");
   }
 
   /// The frozen watch replaces lost crew, no more than were lost and no

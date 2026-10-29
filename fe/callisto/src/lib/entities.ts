@@ -167,6 +167,24 @@ export interface Ship extends Entity {
   post_radius?: number;
   /** The AI's last report on this ship. Only an AI-crewed ship has one. */
   ai_report?: AiReport;
+  /**
+   * The craft aboard this carrier, whole: not on the plot, and nothing can
+   * detect, target or order one until it is launched. Absent when none.
+   */
+  embarked?: Ship[];
+  /** Launches and recoveries the carrier has under way. Absent when none. */
+  flight_ops?: FlightOp[];
+  /** The carrier a craft belongs to, kept after she launches. */
+  carrier?: string;
+  /** Whole rounds a craft has spent aboard since she came in; one rearms her. */
+  rounds_aboard?: number;
+  /**
+   * Held still by a flight operation this round: no Thrust, no dodge, no
+   * attacks (HG p. 61). Absent when free.
+   */
+  pinned?: boolean;
+  /** What the carrier's deck can do this round. Absent on a ship with no berths. */
+  flight_deck?: FlightDeck;
   crew: Crew;
   /**
    * Which sensor operator and which engineer are working this round, as
@@ -230,6 +248,28 @@ export interface Ship extends Entity {
   engineer_action_taken?: boolean;
   leadership_points?: number;
   leadership_rolled?: boolean;
+}
+
+/** A craft going out of a carrier's berth or coming in to one. */
+export interface FlightOp {
+  craft: string;
+  /** Through a tube (one round, nothing pinned), out of a berth, or in to one. */
+  kind: "TubeLaunch" | "BerthLaunch" | "BerthRecovery";
+  /** Rounds to go, counting this one. */
+  rounds_left: number;
+}
+
+/** A carrier's flight deck this round, worked out by the server as the world is sent. */
+export interface FlightDeck {
+  berths: number;
+  berths_free: number;
+  /** Craft the powered tubes release a round; zero means berths, with the carrier pinned. */
+  launch_per_round: number;
+  /** Craft the powered decks take a round; zero means berths, both ships pinned, no check. */
+  recover_per_round: number;
+  /** The largest craft a powered tube takes, and a powered deck. */
+  tube_tons: number;
+  deck_tons: number;
 }
 
 export enum ShipSystem {

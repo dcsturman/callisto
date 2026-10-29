@@ -15,6 +15,7 @@ pub mod solver {
 }
 pub mod crew;
 pub mod entity;
+pub mod flight;
 pub mod game_log;
 pub mod missile;
 pub mod payloads;

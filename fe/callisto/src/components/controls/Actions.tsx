@@ -410,6 +410,8 @@ export function payloadToAction(payload: object[]): ActionType {
       | {Repair: {system: string}}
       | {LeadershipCheck: {boosts: unknown[]}}
       | {ReviveWatch: {count: number}}
+      | {Launch: {craft: string[]}}
+      | {Land: {carrier: string}}
     )[];
     if (!actions) {
       continue;
