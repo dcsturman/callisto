@@ -352,3 +352,75 @@ Nothing here was seen in a browser. Start the backend and frontend as usual, and
   - the AI service over HTTP, as opposed to in-process;
   - the browser's own frame rate (see above).
 - **The roster:** no sort or filter yet, and the AI step shown is the first report found in the squadron.
+
+### Ten thousand missiles in flight
+
+**Setup.** The same 200-ship scenario. `SCALE_MISSILES=10000` makes `ai-ships/examples/scale.rs` put 10,000 missiles in the air before round 1: every ship fires in turn at an enemy, and the targets are spread across the enemy fleet. The fleets are 100,000 km apart, so the missiles fly for three rounds and land in rounds 4 and 5. Sides played as before (squadron executor) and idle, for the server alone.
+
+**Results:**
+
+| What | Measured |
+|---|---|
+| World update | 3.1–3.4 MB, about 310 bytes a missile: name, position, velocity, acceleration, source, target, burns and the weapon. Deflate makes it 0.3 MB. |
+| Copying and serialising it | 8–13 ms |
+| Resolving the round | 40–90 ms, against 16–38 ms without the missiles |
+| Round results, worst round, before the fix | 7.2 MB, 25,875 lines, 17,428 of them "critical hit at level N caused N damage" |
+| Round results, after | 1.5 MB, 4,655 lines, plus about 7,000 visual events: 2,010 hits and 2,010 impacts, 1,692 misses, 1,640 missiles exhausted |
+| AI observation, per side | 3–8 ms |
+| AI decision, per side (squadron executor) | 210–330 ms, against 150–230 ms without; the extra is the missile sharing, which counts what is already in flight |
+
+**At 50,000 missiles** everything grows in proportion:
+- resolving takes 130–280 ms;
+- the update is 16 MB and takes 63 ms to serialise;
+- observation takes 20 ms a side.
+
+Nothing here grows faster than the number of missiles.
+
+**Where the server's time goes.** Sampled with `sample` at 50,000 missiles, resolving is mostly each missile's guidance solve:
+- `gomez`'s trust-region solver on `computer::TargetParams`, with nalgebra's QR decomposition inside it;
+- then sorting the missiles by name on every update;
+- then hashing and serialising.
+
+Point defence is a pool per ship per round and did not show up.
+
+**In the browser** (measured in Node and jsdom, not in a browser):
+
+| What | Measured |
+|---|---|
+| Parsing the 3.1 MB update | 8 ms |
+| Parsing it and running it through the reducers (`handleMessage`) | 53–60 ms |
+| Grouping inbound salvoes (`incomingSalvoes`) | 0.25 ms per ship whose console is open |
+| Session storage | unaffected: the `server` slice, which holds the missiles, is not persisted |
+
+**Fixes, with tests:**
+- **Criticals stop at the hull left** (`callisto/src/combat.rs`, test `sustained_damage_criticals_stop_at_the_hull_left`). Sustained-damage criticals counted the whole of a hit's damage, not just the hull the ship still had. One missile could give a Light Fighter (hull 4, so a tenth is 1) fifteen criticals, and every later missile that hit her wreck gave as many again. That was almost all of the 7.2 MB.
+- **Missiles drawn as one swarm** (`components/space/Ships.tsx`, `lib/missileSwarm.ts`). Each missile used to be drawn with its own sphere, two vector lines and a drei text label. Above 300 missiles (`MISSILE_DETAIL_LIMIT`) they are now one instanced mesh, one draw call, without names or vectors.
+
+**For the user to check by eye:**
+1. Make a scenario with the missiles already in the air:
+
+   ```
+   cd ai-ships && SCALE_MISSILES=10000 SCALE_WRITE="../callisto/scenarios/Scale Test - 10000 Missiles.json" \
+     cargo run --release --example scale -- "../callisto/scenarios/Scale Test - 200 Ships.json" 1 idle
+   ```
+
+   The file is 5.5 MB and is not committed. Join it as the referee.
+2. **The swarm:** check that it draws, as red dots, and the frame rate while flying the camera.
+3. **Rounds 4 and 5:**
+   - the explosion animations, about 3,600 impacts and exhausted missiles in one round (`Explosions` in `Effects.tsx`), which is the likeliest stall left;
+   - the time from Next Round to the view settling.
+4. **Each update:** whether the 3.4 MB on every update shows as a pause.
+5. **A gunner's or sensop's console** on a ship with hundreds inbound: the Incoming board and sensor salvoes.
+
+**Recommendations:**
+1. **A salvo as one entity with a count.** The capital-ships plan already proposes `Missile.count`. A launcher's salvo flies one path, so with a count it needs one guidance solve, one wire entry and one results line ("7 of 12 hit, 31 damage") instead of twelve. Point defence already works on numbers, so it takes the count directly. This is the one change that fixes the server time, the wire size and the results together.
+2. **Meanwhile, solve each salvo's guidance once.** Group the missiles in flight by source, target and launch round, which today fly identical paths, and reuse the solution within the group.
+3. **Smaller missile entries on the wire:**
+   - send `weapon` as its kind only;
+   - drop `acceleration` where the client can derive it;
+   - name missiles with an id, not `source::target::id`;
+   - with compression, about 10×.
+4. **Per-player pictures:** a side need only see its own missiles and those it has detected.
+5. **The client:**
+   - the explosion animations want the same treatment as the swarm (above a few hundred, one instanced effect, or none);
+   - `EntitySelector` with missiles enabled lists every missile as an option.
