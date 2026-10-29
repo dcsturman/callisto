@@ -10,7 +10,6 @@ use std::env::var;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU16;
 
 use assert_json_diff::assert_json_eq;
 use futures_util::{SinkExt, StreamExt};
@@ -52,8 +51,6 @@ type MyWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "target/debug/callisto";
-
-static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
 
 /// A design's software, and what a fresh ship of it runs, for the ship JSON
 /// these tests compare against. Read from the templates so a corrected
@@ -103,28 +100,14 @@ fn software_running_of(design: &str) -> serde_json::Value {
 }
 
 fn get_next_port() -> u16 {
-  use std::sync::Once;
-  static INIT: Once = Once::new();
-
-  INIT.call_once(|| {
-    // Initialize with a base port that includes process ID to avoid conflicts between processes
-    #[allow(clippy::cast_possible_truncation)]
-    let base_port = 3010 + (std::process::id() as u16 % 1000);
-    NEXT_PORT.store(base_port, std::sync::atomic::Ordering::Relaxed);
-  });
-
-  // Try to find an available port, starting from our base
-  loop {
-    let port = NEXT_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-    // Quick check if port is available by trying to bind to it
-    if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
-      return port;
-    }
-
-    // If we've tried too many ports, something is wrong
-    assert!(port <= 65000, "Unable to find available port after trying many options");
-  }
+  // Ask the OS for a free port rather than guessing one. Under nextest every
+  // test is a process of its own, and a guessed port that two processes both
+  // found free would be bound by only one of their servers -- the other test
+  // then waited forever on a server that had already died. The OS hands out
+  // ephemeral ports in rotation, so a port it just gave us is not given to
+  // anyone else for a long while after we let it go.
+  let listener = std::net::TcpListener::bind((SERVER_ADDRESS, 0)).expect("a free port");
+  listener.local_addr().expect("the port we were given").port()
 }
 
 async fn spawn_server(
