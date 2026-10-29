@@ -10,6 +10,10 @@
 //! The arguments are the scenario, the rounds to play, and the commander for
 //! each side in side order (as the harness names them: `network`, `close`,
 //! `fleet:<directive.json>`, ...). The last one given plays any further side.
+//!
+//! `SCALE_MISSILES=<n>` puts n missiles in the air before the first round,
+//! every ship firing in turn at an enemy; `SCALE_WRITE=<file.json>` also
+//! writes that world out as a scenario, to load in the browser.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -19,11 +23,40 @@ use callisto::authentication::MockAuthenticator;
 use callisto::payloads::{EffectsMsg, ResponseMsg};
 use callisto::player::PlayerManager;
 use callisto::server::Server;
-use callisto::ship::{load_ship_templates_from_dir, replace_ship_templates};
+use callisto::ship::{load_ship_templates_from_dir, replace_ship_templates, Team, Weapon, WeaponMount, WeaponType};
 use callisto::tactics;
 
 use ai_ships::harness::{apply, sides};
 use ai_ships::observation::observe;
+
+/// Put `count` missiles in flight before the first round: every ship in
+/// turn fires one at an enemy, the targets spread across the enemy fleet.
+fn launch_salvos(server: &Server, count: usize) -> Result<(), String> {
+  let mut world = server.get_unlocked_entities().map_err(|e| e.to_string())?;
+  let mut ships: Vec<(String, Option<Team>)> = world
+    .ships
+    .iter()
+    .map(|(name, ship)| (name.clone(), ship.read().unwrap().team))
+    .collect();
+  ships.sort_by(|a, b| a.0.cmp(&b.0));
+  let weapon = Weapon::single(WeaponType::Missile, WeaponMount::Turret);
+  let timer = Instant::now();
+  for i in 0..count {
+    let (source, team) = &ships[i % ships.len()];
+    let enemies: Vec<&String> = ships.iter().filter(|(_, t)| t != team).map(|(name, _)| name).collect();
+    let target = enemies[(i / ships.len() + i) % enemies.len()];
+    world.launch_missile(source, target, weapon.clone())?;
+  }
+  println!("launched {count} missiles in {:.0} ms", ms(timer.elapsed()));
+  // A scenario file with the missiles already in the air, for looking at in
+  // the browser.
+  if let Ok(path) = std::env::var("SCALE_WRITE") {
+    world.metadata.name = format!("{} - {count} Missiles", world.metadata.name);
+    std::fs::write(&path, world.to_scenario_file_json().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    println!("wrote {path}");
+  }
+  Ok(())
+}
 
 fn ms(duration: Duration) -> f64 {
   duration.as_secs_f64() * 1000.0
@@ -39,7 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let started = Instant::now();
   let server = Arc::new(Server::new("scale", scenario).await);
-  let player = PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(1);
+  let player = PlayerManager::new(Some(server.clone()), Box::new(MockAuthenticator::new("")), true).with_seed(1);
+  if let Some(count) = std::env::var("SCALE_MISSILES").ok().and_then(|n| n.parse::<usize>().ok()) {
+    launch_salvos(&server, count)?;
+  }
   let start = player.get_entities().map_err(|e| format!("{e:?}"))?;
   println!("loaded {} ships in {:.0} ms", start.ships.len(), ms(started.elapsed()));
   let rosters = sides(&start);
@@ -51,10 +87,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     commanders.insert(side.clone(), commander);
   }
 
-  println!("round  ships  update-bytes  serialize-ms  observe-ms  decide-ms (per side)  apply-ms  resolve-ms");
+  println!(
+    "round  ships  missiles  update-bytes  serialize-ms  observe-ms  decide-ms (per side)  apply-ms  resolve-ms"
+  );
   for _ in 0..rounds {
     let world = player.get_entities().map_err(|e| format!("{e:?}"))?;
     let ship_count = world.ships.len();
+    let missile_count = world.missiles.len();
     let round = world.round;
 
     let timer = Instant::now();
@@ -103,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       std::fs::write(format!("{dir}/update-{round}.json"), &update)?;
     }
     println!(
-      "{round:>5}  {ship_count:>5}  {:>12}  {:>12.1}  {:>10.1}  {:<20}  {:>8.0}  {:>10.0}   results {} bytes: {:?}",
+      "{round:>5}  {ship_count:>5}  {missile_count:>8}  {:>12}  {:>12.1}  {:>10.1}  {:<20}  {:>8.0}  {:>10.0}   results {} bytes: {:?}",
       update.len(),
       ms(serialize),
       ms(observing),
