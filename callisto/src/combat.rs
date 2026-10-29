@@ -3718,6 +3718,39 @@ mod battery_tests {
     assert!(line.ends_with(&format!("Damage {fin}.")), "{line}");
   }
 
+  /// The whole order, pinned (HG 2022 FAQ p. 2): dice + Effect, − armour
+  /// (after AP), × the Damage Multiple, − screens.  Armour stays before the
+  /// multiple; only the screens come after it.
+  #[test]
+  fn damage_is_dice_and_effect_less_armour_times_multiple_less_screens() {
+    let bay = Weapon::single(WeaponType::Fusion, WeaponMount::Bay(BaySize::Small));
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Screened".to_string(),
+      displacement: 50_000,
+      hull: 1_000_000,
+      armor: 10,
+      screens: vec![ScreenType::NuclearDamper],
+      ..Default::default()
+    });
+    let mut crew = crate::crew::Crew::new();
+    crew.add_screen_gunnery(0);
+    let mut defender = Ship::new("Screened".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+    let (_, hover) = hit_with(&bay, &mut defender, &[Some(15)]);
+    // "damage 6D 21 +3 effect -4 armour (AP 6) x10 mount = 200, -15 screens (1 screen) = 185"
+    let (_, damage) = hover.split_once("damage 6D ").expect(&hover);
+    let numbers: Vec<u32> = damage
+      .split(|c: char| !c.is_ascii_digit())
+      .filter(|n| !n.is_empty())
+      .map(|n| n.parse().unwrap())
+      .collect();
+    let [roll, effect, armour, ap, multiple, met, screened, screens, fin] = numbers[..] else {
+      panic!("unexpected arithmetic: {hover}");
+    };
+    assert_eq!((armour, ap, multiple, screens), (4, 6, 10, 1), "{hover}");
+    assert_eq!(met, (roll + effect - armour) * multiple, "armour before the multiple: {hover}");
+    assert_eq!((screened, fin), (15, met - 15), "screens after it: {hover}");
+  }
+
   /// A failed screen check is shown, and takes nothing off.
   #[test]
   fn a_failed_screen_check_reduces_nothing() {
