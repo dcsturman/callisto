@@ -522,6 +522,13 @@ function ResultFilter(args: {events: Event[]}) {
 }
 
 /**
+ * The most result lines drawn at once. A round between two big fleets has
+ * thousands, and drawing them all held the page up for seconds; the filter
+ * is how to find the rest.
+ */
+export const MAX_RESULT_LINES = 400;
+
+/**
  * The turn's results.
  *
  * Coloured by category rather than by keyword: the server says what each line
@@ -620,7 +627,7 @@ export function ResultsWindow() {
           can be read at a glance. Lines that merely report something are
           indented to the same text column rather than sitting under the
           marks. */}
-      {shown.map((msg, index) => (
+      {shown.slice(0, MAX_RESULT_LINES).map((msg, index) => (
         <p key={"msg-" + index} className="result-line" style={messageStyle(msg.category)}>
           {msg.succeeded == null ? (
             <span className="result-mark result-mark-none" aria-hidden="true" />
@@ -641,6 +648,11 @@ export function ResultsWindow() {
           </span>
         </p>
       ))}
+      {shown.length > MAX_RESULT_LINES && (
+        <p className="sensor-empty">
+          {shown.length - MAX_RESULT_LINES} more lines. Choose ships or kinds above to see them.
+        </p>
+      )}
       {/* The arithmetic behind a line, on the line's own hover: a round is
           read for what happened, and the numbers are what you go back for. */}
       <Tooltip id="result-roll" className="console-tip console-tip-figures" />
