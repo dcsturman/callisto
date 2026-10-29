@@ -728,9 +728,16 @@ fn resolve_attack(
   let crit_threshold = (f64::from(defender.get_max_hull_points()) / 10.0).ceil() as u64;
 
   // The secondary crit occurs for each new 10% of the ship's hull points that this hit passes.
+  //
+  // Only hull the ship still has can be passed. Counting the whole of the
+  // damage gave a Light Fighter (hull 4, so a tenth is 1) fifteen criticals
+  // from one missile, and the same again from each missile that hit her
+  // wreck later in the round: a 10,000-missile test made 17,000 critical
+  // lines in one round, all about ships already destroyed.
   let current_hull = defender.get_current_hull_points();
   let prev_crits = u64::from(defender.get_max_hull_points() - current_hull) / crit_threshold;
-  let secondary_crit = u64::from(defender.get_max_hull_points() - current_hull + damage) / crit_threshold - prev_crits;
+  let secondary_crit =
+    u64::from(defender.get_max_hull_points() - current_hull + damage.min(current_hull)) / crit_threshold - prev_crits;
 
   debug!("(Combat.attack) Secondary crits {} to {}.", secondary_crit, defender.get_name());
 
@@ -3521,6 +3528,68 @@ mod tests {
       }
     }
     assert!(seen > 0, "no criticals in forty attacks -- the fixture is wrong");
+  }
+
+  /// Sustained-damage criticals count only the hull a ship still has: a
+  /// tenth of her hull at a time, ten at most from full, and none from a hit
+  /// on a wreck.
+  #[test]
+  fn sustained_damage_criticals_stop_at_the_hull_left() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1)],
+      hull: 4,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let weapon = Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1);
+    let sustained = |effects: &[EffectMsg]| {
+      effects
+        .iter()
+        .filter(|effect| {
+          matches!(effect, EffectMsg::Message { category: MessageCategory::Critical, roll: Some(why), .. }
+            if why.contains("sustained damage"))
+        })
+        .count()
+    };
+
+    for seed in 0..40u64 {
+      let mut defender = Ship::new(
+        "Fighter".to_string(),
+        Vec3::new(1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let mut rng = StdRng::seed_from_u64(seed);
+      let shoot = |defender: &mut Ship, rng: &mut StdRng| {
+        attack(
+          HitMods {
+            gunner: 3,
+            ..HitMods::default()
+          },
+          0,
+          &attacker,
+          defender,
+          &weapon.firing_default().unwrap(),
+          None,
+          &BoostMap::default(),
+          rng,
+        )
+      };
+      let first = shoot(&mut defender, &mut rng);
+      assert!(
+        sustained(&first) <= 4,
+        "a hull of 4 has four tenths to pass, got {}",
+        sustained(&first)
+      );
+      if defender.get_current_hull_points() == 0 {
+        let again = shoot(&mut defender, &mut rng);
+        assert_eq!(sustained(&again), 0, "a wreck has no hull left to pass");
+      }
+    }
   }
 
   /// A called shot that hits puts the critical where the gunner called it,
