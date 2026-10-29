@@ -349,6 +349,17 @@ pub fn side_intents_with(
 /// is an average, and dice run short.
 pub const ENOUGH: f64 = 1.5;
 
+/// A ship's spinal mounts, by index. One cannot attack a fighter that is
+/// manoeuvring (High Guard p. 34), so it has no damage on one to be shared by.
+fn spinal_mounts(ship: &Ship) -> impl Iterator<Item = usize> + '_ {
+  ship
+    .weapons()
+    .iter()
+    .enumerate()
+    .filter(|(_, weapon)| weapon.mount.spinal_multiple().is_some())
+    .map(|(mount, _)| mount)
+}
+
 /// Share each ship's guns out across the side's targets so that none are
 /// wasted on a target already dealt with. A ship's chosen fire target is her
 /// priority: her guns go to it, smallest first, until the side's expected
@@ -412,6 +423,9 @@ fn share_fire(
       (ENOUGH * hull(target) - sent.get(target).copied().unwrap_or(0.0)).max(0.0)
     };
     let mut free: Vec<usize> = by_mount(&priority).iter().map(|(mount, _)| *mount).collect();
+    // A spinal that cannot lay on the priority is free for the next target.
+    let spinals: Vec<usize> = spinal_mounts(ship).filter(|mount| !free.contains(mount)).collect();
+    free.extend(spinals);
     let mut shares: Vec<(String, Vec<usize>)> = Vec::new();
     let mut target = Some(priority.clone());
     while let Some(aim) = target.take() {
@@ -528,4 +542,87 @@ pub fn choice_of(intent: &Intent, ship: &Ship, picture: &Picture) -> Choice {
   choice[Head::Assist as usize] = i64::from(intent.assist_gunners.unwrap_or_else(|| ship.get_assist_gunners()));
   choice[Head::Jump as usize] = i64::from(intent.engineering.iter().any(|verb| matches!(verb, EngineerVerb::Jump)));
   choice
+}
+
+#[cfg(test)]
+mod spinal_tests {
+  use super::*;
+  use crate::observation::observe;
+  use callisto::entity::{Entities, Vec3};
+  use callisto::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  /// A ship whose priority is a fighter keeps her turret on it and sends her
+  /// spinal, which cannot attack a fighter, to the cruiser beside it.
+  #[test]
+  fn a_spinal_goes_to_the_target_it_can_hit() {
+    let monitor = Arc::new(ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      hull: 15_000,
+      maneuver: 1,
+      power: 10_000,
+      tl: 15,
+      weapons: vec![
+        Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 2, tl: None }),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let fighter = Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      displacement: 10,
+      hull: 4,
+      maneuver: 6,
+      power: 10,
+      ..ShipDesignTemplate::default()
+    });
+    let mut world = Entities::default();
+    world.add_ship("Monitor".to_string(), Vec3::zero(), Vec3::zero(), &monitor, None, None);
+    world.add_ship(
+      "Fighter".to_string(),
+      Vec3::new(5.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &fighter,
+      None,
+      None,
+    );
+    world.add_ship(
+      "Cruiser".to_string(),
+      Vec3::new(5.5e6, 0.0, 0.0),
+      Vec3::zero(),
+      &monitor,
+      None,
+      None,
+    );
+    world.ships["Monitor"].write().unwrap().team = Some(Team::Blue);
+    world.ships["Fighter"].write().unwrap().team = Some(Team::Red);
+    world.ships["Cruiser"].write().unwrap().team = Some(Team::Red);
+    world.establish_initial_contacts();
+    let view = observe(&world, &["Monitor".to_string()]);
+    let ship = world.ships["Monitor"].read().unwrap().clone();
+    let choice: Choice = [0; HEADS];
+    let picture = Picture::default();
+    let mut intents = vec![(
+      "Monitor".to_string(),
+      Intent {
+        fire: vec![Engage {
+          target: "Fighter".to_string(),
+          ..Engage::default()
+        }],
+        ..Intent::default()
+      },
+    )];
+    share_fire(&mut intents, &[(&ship, &choice, &picture)], &view, false);
+    let fire = &intents[0].1.fire;
+    let on = |target: &str| {
+      fire
+        .iter()
+        .find(|engage| engage.target == target)
+        .map(|engage| engage.weapons.clone())
+    };
+    assert_eq!(on("Fighter"), Some(vec![1]), "{fire:?}");
+    assert_eq!(on("Cruiser"), Some(vec![0]), "{fire:?}");
+  }
 }

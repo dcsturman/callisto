@@ -202,7 +202,13 @@ fn describe_design(design: &Arc<ShipDesignTemplate>) -> String {
       } else {
         String::new()
       };
+      let spinal = weapon.mount.spinal_multiple();
       match (reach, kind) {
+        (Some((band, fires)), _) if spinal.is_some() => format!(
+          "{fires:?} spinal {}x (to {}; not at ships under 2,000 t)",
+          spinal.unwrap_or(1),
+          band_name(band)
+        ),
         (Some((_, fires)), _) if tactics::launch_size(weapon, fires).is_some() => {
           format!("{guns}{fires:?} {:?} (any range)", weapon.mount)
         }

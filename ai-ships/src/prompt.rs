@@ -444,7 +444,17 @@ fn mount_line(mount: usize, weapon: &Weapon, gunner: Option<u8>) -> String {
   if card.sand {
     facts.push("sandcaster, automatic".to_string());
   }
-  let mount_kind = format!("{:?}", weapon.mount).to_lowercase();
+  let mount_kind = match weapon.mount.spinal_multiple() {
+    Some(multiple) => {
+      facts.push("cannot attack a ship under 2,000 tons unless she held still last round".to_string());
+      let percent = card.attack.map_or(0, |(_, profile)| profile.armour_percent);
+      if percent > 0 {
+        facts.push(format!("armour takes {percent}% a point"));
+      }
+      format!("spinal {multiple}x")
+    }
+    None => format!("{:?}", weapon.mount).to_lowercase(),
+  };
   let gunner = gunner.map_or_else(String::new, |skill| format!(", gunner {skill}"));
   format!("#{mount} {mount_kind}: {guns} ({}){gunner}", facts.join(", "))
 }
