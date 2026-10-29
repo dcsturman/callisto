@@ -568,7 +568,7 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
 **How Callisto works today:**
 - **The magazine is one ship-wide stock.** `Magazine { missiles, torpedoes, sand }` lives on the ship (`ship.rs`). A launcher fires straight out of it, there is no load per mount, and nothing ever reloads.
 - **Where the stock comes from:** a design that states a magazine keeps it. One that does not is given exactly what its racks hold (12 missiles per rack, 3 torpedoes per launcher, 20 barrels per sandcaster; `Magazine::for_design`), which is no spare stock at all. A reset restocks.
-- **Stale FAQ text:** "Ammunition is not tracked. Missile racks, torpedo tubes and railguns never run dry or reload" (FAQ, *Weapons*) contradicts the FAQ's own *Addition — magazines*. Step 4 rewrites both.
+- **Stale FAQ text:** "Ammunition is not tracked. Missile racks, torpedo tubes and railguns never run dry or reload" (FAQ, *Weapons*) contradicted the FAQ's own *Addition — magazines*. Step 4 rewrote both.
 
 #### Addition — a mount holds a load; the magazine is the spare stock
 - **Every launcher and sandcaster mount** carries `loaded`: what is in the mount ready to fire. Its capacity is the book's:
@@ -795,7 +795,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 | 1 | Size rules and fixes | S–M | No (evaluate) |
 | 2 | Weapon batteries — **done** (branch `batteries`) | L | No (evaluate) |
 | 3 | Missile salvos as one entity — **done** (branch `salvos`) | M | No (evaluate) |
-| 4 | Reloading: mount loads, spare gunners, the Reload choice | M | No (evaluate) |
+| 4 | Reloading: mount loads, spare gunners, the Reload choice — **done** | M | No (evaluate) |
 | 5 | Spinal mounts | L | No |
 | 6 | Large-ship criticals, frozen watch, sensor operators | M | No |
 | 7 | Capital designs to the Tigress, scenarios, the remaining size hardening | M | No |
@@ -824,10 +824,10 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
    - The network's missile planner counting salvos.
    - *Tests:* existing missile tests unchanged at count 1; 120 missiles in one entity against a pool; an entity-count check. *Risk:* frontend missile drawing; the landing-round grouping in `network/missiles.rs`.
    - **Do this first among the performance work.** It is the largest single cut in entity count.
-4. **Reloading (§4, "Reloading and rearming: decided").**
+4. **Reloading (§4, "Reloading and rearming: decided").** **Done**; see "Step 4: what was built" below.
    - `loaded` per launcher and sandcaster mount, with capacity from the HG table. The ship's `magazine` becomes stores, filled mounts first from the stated total, so no design changes.
-   - The automatic reload by spare gunners (gunnery entries beyond the mounts).
-   - `ShipAction::ReloadAction { weapon_id }` beside `PointDefenseAction`, in the same per-mount merge in `action.rs`; reload after fire.
+   - Reloads by spare gunners (gunnery entries beyond the mounts), when Reload is chosen.
+   - `ShipAction::ReloadAction { weapon_id }` beside `PointDefenseAction`, outside the one-per-mount Fire/Point Defence merge; reload after fire.
    - The `"<Reload>"` pseudo-target in `WeaponUse.tsx` beside `"<Point Defense>"`, with loaded/stores counts and the "reloaded by spare crew" note.
    - `Intent.reload: Vec<usize>` and the tactics heuristic; the admiral's design line.
    - The FAQ: rewrite "Ammunition is not tracked" (stale) and *Addition — magazines*.
@@ -837,7 +837,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
      - a spare gunner reloads with no action;
      - a reloading mount does not fire or react;
      - stores run out;
-     - Fire, PD and Reload on one mount merge to the last one given;
+     - a Reload sits beside the mount's Fire or PD, and keeps its place when the list is resent;
      - old scenario JSON loads with the same totals.
    - *Evaluation:* 200 games of Fighter Screen before and after. The heavy fighter's 60-missile magazine becomes 4 loaded and 56 in stores, and the Kinunir's racks now need reloading.
    - *Risk:* fighters that today fire every round from a shared pool will pause to reload.
@@ -934,6 +934,45 @@ With `SCALE_SALVO=1` the update and the results are byte-for-byte the old ones: 
 - Jamming picks missiles uniformly at random from all inbound missiles, so bigger salvoes lose more.
 
 **For the user to check by eye:** a scenario with a battery design (none ships yet: give a design a `count`); the Gunner card's battery button and badge; Add Ship on such a design, including the switch; a results log with a salvo and a battery line, and the hover arithmetic; the plot's salvo labels and the swarm with a few hundred salvoes.
+
+### Step 4: what was built (2026-10-29)
+
+On `epic-fleet-control`.
+
+**Loads and stores.**
+- `Ship.loaded: Vec<Magazine>`, index-aligned with the weapons; `Ship.magazine` is now stores. `ship::mount_capacity` gives the book's load (the FAQ has the table), and `Ship::stock` fills the mounts in order from a total and puts the rest in stores.
+- **Where the total comes from:** a stated magazine. A design that states none carries what it did before (12 a rack, 20 a caster, 3 a torpedo launcher), raised to the mount's load where that is more: a barbette's 25, a bay's twelve salvos. `Magazine::for_weapons` also counts every mount of a battery now.
+- **Old JSON:** a ship read without `loaded` takes its `magazine` as its whole stock and fills the mounts from it, so old scenarios and saves carry what they did. A test checks that every shipped design carries its old total, apart from the bay and barbette cases above.
+- Launches come out of the firing mount (`LaunchMissileMsg.mount`, not on the wire). Sand clouds come out of the casting mount (`combat::SandCloud`), and a sandcaster with an empty load throws nothing.
+
+**Reload.**
+- `ShipAction::ReloadAction { weapon_id }` and the anti-action `DeleteReloadAction`. A resent list does not move a Reload already queued, so the order in which spares are handed out is kept.
+- `reload::assign` gives spares in order and drops a Reload that would put nothing in the mount (full, no launcher, or stores out), with a line saying why. Own-gunner mounts lose their Fire and PD for the round, and their sand through `create_sand_counts`. Their queued orders are kept.
+- `reload::apply` runs after the jam passes, before `update_all`, and writes a line per reload. Reloads are cleared at the end of the round.
+
+**AI.**
+- `Intent.reload: Option<Vec<usize>>`. `None`, used by the LLM, the network and the heuristic commanders, means `tactics::reloads` chooses, as §4 describes.
+- `tactics::orders` leaves own-gunner reloads out of fire and defence.
+- The network's magazine feature reads `Ship::aboard()` (mounts plus stores) over the design's stock. A test in `ai-ships` checks that the split between racks and stores does not change any encoding.
+- The admiral's design and squadron lines carry "missile racks 24/24, stores 48".
+
+**Frontend.**
+- The gunner card shows "Spare gunners: N of M free" and a `<Reload>` pseudo-target. Choosing it lists the launcher and sandcaster mounts with Reload buttons and the notes from §4. A chosen Reload can be withdrawn.
+- The magazine section shows stores and each mount's load.
+
+**Rulings made on the way** (also in the FAQ):
+- **A load is per turret, as both books word it:** "each turret with one or more missile racks holds 12 missiles" (CRB p. 168, HG p. 28), and the same for sandcasters. The table above, "Turret missile rack 12", reads either way. Because of this ruling, a silent design keeps today's total by holding the rest in stores (a triple rack turret has 12 loaded and 24 in stores), rather than having no spares as §4 assumed.
+- **A Reload that would put nothing in the mount takes no spare,** and it does not cost an own gunner the shot. A mount that is full when the round starts cannot be "fired and reloaded", so the card only offers Reload below capacity.
+- **A mount whose own gunner reloads keeps its Fire order** for the next round. The card says "its order waits a round" rather than deleting it.
+- **A fixed-mount rack loads as a turret's** (12, or 4 on a Firmpoint), which fits the heavy fighter's 4 loaded and 56 in stores.
+- **The LLM's orders have no reload field yet;** tactics reloads for it. The prompt's "Magazine" line counts everything aboard.
+
+**Not done:** the 200-game Fighter Screen evaluation before and after. That is for the user or a later run.
+
+**For the user to check by eye:**
+- The gunner card on a missile ship with a spare gunner in its crew: the header, `<Reload>`, both notes, and withdrawing.
+- The magazine section's per-mount lines.
+- A results log with a spare-crewed reload and an own-gunner reload.
 
 ## 9. Decisions and open questions
 

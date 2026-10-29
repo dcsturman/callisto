@@ -60,7 +60,9 @@ Everything below is a smaller deviation within the tonnage we do support.
       disperse sand with another -- otherwise a sandcaster in a mixed turret could never be used without
       giving up the turret's attack, which no one would choose.  Point defence is *not* allowed alongside an
       attack, since that would be a second active use of the mount rather than a defensive add-on.
-  * Ammunition is not tracked.  Missile racks, torpedo tubes and railguns never run dry or reload.
+  * **Launchers and sandcasters hold a load and reload from stores** (see *Addition — magazines* and
+    *Rule enforced, with an addition — reloading a mount* below).  Railgun and mass-driver rounds are not
+    tracked: those never run dry.
   * Fixed mounts exist and fire, but ships have no facing, so a fixed mount is just a single-weapon mount that
     cannot serve as point defence.
 * **Point defence** works differently in shape: it defends the ship, not against one salvo.
@@ -613,12 +615,83 @@ costing no Thrust and no crew action, the other a pilot spending Thrust. The
 books do not say they combine, and do not say they do not.
 
 #### Addition — magazines
-Missiles, torpedoes and sand barrels are finite: a salvo throws what is in the
-rack, an empty magazine says so, a sandcaster with no barrels cannot react, and
-a scenario reset restocks. Fifteen designs state their own load in their
-write-ups; the rest fall back to twelve missiles per rack, twenty barrels per
-sandcaster and three torpedoes per launcher, which is what the small ships that
-do state a load carry.
+Missiles, torpedoes and sand canisters are finite, and each launcher and
+sandcaster fires from its own load. What the mounts cannot hold is in stores.
+A mount holds the book's load:
+
+| Mount | Holds | Source |
+|---|---|---|
+| Turret or fixed mount with missile racks | 12 missiles, however many racks | High Guard p. 28; Core Rulebook p. 168 |
+| The same on a Firmpoint (a hull under 100 tons) | 4 missiles | High Guard p. 28 |
+| Turret with sandcasters | 20 canisters, however many casters | High Guard p. 29; Core Rulebook p. 168 |
+| The same on a Firmpoint | 4 canisters | High Guard p. 29 |
+| Missile barbette | 25 missiles (five salvos) | High Guard p. 31 |
+| Torpedo barbette | 3 torpedoes | High Guard p. 31 |
+| Missile or torpedo bay | 12 full salvos: 144, 288 or 1,440 missiles; 36, 72 or 360 torpedoes | High Guard pp. 33–34 |
+
+A battery holds all its mounts' loads, and a mixed turret each kind's. A salvo
+throws what is in its mount, and an empty mount says so. A sandcaster with no
+canisters in it cannot react, whatever is in stores. A scenario reset
+restocks everything.
+
+**Where the stock comes from.** Sixteen designs state their stock in their
+write-ups, and that is the ship's total: the mounts are filled first, in
+order, and the rest goes to stores. A design that states nothing carries
+twelve missiles per rack, twenty canisters per sandcaster and three torpedoes
+per launcher, as the small ships that do state a load carry. Where the book
+gives the mount more (a barbette's 25, a bay's twelve salvos), it carries
+that instead. No design file changed, and no ship carries less than it did.
+
+**Assumption — the load is per turret, not per rack.** Both books say "each
+turret with one or more missile racks holds 12 missiles" and "each turret
+with one or more sandcasters holds 20 sand canisters". So a triple-rack
+turret holds twelve, not 36, and throws three a round. A design that states
+nothing keeps the 36 it always carried: twelve in the turret and two dozen in
+stores.
+
+A ship saved before mounts held loads states only its magazine. That is read
+as the whole stock and filled into the mounts the same way.
+
+#### Rule enforced, with an addition — reloading a mount
+"It takes one round to reload a missile rack", and a sandcaster the same (Core
+Rulebook p. 168). *Reload Turret (Gunner)*: a turret "may be reloaded by any
+Traveller with the Gunner skill but it will be unable to make any attacks in
+that round" (p. 172).
+
+A gunner chooses **Reload** for a mount the way they choose Point Defence.
+It refills the mount from stores, up to its load or what stores have, after
+the round's fire and before movement. One Reload refills a whole battery, and
+every kind in a mixed turret.
+
+- **Spare gunners reload for free.** The crew's gunners are matched to the
+  mounts in order, so gunners beyond the last mount have none of their own.
+  Each Reload takes a spare while any are free. The mount keeps its own
+  gunner's Fire or Point Defence, so it can fire and reload in one round.
+- **With no spare left, the mount's own gunner reloads it.** Spares go to
+  Reloads in the order they were chosen. The first Reload that finds none
+  free, and every one after it, costs its mount the round's attack, as the
+  book says. Its Fire order is kept for the next round.
+- **Assumption — and its reaction too.** The busy gunner throws no sand and
+  runs no point defence, since a mount gets one use a round (*Mixed turrets*).
+- **Nothing reloads by itself.** A Reload is one round's work, chosen again
+  each time it is wanted. Withdrawing one gives its spare back.
+- **A Reload that would put nothing in the mount is not carried out.** That
+  is a full mount, a mount with no launcher or sandcaster, or one whose stores
+  are out of what it lacks. It takes no gunner, and the log says why.
+- **Leadership** has no roll to boost in a reload.
+
+The log has a line per reload: "Reloads mount 3 (missile triple turret)
+with a spare gunner: 12 of 12 missiles (30 left in stores)". When the
+mount's own gunner did it, the line also says that the mount made no attack.
+
+An AI crew reloads by the same rules. While spares are free it reloads every
+launcher and sandcaster below its load, emptiest first. With none free, a
+mount's own gunner reloads only when that gives up nothing worth having:
+
+- an empty launcher;
+- a mount with nothing to fire on;
+- a sandcaster that is empty when there is a fight;
+- a mixed turret, only when its other gun has no target.
 
 #### Addition — ship features
 A design carries a list of *features*: whatever the hull is fitted with that is
