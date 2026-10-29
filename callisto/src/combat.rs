@@ -245,10 +245,37 @@ pub(crate) fn attack_terms(
 // Eight params (one over the clippy default) is the natural seam: hit/damage
 // mods, attacker, defender, weapon, called-shot, boost map, and rng.
 // Splitting them into a struct would not improve clarity here.
-#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn attack(
   hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
   called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+) -> Vec<EffectMsg> {
+  let mut dodged = None;
+  let mut effects = resolve_attack(
+    hit,
+    damage_mod,
+    attacker,
+    defender,
+    firing,
+    called_shot_system,
+    boost_map,
+    rng,
+    &mut dodged,
+  );
+  // The ship that dodged hears of it as well: the attacker's line names the
+  // evade in its arithmetic, but the defender's crew never saw which shots
+  // their pilot's reserve (and their captain's inspire) went on, or whether
+  // it mattered.
+  effects.extend(dodged);
+  effects
+}
+
+/// [`attack`], with what the defender's dodge did to the shot, if she
+/// dodged, left in `dodged`.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+fn resolve_attack(
+  hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
+  called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore, dodged: &mut Option<EffectMsg>,
 ) -> Vec<EffectMsg> {
   let attacker_name = attacker.get_name();
 
@@ -412,6 +439,35 @@ pub fn attack(
   // of the sentence, which made every attack a line of arithmetic with the
   // outcome hidden at the end of it.
   let attack_roll = format!("{roll}{attack_mod:+}={hit_roll}{breakdown} vs {STANDARD_ROLL_THRESHOLD}");
+
+  if evading {
+    let missed = hit_roll < STANDARD_ROLL_THRESHOLD;
+    // The same roll without the dodge: whether it was the dodge that made
+    // the difference.
+    let undodged = hit_roll - evade_mod - captain_mod;
+    let outcome = match (missed, undodged >= STANDARD_ROLL_THRESHOLD) {
+      (true, true) => "the dodge made it miss",
+      (true, false) => "it missed, and would have anyway",
+      (false, _) => "it hit anyway",
+    };
+    let mut why = vec![format!("evade {evade_mod:+}")];
+    if captain_mod != 0 {
+      why.push(format!("captain evade {captain_mod:+}"));
+    }
+    *dodged = Some(
+      EffectMsg::outcome(
+        defender.get_name(),
+        MessageCategory::Attack,
+        format!("%s dodges %t's {weapon_name}: {outcome}."),
+        missed,
+      )
+      .at(attacker_name)
+      .rolled(format!(
+        "{} = {hit_roll}, {undodged} without the dodge, vs {STANDARD_ROLL_THRESHOLD}",
+        why.join(", ")
+      )),
+    );
+  }
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
@@ -3756,6 +3812,59 @@ mod tests {
     );
     let plain = shoot(&mut still, &BoostMap::default());
     assert!(!plain.contains("evade") && !plain.contains("captain"), "{plain}");
+    assert!(!plain.contains("dodges"), "nobody dodged: {plain}");
+  }
+
+  /// The ship that dodged is told so, with what the dodge did to the shot.
+  #[test]
+  fn the_dodging_ship_hears_of_each_dodge() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Dodger".to_string(),
+      hull: 200,
+      maneuver: 6,
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut defender = Ship::new(
+      "Dodger".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    defender.set_crew(serde_json::from_value::<crate::crew::Crew>(serde_json::json!({"pilot": 3})).unwrap());
+    defender.set_pilot_actions(Some(1), None).unwrap();
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let mut rng = StdRng::seed_from_u64(7);
+    let effects = attack(
+      HitMods::gunner(0),
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    let dodge = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { roll, .. } if e.rendered().contains("dodges") => {
+          Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default()))
+        }
+        _ => None,
+      })
+      .unwrap_or_default();
+    assert!(dodge.contains("dodges"), "{dodge}");
+    assert!(dodge.contains("evade -3"), "{dodge}");
+    assert!(
+      ["made it miss", "would have anyway", "hit anyway"]
+        .iter()
+        .any(|said| dodge.contains(said)),
+      "{dodge}"
+    );
   }
 
   /// Every attack reports how it was worked out, not only how it came out.
