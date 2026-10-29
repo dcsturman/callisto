@@ -1113,6 +1113,10 @@ Nothing is broken. Two things stand out:
 
 **For the user to check by eye:** Keelhaven in the browser: the plot at the start (the Oroth V boats far off, the attackers and their fighter swarm 100,000 km out), squadron lists, the Add Ship tooltips for the four designs (the spinal line and the battery counts), the gunner card's battery buttons on the Hadrian, and the results log once the fleets meet. Upload the four designs and the scenario to the buckets.
 
+## Later: high-efficiency batteries
+
+**User note (2026-10-29).** High Guard p. 34 suggests high-efficiency batteries so a spinal can be charged over several rounds by a plant too small to fire it every round, and p. 44 gives the batteries themselves (TL10: 40 Power per ton at MCr0.1; TL12: 60 per ton at MCr0.2; charged from any round's spare Power and spent in later rounds as if produced). Keelhaven's four capitals can all fire every round from their plants (`docs/naval_doctrine.md`, "Line ships fire their spinals every round"), so nothing needs this yet. **It must be built before any design is added whose spinal (or other weapons) draws more than the plant gives**, or that design's spinal would never fire: a `batteries` design field (tons and TL), a stored-Power figure on the live ship that fills from the round's spare Power and drains to meet demand, the power board showing it, and the AI pricing a spinal it can fire only every N rounds.
+
 ## Scenario: Keelhaven (decided 2026-10-29)
 
 The first capital-ship scenario, and the one step 7 builds its designs for. Two fleets bought to a budget from High Guard's price lists: the attacker 100 BCr of jump-capable ships, the defender 70 BCr of ships that cannot jump. Roughly half of each goes on capital ships, and the user asked for two to four capitals a side rather than one.
