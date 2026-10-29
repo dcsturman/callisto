@@ -107,10 +107,19 @@ CRB p. 79), no dodge, point defence or jamming. Mean damage of one salvo:
   armour sets the ceiling. Callisto's missiles are a third weaker than the
   book's against everything; that affects every missile-armed design and the
   missile-versus-gun balance.
-- **Callisto ruling**, not RAW. **Open:** whether to restore RAW's strength
-  (for example a per-missile DM that grows with salvo size, or RAW's single
-  roll) is the user's decision. The 126–68 Fighter Screen result and the
-  missile planner were measured under the weaker rule.
+- **Callisto ruling**, not RAW, and **kept** (user, 2026-10-29). The user's
+  view: a hit chance that rises with salvo size has no physical basis, and
+  per-missile rolls make more sense. The 126–68 Fighter Screen result and the
+  missile planner were measured under this rule.
+- **If it is ever revisited:** the user's idea is that each missile attacking
+  one target in a round gets DM+1 more than the one before it, so a salvo
+  saturates the target's defences as it arrives.
+- **Offsetting factor (user):** Callisto's missiles fly as real objects at
+  Thrust 10, so they reach their targets quickly and, ammunition aside, more
+  missiles meet a target in a given time. **Open:** RAW also gives salvos
+  Thrust 10 but times their flight by HG's Missile Flight table; measuring
+  Callisto's flight times against that table would show how large the
+  advantage is.
 
 ## The faster side chooses the range
 
