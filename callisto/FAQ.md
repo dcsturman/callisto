@@ -5,18 +5,17 @@ This FAQ gives additional detail on the state of the Callisto project.
 ## The big one: no capital ships
 
 **Callisto supports hulls up to 5,000 tons.** Traveller goes to 1,000,000, and closing that gap is a
-substantial piece of work rather than a few missing stats.  Two things block it:
+substantial piece of work rather than a few missing stats.  Spinal mounts block it; weapon batteries, the
+other half of the problem, are now in:
 
 * **Spinal mounts.** There is no such mount in Callisto at all.  They are not simply a bigger bay: a spinal
   weapon carries a x1,000 damage multiple, scales its damage dice with its own tonnage, takes a Hardpoint per
   100 tons, cannot exceed half its ship's displacement, and suffers escalating penalties against small or
   nearby targets.
-* **Weapon batteries** — that is, grouping many identical turrets so they are aimed and resolved as one
-  attack.  Callisto stores a ship's armament as a flat list and addresses each weapon by its index in that
-  list, so a 1,000,000-ton hull would carry ten thousand individually targetable weapons and combat would
-  resolve ten thousand separate attacks.  The representation gives out long before the rules do.  (Not to be
-  confused with *point defence laser batteries*, which are a specific 20-ton installation and **are**
-  supported — see below.)
+* **Weapon batteries** — grouping many identical turrets, barbettes or bays so they are aimed as one weapon
+  — **are** supported: a design gives a weapon entry a `count`, and it becomes batteries of up to 4, 8, 16 or
+  32 mounts by hull size (Imperial Navy p. 113), each with one gunner and one target.  See *Weapons* below.
+  (Not to be confused with *point defence laser batteries*, a specific 20-ton installation, also supported.)
 
 Defensive **screens** — meson screens, nuclear dampers, black globe generators — are also unimplemented, and
 capital ships lean on them heavily.  Designs that carry them are simply missing that protection today; the
@@ -426,6 +425,35 @@ torpedo costing two points. Jam Missiles likewise destroys its Effect's worth of
 missiles chosen from everything inbound at the ship, across salvoes. A salvo
 that loses some missiles flies on with the rest.
 
+#### Addition — weapon batteries
+A design may give a weapon entry a `count`: `{"kind":"Beam","mount":{"Turret":3},"count":200}` is 200
+triple beam turrets. They are split into batteries no bigger than the hull allows -- 4 mounts up to 999
+tons, 8 to 9,999, 16 to 99,999 and 32 above (IN p. 113); a hull under 100 tons takes the first row -- and
+each battery is one weapon: one gunner (IN p. 114), one target a round, one entry on the power board and
+one place for a critical to land. Turrets, barbettes and bays can be batteries (IN pp. 99, 113); an entry
+of several fixed mounts or point defence batteries is that many separate weapons. A design without counts
+is exactly as it was.
+
+#### Interpretation — every mount of a battery rolls its own attack
+IN's usual way, "a separate attack roll for each turret or barbette" (p. 113). The results give one line
+for the battery: "particle beam barbette ×12 (battery) -> X: 7 of 12 hit, 213 damage". A battery of four
+does exactly what four single mounts with the same gunner would.
+- **Omission: harmonised and focused fire** (IN p. 113). They may come later as a setting per battery.
+- **A missile battery is one salvo:** sixteen small bays throw 192 missiles at one target together.
+- **A called shot** is called for the whole battery: every shot takes the DM-2 and aims at the system.
+- **The captain's Assist Gunner** +1 goes on the first fire order of the round, which for a battery is
+  every mount in it.
+
+#### Decision — a battery defends with every mount
+A laser battery on point defence makes a check for every mount in it, at its one gunner's skill, and they
+all add to the pool. A sandcaster battery throws a cloud from every mount. Against a laser battery, each
+mount's shot can draw a cloud while the target has any to throw, as that many single shots would.
+
+#### Assumption — a weapons critical takes out the whole battery, for now
+A battery is one weapon, so a Weapons critical of severity 2 or more that picks it switches all of it off,
+as it would a single mount. High Guard's large-ship tables, which take a percentage of a battery, are still
+to come.
+
 #### Omission — detecting missile launch
 A launch can be missed and picked up later (HG p. 76: Routine 6+, or Average 8+
 if the firing ship is itself undetected, DM+1 per full 10 missiles). Callisto
@@ -675,8 +703,8 @@ idle. Reconnecting is just a page reload.
 
 ## Known gaps being considered for future versions
 
-* **Capital ships**: hulls above 5,000 tons, which needs spinal mounts and weapon batteries before anything
-  else -- see the top of this document.
+* **Capital ships**: hulls above 5,000 tons, which needs spinal mounts before anything else -- see the top
+  of this document.
 * **Defensive screens**: meson screens, nuclear dampers and black globe generators.
 * **Ship Design Editor**: new ship designs can be created and saved by users.
 * **Scenario editor**: entire scenarios can be created and saved by users.

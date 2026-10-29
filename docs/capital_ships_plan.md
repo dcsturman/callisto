@@ -40,7 +40,7 @@ These are the facts the plan builds on. File references are to the `epic-fleet-c
   - sustained damage, one severity-1 critical per tenth of hull lost, counted across a single huge hit too.
 
   Nothing depends on the target's size.
-- **Every missile is its own entity.** A large missile bay fires 120 a round, so one Tigress broadside would create about 5,000 entities.
+- **Every missile is its own entity.** A large missile bay fires 120 a round, so one Tigress broadside would create about 5,000 entities. **Done** (step 3): a launch is one salvo entity with a count.
 - **Screens are implemented:** meson screens and nuclear dampers (`ScreenType`, `roll_screen_pool`).
   - The FAQ's opening section still says they are not, and so do the headers of `docs/screens_design.md` and `docs/pd_batteries_design.md`. Step 1 fixes those words.
 - **Small craft do not exist.** No docking, hangars, launch tubes or carried craft. The two "carriers" in `ship_templates/` (Sakhai, Ulfhednar) are their guns only.
@@ -356,7 +356,7 @@ What I checked on `epic-fleet-control`. The rows marked **Done** are fixed on `c
 | **Hull and displacement:** `ShipDesignTemplate.{displacement, hull, power, fuel, crew}` are `u32` | Fine up to 4.29 × 10⁹. A 10⁹ t station has about 6.7 × 10⁸ HP | None |
 | **Hull-point formula** (HG p. 10) | 1 per 1.5 t above 100,000 t. HG gives stations no other rule, so the same bands are assumed | The step-1 check uses this |
 | **Spinal damage** | 66D, max 396, + Effect, × 1,000 is about 4 × 10⁵. Fits `u32` | Do the arithmetic in `u64` anyway (step 5) |
-| **Salvo size:** `Salvo::Fixed(u16)` | A 32-bay large-missile battery is 3,840 missiles; `u16` holds 65,535 | Fine. `Missile.count` should also be `u16` (step 3) |
+| **Salvo size:** `Salvo::Fixed(u16)` | A 32-bay large-missile battery is 3,840 missiles; `u16` holds 65,535 | **Done** (step 3): `Missile.count` is a `u16`, and a battery's salvo saturates rather than wrapping |
 | **Magazine:** `u32` | Fine | None |
 | **`MAX_SHIP_WEAPONS`** (`player.rs`) | Was 64. The Tigress has more than 900 mounts, and batteries bring her to about 40–60 entries | **Done** (`dd736dfc`): 256. No frontend mirror exists. Batteries (step 2) count against it |
 | **Crit thresholds:** `ceil(max_hull/10)` in `u64` | Fine. A single spinal hit can cross several tenths, so sustained-damage criticals come in bunches | Intended |
@@ -641,7 +641,7 @@ The user decided this on 2026-10-29. It covers every ship's own magazine-fed mou
 | **Meson screens, nuclear dampers** | HG p. 41, HG FAQ p. 2 | Implemented | Fix the FAQ's opening section and the two stale doc headers (step 1) |
 | **Black globe generators** | HG pp. 41–42 | Missing | Omission. A referee's artefact, not something that can be bought |
 | **Repulsor as tractor beam** | HG p. 34 | Point-defence half only | Omission. It needs a "held" state on a ship |
-| **Missile salvo grouping** | CRB p. 169; HG p. 33 bays | One entity per missile | Step 3: one entity per salvo, which a 120-missile bay needs |
+| **Missile salvo grouping** | CRB p. 169; HG p. 33 bays | One entity per salvo, each missile rolling to hit | **Done** (step 3) |
 | **Large-salvo decay:** halve every five rounds of travel; torpedoes are exempt | HG p. 37 | Missiles burn 10 rounds | Omission. Callisto's burn limit already caps endurance |
 | **Advanced warheads** (nuclear vs dampers, anti-torpedo, multi-warhead) | HG pp. 36–40 | Standard warhead only | Omission, as in the FAQ. Dampers do nothing against missiles until nuclear warheads exist |
 | **Fighters giving point defence to nearby ships** | HG p. 104 | Point Defence software lets a ship cover another at Short (/1) or Medium (/2) | Fighters already do this through software. No change |
@@ -792,8 +792,8 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 | # | Step | Size | Retrain? |
 |---|---|---|---|
 | 1 | Size rules and fixes | S–M | No (evaluate) |
-| 2 | Weapon batteries | L | No (evaluate) |
-| 3 | Missile salvos as one entity | M | No (evaluate) |
+| 2 | Weapon batteries — **done** (branch `batteries`) | L | No (evaluate) |
+| 3 | Missile salvos as one entity — **done** (branch `salvos`) | M | No (evaluate) |
 | 4 | Reloading: mount loads, spare gunners, the Reload choice | M | No (evaluate) |
 | 5 | Spinal mounts | L | No |
 | 6 | Large-ship criticals, frozen watch, sensor operators | M | No |
@@ -812,13 +812,13 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
    - The hull-point formula check over every template.
    - The FAQ and doc-header fixes for screens and point-defence batteries.
    - *Tests:* unit tests per threshold, including exactly 2,000 t; a template test. *Risk:* low. It changes play for the 3,000 t and 5,000 t designs, so run a 200-game baseline before and after.
-2. **Weapon batteries.**
+2. **Weapon batteries.** **Done**; see "Steps 2 and 3: what was built" below.
    - `count` in `Weapon`, battery forming by hull limit, per-battery mount state.
    - Fire resolved per mount and reported once; the point-defence pool by battery; power by battery.
    - `MAX_SHIP_WEAPONS` counting batteries. It is already 256 (`dd736dfc`).
    - Frontend gunner card and summaries; `hardpoints.ts` speaking `count`.
    - *Tests:* round-trips of old and new JSON; that a battery of N matches N single mounts in distribution; a point-defence pool test. *Risk:* weapon indices are aligned with `crew.gunnery` and `active_weapons`, and the wire format is shared with the client and `ai-ships`. Keep `count: 1` the identity.
-3. **Missile salvos as one entity.**
+3. **Missile salvos as one entity.** **Done**; see below.
    - `Missile.count: u16`, with point defence, jamming and impact per missile inside one entity.
    - The network's missile planner counting salvos.
    - *Tests:* existing missile tests unchanged at count 1; 120 missiles in one entity against a pool; an entity-count check. *Risk:* frontend missile drawing; the landing-round grouping in `network/missiles.rs`.
@@ -887,6 +887,52 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 **Plotting:** Phase 5's 100+ ship battles can start after step 8. They only need carriers after step 12.
 
 ---
+
+### Steps 2 and 3: what was built (2026-10-29)
+
+Step 3 is on branch `salvos`; step 2 is on `batteries`, which is cut from it.
+
+**Salvos.**
+- `Missile.count: u16`, defaulting to 1 so old scenarios (and the bucket's) load, and written only above 1, so a lone missile is on the wire as before. `LaunchMissileMsg` carries the count. A mount's launch is one salvo: one guidance solve a round, one wire entry.
+- **On impact** (`entity.rs` `update_all`): point defence drains the target's pool missile by missile, across every salvo that lands that round; a torpedo still costs 2. The rest each roll their own attack through `combat::volley`, which runs `resolve_attack` once a missile and reports one line, "missile salvo (12, 3 shot down) -> X: 7 of 9 hit, 31 damage", with the rolls and damages on the hover. Criticals keep their own lines. One explosion is drawn per salvo.
+- **Jamming** destroys its Effect's worth of missiles chosen at random from everything inbound, across salvoes. A salvo that loses some flies on with the rest; one line per salvo hit.
+- **The network** counts missiles, not entities, in every feature (`orders::missiles_in`). A test encodes a salvo of three and three lone missiles and checks every own, foe, side and pair feature is bit-identical. The missile planner's in-flight pool cost counts the same way.
+- **Frontend**: the Gunner card's Salvoes inbound and Ours in flight, the sensor station's inbound salvoes, plot labels ("name ×12"), the entity selector and the hover window count missiles (`lib/missileCount.ts`).
+
+**Scale test**, 200 ships and 10,000 missiles, `ai-ships/examples/scale.rs`, sides idle (the server alone). "Before" is every missile its own launch, which is also what `SCALE_SALVO=1` gives now; "after" is `SCALE_SALVO=12`, a small missile bay's salvo, so 834 salvoes:
+
+| | Before | After (salvoes of 12) |
+|---|---|---|
+| Entities in flight | 10,000 | 834 |
+| World update | 3.09–3.37 MB | 0.43–0.45 MB |
+| Serialising it | 8.4–9.0 ms | 0.9–1.2 ms |
+| Resolving a round in flight | 37–56 ms | 15–19 ms |
+| Observation, per side | 5.4–5.9 ms | 0.8–1.0 ms |
+| Results, worst round | 1.65 MB: 5,245 lines, 2,005 impacts, 1,395 exhausted | 0.36 MB: 1,081 lines, 424 impacts, 48 exhausted |
+| Results, other landing round | 0.63 MB | 0.25 MB |
+| Network decision, per side (network commander) | 42–46 ms | 25–27 ms |
+
+With `SCALE_SALVO=1` the update and the results are byte-for-byte the old ones: a lone missile writes no `count`, and resolves exactly as before. Remaining results lines in the landing rounds are mostly criticals and destructions, one per event.
+
+**Batteries.**
+- `Weapon.count: u16` (default 1, written only above 1). `ship::form_batteries` splits each entry by `battery_limit(displacement)` (4/8/16/32), full batteries first, on template load and on a scenario's own armament; a test checks every shipped design comes out identical. `MAX_SHIP_WEAPONS` (256) counts the formed entries.
+- Fire: `volley` again, an attack per mount, one line: "particle beam barbette ×12 (battery) -> X: 7 of 12 hit, 213 damage, 1 critical". A battery of four is shown roll for roll equal to four single mounts.
+- A missile battery launches one salvo of every launcher's missiles. Power draws for every mount.
+- Defence: a laser battery on point defence makes a check per mount (one line, "mount #3 (battery of 16) on point defence can stop 23 missiles"); sandcaster, repulsor and point defence battery entries act per mount.
+- AI: `tactics::engagement` and `launch_size` price a battery as its mounts, so `share_fire` and the missile planner assign it whole at its whole weight. For existing designs every number is the same (× 1).
+- Frontend: "×16 (battery)" names; one Gunner button per battery size with the batteries left to order and a ×16 badge; Add Ship keeps batteries as one row of mounts and splits them back by the hull with a gunner each, with a "Fire as batteries" switch in the detail editor; design summaries read "200 Triple Beam Turrets in 13 batteries".
+
+**Rulings made on the way** (also in the FAQ):
+- A hull under 100 tons takes IN's first row, 4 a battery.
+- Only turrets, barbettes and bays can be batteries. An entry of several fixed mounts or point defence batteries is that many single weapons (so the §6 example `{"kind":"PointDefense","mount":{"Battery":3},"count":8}` is eight batteries).
+- A design's `crew_skills` gunnery is index-aligned with the formed batteries, not the file's entries.
+- A Weapons critical still switches off the whole battery it picks: per-battery mount state and HG's percentage table wait for step 6.
+- A called shot is called for the whole battery; the captain's Assist Gunner +1 lands on every mount of the first battery fired.
+- Each shot of a laser battery can draw a sand cloud while the target has any; a sandcaster battery throws a cloud per mount. Several clouds against one battery read as one line.
+- Each missile or mount still uses up the defender's dodge as a separate attack did; the dodges are reported in one line per volley.
+- Jamming picks missiles uniformly at random from all inbound missiles, so bigger salvoes lose more.
+
+**For the user to check by eye:** a scenario with a battery design (none ships yet: give a design a `count`); the Gunner card's battery button and badge; Add Ship on such a design, including the switch; a results log with a salvo and a battery line, and the hover arithmetic; the plot's salvo labels and the swarm with a few hundred salvoes.
 
 ## 9. Decisions and open questions
 
