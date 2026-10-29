@@ -341,7 +341,7 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   row[61..64].copy_from_slice(&direction(burn));
   let inbound: Vec<&callisto::missile::Missile> =
     view.missiles.iter().filter(|missile| missile.target == name).collect();
-  row[64] = (inbound.len() as f32 / 5.0).min(1.0);
+  row[64] = (orders::missiles_in(inbound.iter().copied()) as f32 / 5.0).min(1.0);
   row[65] = inbound
     .iter()
     .map(|missile| rounds_to_reach(missile.get_position(), missile.get_velocity(), me))
@@ -349,7 +349,7 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
     .min(5.0)
     .mul_add(-0.2, 1.0)
     .max(0.0);
-  row[66] = (view.missiles.iter().filter(|missile| missile.source == name).count() as f32 / 10.0).min(1.0);
+  row[66] = (orders::missiles_in(view.missiles.iter().filter(|missile| missile.source == name)) as f32 / 10.0).min(1.0);
   // Her orders last round, and what happened to her.
   if let Some(last) = ctx.history.orders(name) {
     if let Some(verb) = last.verb {
@@ -460,11 +460,12 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     row[48] = (contact.burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
     row[49..52].copy_from_slice(&direction(contact.burn));
   }
-  row[52] = (view
-    .missiles
-    .iter()
-    .filter(|missile| missile.source == enemy.name && missile.target == name)
-    .count() as f32
+  row[52] = (orders::missiles_in(
+    view
+      .missiles
+      .iter()
+      .filter(|missile| missile.source == enemy.name && missile.target == name),
+  ) as f32
     / 5.0)
     .min(1.0);
   // Last round: did I steer by her, fire at her, lock her; how much of my

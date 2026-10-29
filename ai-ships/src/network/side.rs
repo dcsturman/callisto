@@ -351,7 +351,7 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
   row[43] = (burn.magnitude() / (10.0 * G)).min(1.0) as f32;
   row[44..47].copy_from_slice(&direction(frame.turned(burn)));
   let inbound: Vec<_> = view.missiles.iter().filter(|missile| missile.target == name).collect();
-  row[47] = (inbound.len() as f32 / 5.0).min(1.0);
+  row[47] = (orders::missiles_in(inbound.iter().copied()) as f32 / 5.0).min(1.0);
   row[48] = inbound
     .iter()
     .map(|missile| rounds_to_reach(missile.get_position(), missile.get_velocity(), me))
@@ -359,7 +359,7 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
     .min(5.0)
     .mul_add(-0.2, 1.0)
     .max(0.0);
-  row[49] = (view.missiles.iter().filter(|missile| missile.source == name).count() as f32 / 10.0).min(1.0);
+  row[49] = (orders::missiles_in(view.missiles.iter().filter(|missile| missile.source == name)) as f32 / 10.0).min(1.0);
   row[50] = f32::from(u8::from(me.running_level(SoftwareKind::JumpControl).is_some()));
   row[51] = f32::from(u8::from(me.jump_powered()));
   let well = orders::well(me, view);
@@ -428,11 +428,12 @@ fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mu
   let watching = view.watchers.iter().filter(|watcher| watcher.by == foe.name).count();
   row[24] = watching.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
   let ours: Vec<&str> = own.iter().map(|ship| ship.get_name()).collect();
-  let missiles = view
-    .missiles
-    .iter()
-    .filter(|missile| missile.source == foe.name && ours.contains(&missile.target.as_str()))
-    .count();
+  let missiles = orders::missiles_in(
+    view
+      .missiles
+      .iter()
+      .filter(|missile| missile.source == foe.name && ours.contains(&missile.target.as_str())),
+  );
   row[25] = (missiles as f32 / 10.0).min(1.0);
 }
 
@@ -512,11 +513,12 @@ fn pair(ctx: &SideContext, frame: Frame, me: &Ship, foe: &Foe, row: &mut [f32]) 
     row[36] = f32::from(u8::from(last.fired_at.as_deref() == Some(foe.name)));
     row[37] = f32::from(u8::from(last.locked.as_deref() == Some(foe.name)));
   }
-  let missiles = view
-    .missiles
-    .iter()
-    .filter(|missile| missile.source == foe.name && missile.target == name)
-    .count();
+  let missiles = orders::missiles_in(
+    view
+      .missiles
+      .iter()
+      .filter(|missile| missile.source == foe.name && missile.target == name),
+  );
   row[38] = (missiles as f32 / 5.0).min(1.0);
 }
 
@@ -579,5 +581,95 @@ pub fn absent_mask(mask: &mut [bool]) {
   mask.fill(false);
   for head in Head::ALL {
     mask[offset(head)] = true;
+  }
+}
+
+/// A launch now flies as one salvo with its missiles counted in it. What the
+/// network sees is counted in missiles, as it was when every missile was its
+/// own object, so the trained network reads a salvo of three exactly as it
+/// read three missiles.
+#[cfg(test)]
+mod salvo_tests {
+  use super::*;
+  use crate::observation::observe;
+  use callisto::entity::Entities;
+  use callisto::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  fn world(salvoes: &[u16]) -> Entities {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Hulk".to_string(),
+      displacement: 2000,
+      hull: 1000,
+      ..ShipDesignTemplate::default()
+    });
+    let mut world = Entities::default();
+    world.add_ship("Blue".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    world.add_ship("Red".to_string(), Vec3::new(5.0e7, 0.0, 0.0), Vec3::zero(), &design, None, None);
+    world.ships["Blue"].write().unwrap().team = Some(Team::Blue);
+    world.ships["Red"].write().unwrap().team = Some(Team::Red);
+    world.establish_initial_contacts();
+    let rack = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1);
+    for count in salvoes {
+      world.launch_missile("Red", "Blue", rack.clone(), *count).unwrap();
+      world.launch_missile("Blue", "Red", rack.clone(), *count).unwrap();
+    }
+    world
+  }
+
+  fn encoded(world: &Entities) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+    let view = observe(world, &["Blue".to_string()]);
+    let memory = Memory::default();
+    let history = History::default();
+    let ctx = SideContext {
+      view: &view,
+      memory: &memory,
+      history: &history,
+      round: 1,
+      max_rounds: 20,
+      own_hull_share: 1.0,
+      enemy_hull_share: 1.0,
+      goal: Goal::Destroy,
+      post: None,
+    };
+    let (mut own, mut foes, mut side, mut pairs, mut masks) = (
+      vec![0.0; OWN * OWN_FEATS],
+      vec![0.0; FOES * FOE_FEATS],
+      vec![0.0; SIDE_FEATS],
+      vec![0.0; OWN * FOES * PAIR_FEATS],
+      vec![false; OWN * MASK_LEN],
+    );
+    let _ = encode_side(
+      &ctx,
+      &mut Buffers {
+        own: &mut own,
+        foes: &mut foes,
+        side: &mut side,
+        pairs: &mut pairs,
+        masks: &mut masks,
+      },
+    );
+    (own, foes, side, pairs)
+  }
+
+  #[test]
+  fn a_salvo_encodes_as_its_missiles() {
+    let salvo = world(&[3]);
+    let singles = world(&[1, 1, 1]);
+    assert_eq!(salvo.missiles.len(), 2);
+    assert_eq!(singles.missiles.len(), 6);
+    let (a, b) = (encoded(&salvo), encoded(&singles));
+    assert_eq!(a.0, b.0, "own features");
+    assert_eq!(a.1, b.1, "foe features");
+    assert_eq!(a.2, b.2, "side features");
+    assert_eq!(a.3, b.3, "pair features");
+    // And the counts are really in there, not two empty encodings.
+    assert!(a.0[47] > 0.0 && a.0[49] > 0.0, "missiles inbound and ours in flight");
+  }
+
+  #[test]
+  fn the_per_ship_count_is_missiles_too() {
+    assert_eq!(orders::missiles_inbound(&observe(&world(&[3]), &["Blue".to_string()])), 3);
   }
 }

@@ -12,8 +12,10 @@
 //! `fleet:<directive.json>`, ...). The last one given plays any further side.
 //!
 //! `SCALE_MISSILES=<n>` puts n missiles in the air before the first round,
-//! every ship firing in turn at an enemy; `SCALE_WRITE=<file.json>` also
-//! writes that world out as a scenario, to load in the browser.
+//! every ship firing in turn at an enemy; `SCALE_SALVO=<k>` fires them k to a
+//! salvo (default 1, every missile its own launch), as a small missile bay's
+//! 12 would; `SCALE_WRITE=<file.json>` also writes that world out as a
+//! scenario, to load in the browser.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -30,8 +32,9 @@ use ai_ships::harness::{apply, sides};
 use ai_ships::observation::observe;
 
 /// Put `count` missiles in flight before the first round: every ship in
-/// turn fires one at an enemy, the targets spread across the enemy fleet.
-fn launch_salvos(server: &Server, count: usize) -> Result<(), String> {
+/// turn fires a salvo of `salvo` at an enemy, the targets spread across the
+/// enemy fleet.
+fn launch_salvos(server: &Server, count: usize, salvo: usize) -> Result<(), String> {
   let mut world = server.get_unlocked_entities().map_err(|e| e.to_string())?;
   let mut ships: Vec<(String, Option<Team>)> = world
     .ships
@@ -41,13 +44,19 @@ fn launch_salvos(server: &Server, count: usize) -> Result<(), String> {
   ships.sort_by(|a, b| a.0.cmp(&b.0));
   let weapon = Weapon::single(WeaponType::Missile, WeaponMount::Turret);
   let timer = Instant::now();
-  for i in 0..count {
+  let salvo = salvo.max(1);
+  for i in 0..count.div_ceil(salvo) {
     let (source, team) = &ships[i % ships.len()];
     let enemies: Vec<&String> = ships.iter().filter(|(_, t)| t != team).map(|(name, _)| name).collect();
     let target = enemies[(i / ships.len() + i) % enemies.len()];
-    world.launch_missile(source, target, weapon.clone())?;
+    let size = salvo.min(count - i * salvo);
+    world.launch_missile(source, target, weapon.clone(), u16::try_from(size).unwrap_or(u16::MAX))?;
   }
-  println!("launched {count} missiles in {:.0} ms", ms(timer.elapsed()));
+  println!(
+    "launched {count} missiles in {} salvoes in {:.0} ms",
+    world.missiles.len(),
+    ms(timer.elapsed())
+  );
   // A scenario file with the missiles already in the air, for looking at in
   // the browser.
   if let Ok(path) = std::env::var("SCALE_WRITE") {
@@ -74,7 +83,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let server = Arc::new(Server::new("scale", scenario).await);
   let player = PlayerManager::new(Some(server.clone()), Box::new(MockAuthenticator::new("")), true).with_seed(1);
   if let Some(count) = std::env::var("SCALE_MISSILES").ok().and_then(|n| n.parse::<usize>().ok()) {
-    launch_salvos(&server, count)?;
+    let salvo = std::env::var("SCALE_SALVO")
+      .ok()
+      .and_then(|n| n.parse::<usize>().ok())
+      .unwrap_or(1);
+    launch_salvos(&server, count, salvo)?;
   }
   let start = player.get_entities().map_err(|e| format!("{e:?}"))?;
   println!("loaded {} ships in {:.0} ms", start.ships.len(), ms(started.elapsed()));
@@ -88,12 +101,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
 
   println!(
-    "round  ships  missiles  update-bytes  serialize-ms  observe-ms  decide-ms (per side)  apply-ms  resolve-ms"
+    "round  ships  missiles (salvoes)  update-bytes  serialize-ms  observe-ms  decide-ms (per side)  apply-ms  resolve-ms"
   );
   for _ in 0..rounds {
     let world = player.get_entities().map_err(|e| format!("{e:?}"))?;
     let ship_count = world.ships.len();
-    let missile_count = world.missiles.len();
+    let salvo_count = world.missiles.len();
+    let missile_count: usize = world.missiles.values().map(|m| usize::from(m.read().unwrap().count)).sum();
     let round = world.round;
 
     let timer = Instant::now();
@@ -142,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       std::fs::write(format!("{dir}/update-{round}.json"), &update)?;
     }
     println!(
-      "{round:>5}  {ship_count:>5}  {missile_count:>8}  {:>12}  {:>12.1}  {:>10.1}  {:<20}  {:>8.0}  {:>10.0}   results {} bytes: {:?}",
+      "{round:>5}  {ship_count:>5}  {missile_count:>8} ({salvo_count:>6})  {:>12}  {:>12.1}  {:>10.1}  {:<20}  {:>8.0}  {:>10.0}   results {} bytes: {:?}",
       update.len(),
       ms(serialize),
       ms(observing),

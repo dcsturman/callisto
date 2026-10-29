@@ -99,11 +99,16 @@ pub fn sensor_verb(order: SensorOrder, target: Option<&str>) -> Option<SensorVer
 #[must_use]
 pub fn missiles_inbound(view: &Observation) -> usize {
   let ours: Vec<&str> = view.own.iter().map(Entity::get_name).collect();
-  view
-    .missiles
-    .iter()
-    .filter(|missile| ours.contains(&missile.target.as_str()))
-    .count()
+  missiles_in(view.missiles.iter().filter(|missile| ours.contains(&missile.target.as_str())))
+}
+
+/// How many missiles are in these salvoes.
+///
+/// A launch flies as one salvo carrying its count, where every missile used
+/// to be its own object. Every feature the network reads counts missiles,
+/// as it always did, not the objects they fly in.
+pub fn missiles_in<'a>(salvoes: impl IntoIterator<Item = &'a callisto::missile::Missile>) -> usize {
+  salvoes.into_iter().map(|missile| usize::from(missile.count)).sum()
 }
 
 /// How the computer is loaded, as the computer head numbers it.

@@ -233,7 +233,9 @@ fn in_flight(own: &[&Ship], view: &Observation) -> HashMap<(String, u32), f64> {
       } else {
         1.0
       };
-      *arriving.entry((target.name.clone(), round)).or_default() += cost;
+      // A salvo is one object with its missiles counted in it; each costs
+      // the pool as it always did.
+      *arriving.entry((target.name.clone(), round)).or_default() += cost * f64::from(missile.count);
     }
   }
   arriving

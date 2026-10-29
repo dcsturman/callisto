@@ -1093,8 +1093,14 @@ fn missiles(out: &mut String, view: &Observation) {
     );
     let _ = writeln!(
       out,
-      "- {} from {} at {}: {} km {}, {} rounds of fuel left",
+      "- {}{} from {} at {}: {} km {}, {} rounds of fuel left",
       if inbound { "Inbound" } else { "Outbound" },
+      // A salvo flies as one object; a lone missile reads as it always has.
+      if missile.count > 1 {
+        format!(" salvo of {}", missile.count)
+      } else {
+        String::new()
+      },
       missile.source,
       missile.target,
       km(distance),
