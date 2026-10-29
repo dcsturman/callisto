@@ -34,11 +34,11 @@ and 1×). Their turrets and bays are entries with a `count` (the Hadrian's 50 me
 entry), which the loader forms into batteries of up to 16; the stated magazine is the mounts' own load plus
 the book's storage, as for the Dragon and the Sloan. What their pages carry that Callisto does not model:
 
-* **Embarked craft.** The Wind's 80 light fighters, the Jaellemo's 30 heavy fighters, and the Hadrian's
-  and Valiant's pinnaces and cutters are left out of the designs; until carriers are built, a scenario puts
-  the fighters in space beside their ship. Docking spaces, hangars, launch tubes and recovery decks are not
-  modelled, and the crew figures still count the pilots. The Jaellemo carries her fighters' 2,400 missiles
-  in stores, with no launcher of her own to fire them.
+* **Embarked craft.** The designs carry their berths, tubes and decks (see *Carriers and small craft*
+  below), and Keelhaven starts the Wind's 80 light fighters and the Jaellemo's 30 heavy fighters aboard.
+  The Hadrian's six pinnaces and the Valiant's five modular cutters have their docking spaces but no
+  scenario puts craft in them. The crew figures still count the pilots. The Jaellemo carries her fighters'
+  2,400 missiles in stores, with no launcher of her own to fire them: they rearm her fighters.
 * **Railgun bay ammunition.** Railgun bays fire without using any; only a railgun spinal counts rounds.
   The Hadrian's 200 stored shots are left out.
 * **Sensor fittings beyond the grade**: distributed and extended arrays, enhanced signal processing, deep
@@ -623,6 +623,84 @@ there to be read, since a salvo carries its count.
 
 ---
 
+### Carriers and small craft
+
+High Guard's carrier rules (pp. 57, 61-63, 104) and the HG 2022 FAQ's rates, as Callisto plays them.
+The plan (`docs/capital_ships_plan.md` §4) has the reasoning.
+
+#### Addition — craft aboard are not on the plot
+A craft in a carrier's berth is not an entity in space. She is stored inside her carrier whole -- hull,
+criticals, crew, loads, orders, squadron -- and nothing can detect, target or order her until she is
+launched. On the wire the carrier carries her craft in `embarked`, with `flight_ops` for what is going
+out or coming in and a `flight_deck` summary (berths, berths free, craft a round through the tubes and
+through the decks, and the largest craft they take); each craft knows her `carrier`. A scenario file
+lists every ship at the top level and marks a craft that starts aboard with `aboard: "<carrier>"`; a
+carrier is any design with a docking space or a full hangar, and a craft aboard anything else is a
+broken file.
+
+#### Rule enforced, with a change — launching
+The carrier's captain gives a *Launch* order naming the craft. Through a powered launch tube that takes
+her size, a tube releases up to ten craft a round (HG 2022 FAQ p. 3); they appear as the round ends, at
+the carrier's position and velocity and five kilometres ahead of her, and act from the next round. RAW
+lets them thrust and fire in the round they launch, but in a simultaneous game nobody has plotted for a
+craft that did not exist when the orders were written. Craft named beyond the tubes' capacity wait for
+next round's order -- a carrier with a working tube never falls back to her berths. A carrier with no
+working tube releases through the berths: D3 rounds each (1D for a craft of 2,000 tons and up), several
+in parallel, the carrier pinned until the last is out (HG p. 61). A full hangar takes the same rounds as
+a docking space; HG gives the count under docking space only. Launch is one round's order and does not
+replace the captain's leadership check: flight operations are an order, not the captain's own roll.
+
+#### Decision — a pinned ship coasts, and reacts
+"Neither ship can expend Thrust or make attack rolls" (HG p. 61): a ship pinned by a berth operation
+flies no plan this round (the plan is kept for when the deck is clear), has no dodge, and her Fire
+orders are set aside for the round and kept for the next. Reactions stand -- point defence, sand,
+screens -- since the deck is busy and the gunners are not. `pinned` is on the wire while it holds.
+
+#### Rule enforced, with assumptions — recovering
+The craft's pilot gives a *Land on <carrier>* order, which stands until she is aboard or it is cleared.
+It is resolved at the end of the round's movement, in the craft's name order. She must be her side's
+ship, within Short range of the carrier (HG p. 104), and closing at no more than her Thrust in G times
+a minute of burn (60 seconds) relative to the carrier -- an assumption, since HG's abstract rules have no
+relative velocity; a crippled craft keeps a G's worth, so she may still drift into a match. There must
+be a berth free that takes her, or she waits.
+
+With a powered recovery deck that takes her: a Routine (6+) Pilot check, DM-1 for every G of Thrust the
+craft or the carrier spent that round, DM-1 for every other craft landing on that carrier that round
+that is not of her squadron (a craft with no squadron counts every other), and the crew DM. A deck
+takes ten craft a round (HG 2022 FAQ p. 3); the rest wait. Success puts her aboard; failure does 1D x
+(the craft's G + the carrier's G) to both, ignoring armour, and can wreck either, and she stays
+outside to try again. Without a deck: she matches the carrier's velocity and docks through a berth in
+D3 rounds (1D if large), both ships pinned, no check, aboard as the round in which the count runs out
+ends.
+
+#### Decision — launched craft take the carrier's picture and her air group
+A craft comes out with her carrier's contacts (not her sensor locks), the way a hand-off would give
+them. She joins the squadron the scenario named for her, or "<carrier> air group", spilling into
+"<carrier> air group 2" and so on at the twenty-ship cap, and takes up the squadron's and the fleet's
+orders.
+
+#### Decision — one round aboard rearms a craft from the carrier's stores
+A craft that has spent one whole round aboard, in any berth, has her launcher and sandcaster mounts
+refilled from the carrier's magazine, in order, as far as the stores go, at no action cost to anyone.
+A craft that lands at the end of round N is rearmed at the end of round N+1; one ordered out through
+a tube in N+1 leaves without it. The carrier's stores run down and run out. Repairs aboard are not
+modelled: a damaged craft comes out as she went in.
+
+#### Decision — a launch tube is fed before the drive
+A launch tube and a recovery deck draw Power (HG pp. 62-63) and take it ahead of the manoeuvre drive,
+like the weapons: they are in the printed Power budget. An unpowered tube launches nothing and the
+carrier falls back to her berths; an unpowered deck recovers nothing. Other powered features (a
+hologram projector) still come after the drive.
+
+#### Rule enforced — the carrier's loss is her craft's loss
+A carrier destroyed takes every craft in her berths with her, each with a line. A carrier that jumps
+takes them with her, and they count as departed with her.
+
+#### Omission — docking clamps, battle riders and tenders
+A design may state docking clamps (`DockingClamp`), and they are read and shown, but nothing docks to
+one yet: a clamped ship on the plot moving with her carrier is a different model from a berth. Battle
+riders are not carried by anyone.
+
 ### Critical hits
 
 #### Assumption — what a "bridge station" is
@@ -693,9 +771,11 @@ critical can kill them in their berths (below).
 Over 5,000 tons a Cargo critical rolls the D6 table HG p. 27 gives for a large military carrier: 1-2
 fighters, 3 other small craft, 4 the frozen watch, 5-6 cargo, and the Cargo and Weapons Severity table
 says how much of the row is lost -- 2D% at severity 1, D3 x 10% at 2, 1D x 10% at 3, all at 4, and all
-with a Hull critical at 5 and 6. Nothing is embarked yet, so the fighter and small-craft rows are cargo
-until carried craft exist (plan step 9), and so is the frozen-watch row on a ship without one. Cargo
-itself is not tracked, so a cargo result is a line in the log, as it is for a small ship.
+with a Hull critical at 5 and 6. The fighter row takes that share of the fighters aboard (craft whose
+design role is a Fighter), the small-craft row the same share of the other craft aboard, chosen at
+random and destroyed in their berths, each with a line of its own. A row with nothing aboard of its
+kind is cargo, and so is the frozen-watch row on a ship without one. Cargo itself is not tracked, so a
+cargo result is a line in the log, as it is for a small ship.
 
 #### Rule enforced — radiation wears down crews
 A ship carries a cumulative DM-1 on every check its crew makes for every 10% of its hull lost to weapons
@@ -999,8 +1079,9 @@ idle. Reconnecting is just a page reload.
 
 ## Known gaps being considered for future versions
 
-* **Capital ships**: the designs above 5,000 tons, and carriers with embarked craft -- see the top of this
-  document for what is already in place for them.
+* **Capital ships**: the designs above 5,000 tons -- see the top of this document for what is already
+  in place for them. Carriers launch, recover and rearm their craft; the flight-deck console, the AI's
+  flight orders and docking clamps are still to come.
 * **Black globe generators**; meson screens and nuclear dampers are in.
 * **Ship Design Editor**: new ship designs can be created and saved by users.
 * **Scenario editor**: entire scenarios can be created and saved by users.

@@ -800,7 +800,7 @@ Sizes: **S** is under ~300 changed lines, **M** ~300–900, **L** above that. Ea
 | 6 | Large-ship criticals, frozen watch, sensor operators — **done** | M | No |
 | 7 | Capital designs to the Tigress, scenarios, the remaining size hardening — **in part:** the four Keelhaven designs and Keelhaven | M | No |
 | 8 | **Retrain 1:** capital ships and reloading | M + GPU run | **Yes** |
-| 9 | Embarked craft: engine, rearming aboard | L | No |
+| 9 | Embarked craft: engine, rearming aboard — **done** (docking clamps left) | L | No |
 | 10 | Carrier frontend | M | No |
 | 11 | Carrier AI: heuristic and admiral orders | M | No |
 | 12 | **Retrain 2:** the `Flight` head | M + GPU run | **Yes** |
@@ -1117,6 +1117,64 @@ Nothing is broken. Two things stand out:
 
 **User note (2026-10-29).** High Guard p. 34 suggests high-efficiency batteries so a spinal can be charged over several rounds by a plant too small to fire it every round, and p. 44 gives the batteries themselves (TL10: 40 Power per ton at MCr0.1; TL12: 60 per ton at MCr0.2; charged from any round's spare Power and spent in later rounds as if produced). Keelhaven's four capitals can all fire every round from their plants (`docs/naval_doctrine.md`, "Line ships fire their spinals every round"), so nothing needs this yet. **It must be built before any design is added whose spinal (or other weapons) draws more than the plant gives**, or that design's spinal would never fire: a `batteries` design field (tons and TL), a stored-Power figure on the live ship that fills from the round's spare Power and drains to meet demand, the power board showing it, and the AI pricing a spinal it can fire only every N rounds.
 
+### Step 9: what was built (2026-10-29)
+
+On `epic-fleet-control`. The engine half of carriers: the design format, craft aboard, Launch and Land, rearming, loss and jump, cargo criticals on craft, and Keelhaven with its wings embarked. The flight-deck console (step 10), the AI's flight orders (step 11) and docking clamps are not built.
+
+**Design format** (`ship.rs`, `FeatureKind`). Facilities are features, so tubes and decks sit on the power board for free:
+
+```jsonc
+"features": [
+  { "name": "Docking space (50 t) x28", "kind": { "DockingSpace": { "craft_tons": 50, "count": 28 } } },
+  { "name": "Full hangar (50 t) x3",    "kind": { "FullHangar":   { "craft_tons": 50, "count": 3 } } },
+  { "name": "Launch tube (500 t)",      "kind": { "LaunchTube":   { "craft_tons": 500 } }, "power": 500, "default_on": true },
+  { "name": "Recovery deck (500 t)",    "kind": { "RecoveryDeck": { "craft_tons": 500 } }, "power": 500, "default_on": true },
+  { "name": "Docking clamp (Type III)", "kind": { "DockingClamp": { "max_tons": 300 } } }
+]
+```
+
+`count` defaults to 1. A berth, tube or deck takes a craft of up to its `craft_tons`. Every existing design loads unchanged (`RepairDrones` and `HolographicHull` still serialize as strings). The four Keelhaven designs carry the Keelhaven table's facilities; no `complement` default was added -- the scenario lists its craft.
+
+**Power.** A tube and a deck are fed ahead of the manoeuvre drive, like the weapons; other features (the hologram) still come after it. The Jaellemo's plant was already 1,631 short of her demand (her drive at 29,369 of 30,000, Thrust 5 from Power), so with the tube after the drive she could never launch; ahead of it the drive gets 28,369, still Thrust 5, and the side network's fingerprints are unchanged.
+
+**Live state** (`Ship`). `embarked: Vec<Ship>` -- the craft whole, not in `Entities.ships`; `flight_ops: Vec<FlightOp { craft, kind: TubeLaunch | BerthLaunch | BerthRecovery, rounds_left }>` on the carrier; `carrier: Option<String>` on a craft, set when embarked and kept after launch; `rounds_aboard`; `pinned`; and `flight_deck: Option<FlightDeck { berths, berths_free, launch_per_round, recover_per_round, tube_tons, deck_tons }>`, computed as the world is sent (`Serialize for Entities`) and never read back. `aboard: Option<String>` is the scenario-file marker only.
+
+**Wire decision: full ships, nested.** The carrier's `embarked` carries whole `Ship`s. The flight-deck card (step 10) wants name, design, hull, loads and state, and the AI (step 11) wants loads and hull to decide a rearm; a whole ship is the simplest form that gives both and keeps the world self-describing for `ai-ships`. Cost: a light fighter is about 1 KB on the wire, so the Wind adds ~80 KB to a world update until she launches (Keelhaven's updates were 0.12-0.5 MB). If that bites, the fallback is a summary struct beside `embarked` and `embarked` itself only to the carrier's own crew.
+
+**Scenario format.** A ship entry may say `aboard: "<carrier>"`. `Entities::deserialize` moves it into the carrier's berths (an error if the carrier is not in the file or has no berth); `to_scenario_file_json` writes it back the same way, every ship at the top level; the wire's nested `embarked` is read as well. `fixup_current_values` recurses into the craft and `stow_embarked` settles them: the carrier's position, velocity and team (if the craft had none), no plan, no contacts, `carrier` set. `Entities::sides` lists them, so the new-game screen can give them to the AI; `Server::with_ai_ships` reaches them. Keelhaven's 110 fighters start aboard; the 50 depot fighters stay in space: 86 ships on the plot at the start, 196 in the order of battle.
+
+**Actions** (`action.rs`). `ShipAction::Launch { craft: Vec<String> }` on the carrier (captain): a new list replaces the last, an empty list withdraws it, one round's order, independent of the leadership check. `ShipAction::Land { carrier: String }` on the craft (pilot): one at a time, the latest stands, kept across rounds until she is aboard or the carrier is gone; `ClearLand` withdraws it.
+
+**Resolution** (`flight.rs`, wired in `player.rs`):
+1. `flight::begin_round`, after the reload assignment and before fire: Launch orders become `flight_ops` -- `TubeLaunch` for the first *tubes × 10* craft the powered tubes take (the rest get a "waits" line), `BerthLaunch` with D3 (1D ≥ 2,000 t) rounds when there is no working tube. Then `pinned` is set from every berth operation (the carrier, and the craft of a `BerthRecovery`), and pinned ships' Fire orders are set aside for the round (kept in the queue). A pinned ship's `update` coasts and `get_dodge_thrust` is 0.
+2. `flight::end_round`, after `update_all` and before the engineers: operations tick and complete (launched craft are released at the carrier's position and velocity, 5 km ahead along her course on a 1 km ring, with her contacts; recovered craft go into the berths). Then Land orders, in craft-name order: the gates (own side, pilot station, Short range, relative velocity ≤ Thrust × 60 s × G with a 1 G floor, a free berth), then a deck landing with the HG p. 104 check (2D + Pilot + crew DM − craft G − carrier G − other craft landing not of her squadron ≥ 8, ten a deck a round, failure 1D × (G + G) to both ignoring armour, a wreck removed with its lines) or, with no powered deck, a `BerthRecovery` with the craft's velocity snapped to the carrier's. Then craft that were aboard all round get `rounds_aboard += 1` and are rearmed from the carrier's `magazine`. Then launched craft are inserted, join their squadron (named, or "<carrier> air group[ N]" at the cap) and take up fleet orders; references are pruned and `pinned` recomputed for the next round. A carrier that jumps this round (engineers, after) takes what landed and leaves what launched.
+3. `update_all` lists the craft aboard a destroyed carrier; `engineer_actions` adds a `Departure` for each craft aboard a carrier that jumps. `combat::apply_large_ship_crit` takes the severity share of the fighters (design role containing "Fighter") or of the other craft on the cargo table's rows 1-2 and 3, at random; a row with nothing aboard is cargo.
+
+**Rulings made on the way** (all in the FAQ, *Carriers and small craft*):
+- A carrier with a working tube never launches through her berths; craft beyond the tubes' capacity wait for next round's order.
+- A full hangar takes the same rounds as a docking space.
+- A pinned ship keeps her plan, flies none of it, has no dodge and makes no attacks; reactions stand.
+- Launch does not replace the captain's leadership check.
+- A craft lands only on her own side's ship, and only with her pilot station working.
+- The landing velocity limit uses the craft's current Thrust with a floor of 1 G.
+- A craft with no squadron counts as "not of the same squadron" against every other craft landing.
+- Berth recovery begins at the end of the round the order is checked in, with the count running from the next round; the craft matches the carrier's velocity as it begins.
+- Launched craft carry the carrier's contacts, not her locks.
+- Rearming: one whole round aboard; a craft that lands at the end of round N is rearmed at the end of N+1; a tube launch in N+1 forgoes it. Repairs aboard are not modelled.
+- Tubes and decks are fed before the drive.
+- The scenario file flattens craft to the top level with `aboard`.
+- Docking clamps are parsed and shown, not usable.
+
+**Keelhaven end condition (proposal, not built).** The harness (`ai-ships/src/harness.rs`) gives a `winner` only when exactly one side still has ships; the round limit is not judged at all, which is where the two "no winner" re-runs came from (Blue at 98% of its hull, Red at 5%). The frontend's `timeUp` (`fe/callisto/src/lib/victory.ts`) would have called it a Red hold if any Red ship was inside the post radius, and `rl-env` rewards a Hold side 1.0 for a draw while `holding`. Proposal, for the user to rule on: at the limit a Hold side has held only if a ship of it is at the post **and** the side keeps at least a quarter of its starting hull points (or the enemy is gone or fled); otherwise the attackers have won. Apply it in all three places, with the harness gaining a round-limit verdict (it has none). It changes the RL reward, so it belongs with retrain 2 rather than a quiet edit.
+
+**Tests.** `flight::tests` (13): tube rate and the surplus waiting, three tubes and the air-group spill at 20, a named squadron kept, berth launch pinning the carrier until the craft is out, a pinned carrier coasting, the landing gates (Short, velocity limit), the check's DMs on the hover, failure damage 1D × 8 to both, ten a deck, berth recovery with both pinned and no check, rearming and stores running out, a fresh landing not yet rearmed, no berth free. Plus: cargo criticals on craft (`combat.rs`), carrier lost and carrier jumping (`entity.rs`), the scenario round trip and the refusal of a craft aboard nothing, Launch and Land merges (`action.rs`), reset putting a launched craft back aboard and the AI choice reaching craft (`server.rs`), the four designs' facilities and an old design unchanged (`ship.rs`), `keelhaven_opens_at_distant` for the new layout. The side network's fingerprints and `keelhaven_plays_its_opening_rounds` pass unchanged; the harness's `sides` now lists craft aboard, so a launched craft is crewed.
+
+**For steps 10 and 11.**
+- Step 10 (frontend): read `ship.embarked[]` (full ships), `ship.flight_ops[]`, `ship.flight_deck` (`launch_per_round`, `recover_per_round`, `berths_free`, `tube_tons`, `deck_tons`), `ship.pinned`, `ship.carrier`, `ship.rounds_aboard`; send `{"Launch": {"craft": [names]}}` (captain) and `{"Land": {"carrier": name}}` / `"ClearLand"` (pilot) in `ModifyActions`. The TS types are in `lib/entities.ts` and `lib/power.ts`; `Actions.tsx`'s payload union knows the two actions. The results log already carries every line.
+- Step 11 (AI): nothing launches by itself. The harness's Keelhaven test is still meaningful (the capitals and the depot fighters fight) but exercises no launch; a scenario-start launch or the heuristic's first *Launch* is step 11's. `tactics` should add `Launch` for a carrier with craft aboard and a target in reach, and `Land { carrier }` for a craft with `carrier` set whose loads are empty and whose carrier is within Short; `flight_deck.launch_per_round` is the feature to learn the rate from.
+
+**Not built:** docking clamps (parsed only); repairs aboard; a design-level `complement`; the frontend; AI flight orders; the end-condition change above.
+
 ## Scenario: Keelhaven (decided 2026-10-29)
 
 The first capital-ship scenario, and the one step 7 builds its designs for. Two fleets bought to a budget from High Guard's price lists: the attacker 100 BCr of jump-capable ships, the defender 70 BCr of ships that cannot jump. Roughly half of each goes on capital ships, and the user asked for two to four capitals a side rather than one.
@@ -1149,7 +1207,7 @@ The first capital-ship scenario, and the one step 7 builds its designs for. Two 
 
 **Why these.** Only mesons work against the Hadrian: a particle spinal loses 3% a point of armour, 90% against armour 30, so the Ghalalk and Azhanti were passed over. The Wind is the one attacker capital in budget whose spinal matches the Hadrian's. Two Jaellemos were weighed against the Hadrian (two spinals, 2.3× the hull points and 60 fighters for 43% more money, but armour 15 and no missile launchers); one of each gives the attacker a real choice of which to kill first.
 
-**What step 7 must build for it.** The Hadrian, the Jaellemo, the Wind and the Valiant, from their HG pages with the HG FAQ's spinal corrections, and the hull-formula test's buffered-planetoid product for the Jaellemo. The other HG capitals can follow. Until step 9 lands carriers, the Wind's 80 light fighters and the Jaellemo's 30 heavy fighters start in space beside their ships. Embarked craft count in the carrier's price; only extra fighters are bought from the small half.
+**What step 7 must build for it.** The Hadrian, the Jaellemo, the Wind and the Valiant, from their HG pages with the HG FAQ's spinal corrections, and the hull-formula test's buffered-planetoid product for the Jaellemo. The other HG capitals can follow. Until step 9 landed carriers, the Wind's 80 light fighters and the Jaellemo's 30 heavy fighters started in space beside their ships; since step 9 they start aboard (`aboard` in the file). Embarked craft count in the carrier's price; only extra fighters are bought from the small half.
 
 **Keelhaven is the carrier test for step 9** (user, 2026-10-29). The Jaellemo and the Wind are its carriers. Each carrier's fighters fly in their own squadrons named for her (Jaellemo Wing 1–2, Wind Wing 1–4), apart from the 50 free-standing heavy fighters (Talon, Spur, Claw), and start within 100 km of her, so step 9 can embark exactly those squadrons. A test (`keelhaven_opens_at_distant`) holds the scenario to that. What HG gives each ship for embarking, so step 9 need not reread the book (the design files cannot carry it until step 9 adds the fields; an unknown field would be dropped on load):
 
