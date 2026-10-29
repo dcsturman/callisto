@@ -821,8 +821,10 @@ describe("explaining why a weapon is barred from a mount", () => {
     // list when the option was simply omitted.
     expect(legalMountsLabel("Ion")).toBe("a barbette or bay");
     expect(legalMountsLabel("Torpedo")).toBe("a barbette or bay");
-    // Bay-only weapons collapse the three bay sizes into one word.
-    expect(legalMountsLabel("Meson")).toBe("a bay");
+    // The three bay sizes collapse into one word. A meson gun comes in a bay
+    // or a spinal mount and nothing smaller.
+    expect(legalMountsLabel("Meson")).toBe("a spinal mount or bay");
+    expect(legalMountsLabel("Repulsor")).toBe("a bay");
     expect(legalMountsLabel("PointDefense")).toBe("a battery");
   });
 

@@ -24,8 +24,10 @@ import {
   createWeapon,
   weaponToString,
   weaponKindLabel,
+  spinalOf,
   WEAPON_COLORS,
 } from "lib/weapon";
+import { spinalSizeDm } from "lib/spinal";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
   FireAction,
@@ -230,6 +232,37 @@ export const WeaponButton = (props: {
           id={props.weapon + props.mount}
           className="console-tip"
         />
+      </>
+    );
+  }
+  const spinal = spinalOf(props.mount);
+  if (spinal != null) {
+    // A spinal is the ship's main gun: drawn as the largest mount, with its
+    // multiple of the Base Size beside it.
+    const id = props.weapon + "spinal-" + spinal.multiple;
+    return (
+      <>
+        <button
+          id={props.weapon + "-spinal-button"}
+          className={buttonClass}
+          onClick={props.onClick}
+          data-tooltip-id={id}
+          data-tooltip-content={tip(
+            `${label} Spinal Mount (${spinal.multiple}×): fires at any bearing, but not at a ship under 2,000 tons unless she held still last round`,
+          )}
+          data-tooltip-delay-show={700}
+          disabled={props.disabled}
+        >
+          <LargeBay
+            className="weapon-symbol bay-button"
+            style={{
+              fill,
+            }}
+          />
+          <span className="weapon-symbol-count">{props.count}</span>
+          <span className="weapon-symbol-battery">{spinal.multiple}×</span>
+        </button>
+        <Tooltip id={id} className="console-tip" />
       </>
     );
   }
@@ -753,6 +786,17 @@ export const FireControl: React.FC<FireControlProps> = () => {
     [handleFireCommand, computerShipName, fireTarget],
   );
 
+  // A spinal cannot attack a ship under 2,000 tons that manoeuvred last
+  // round (High Guard p. 34), so it is not offered against one.
+  const spinalCannotAttack = useMemo(() => {
+    const target = fireTarget ? findShip(entities, fireTarget.name) : null;
+    if (target == null) {
+      return false;
+    }
+    const tons = shipTemplates[target.design]?.displacement ?? 0;
+    return spinalSizeDm(tons) == null && !target.held_still;
+  }, [fireTarget, entities, shipTemplates]);
+
   const isWeaponDisabled = useCallback(
     (weapon: { kind: string; mount: WeaponMount }) => {
       return (
@@ -761,10 +805,11 @@ export const FireControl: React.FC<FireControlProps> = () => {
           !(
             isLaserKind(weapon.kind ?? "") &&
             weapon.mount !== "Turret"
-          ))
+          )) ||
+        (spinalOf(weapon.mount) != null && spinalCannotAttack)
       );
     },
-    [fireTarget, POINT_DEFENSE_NAME],
+    [fireTarget, POINT_DEFENSE_NAME, spinalCannotAttack],
   );
 
   const weaponButtons = useMemo(

@@ -4,7 +4,7 @@ import {useMemo} from "react";
 import {Ship} from "lib/entities";
 import {EMPTY_MAGAZINE, describeLoad, mountCapacity} from "lib/magazine";
 import {shipWeapons} from "lib/shipDesignTemplates";
-import {weaponGuns, weaponToString} from "lib/weapon";
+import {spinalOf, weaponGuns, weaponToString} from "lib/weapon";
 import {useAppSelector} from "state/hooks";
 import {templatesSelector} from "state/serverSlice";
 
@@ -29,11 +29,14 @@ export function Magazine(args: {ship: Ship}) {
   const {casters, carries} = useMemo(() => {
     let crewed = 0;
     let total = 0;
-    const carries = {missiles: false, torpedoes: false, sand: false};
+    const carries = {missiles: false, torpedoes: false, sand: false, rounds: false};
     shipWeapons(args.ship, templates).forEach((weapon, index) => {
       const kinds = weaponGuns(weapon).map((gun) => gun.kind);
       carries.missiles ||= kinds.includes("Missile");
       carries.torpedoes ||= kinds.includes("Torpedo");
+      // Railgun and mass driver spinals fire rounds, one an attack.
+      carries.rounds ||=
+        spinalOf(weapon.mount) != null && (kinds.includes("Railgun") || kinds.includes("MassDriver"));
       const sand = kinds.filter((kind) => kind === "Sand").length;
       if (sand > 0) {
         carries.sand = true;
@@ -89,6 +92,7 @@ export function Magazine(args: {ship: Ship}) {
             ? ` · ${casters.total} caster${casters.total === 1 ? "" : "s"}`
             : ` · ${casters.crewed} of ${casters.total} casters crewed`,
     },
+    {label: "spinal rounds in stores", count: magazine.rounds ?? 0, suffix: "", carried: carries.rounds},
   ].filter((row) => row.carried);
 
   // Nothing to carry, nothing to say.

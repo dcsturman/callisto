@@ -1,4 +1,13 @@
-import {Weapon, CompressedWeapon, mountName, weaponToString, weaponKinds, weaponMounts} from "./weapon";
+import {
+  Weapon,
+  CompressedWeapon,
+  mountName,
+  spinalOf,
+  weaponToString,
+  weaponKinds,
+  weaponMounts,
+} from "./weapon";
+import {spinalLabel, spinalTl, spinalTons} from "./spinal";
 // Type-only: `lib/entities` sits in an import cycle with the Redux slices, and
 // a value import from here would drag this module into it.
 import type {Ship} from "./entities";
@@ -137,12 +146,14 @@ export interface ArmamentLine {
 
 /**
  * A design's armament for reading, by mount: "200 Triple Beam Turrets in 13
- * batteries" rather than one line per battery size.
+ * batteries" rather than one line per battery size. A spinal is written as a
+ * record sheet writes it, with the design's TL where it states none:
+ * "Spinal – Meson (TL15) – 3× of 18,000 tons".
  */
-export const armament = (weapons: Weapon[] | null): ArmamentLine[] => {
+export const armament = (weapons: Weapon[] | null, designTl: number = 0): ArmamentLine[] => {
   const lines = new Map<string, ArmamentLine>();
   for (const weapon of weapons ?? []) {
-    const name = mountName(weapon);
+    const name = spinalName(weapon, designTl) ?? mountName(weapon);
     const line = lines.get(name) ?? {name, mounts: 0, batteries: 0};
     line.mounts += weaponMounts(weapon);
     if (weaponMounts(weapon) > 1) {
@@ -151,6 +162,18 @@ export const armament = (weapons: Weapon[] | null): ArmamentLine[] => {
     lines.set(name, line);
   }
   return [...lines.values()];
+};
+
+/** "Spinal – Meson (TL15) – 3× of 18,000 tons", or null for any other mount. */
+export const spinalName = (weapon: Weapon, designTl: number): string | null => {
+  const spinal = spinalOf(weapon.mount);
+  if (spinal == null) {
+    return null;
+  }
+  const kind = weapon.kind ?? weaponKinds(weapon)[0] ?? "";
+  const tons = spinalTons(kind, spinal.multiple, spinalTl(spinal, designTl));
+  const size = tons == null ? "" : ` of ${tons.toLocaleString()} tons`;
+  return `${spinalLabel(kind, spinal, designTl)}${size}`;
 };
 
 // Find the weapon_id of the nth with a given name.  This is part of going

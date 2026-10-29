@@ -48,6 +48,7 @@ const MAX_RANGE: Record<string, Partial<Record<string, Band | null>>> = {
     Small: "Very Long",
     Medium: "Very Long",
     Large: "Distant",
+    Spinal: "Very Long",
   },
   Fusion: {
     Turret: "Medium",
@@ -65,9 +66,10 @@ const MAX_RANGE: Record<string, Partial<Record<string, Band | null>>> = {
     Small: "Short",
     Medium: "Short",
     Large: "Medium",
+    Spinal: "Medium",
   },
-  Meson: {Small: "Long", Medium: "Long", Large: "Long"},
-  MassDriver: {Small: "Short", Medium: "Short", Large: "Medium"},
+  Meson: {Small: "Long", Medium: "Long", Large: "Long", Spinal: "Long"},
+  MassDriver: {Small: "Short", Medium: "Short", Large: "Medium", Spinal: "Short"},
   Repulsor: {Small: "Short", Medium: "Short", Large: "Short"},
   Ion: {Barbette: "Medium", Small: "Medium", Medium: "Medium", Large: "Medium"},
   PointDefense: {Battery: "Short"},
@@ -83,6 +85,9 @@ export const mountClass = (mount: WeaponMount): string => {
   }
   if ("Bay" in mount) {
     return mount.Bay;
+  }
+  if ("Spinal" in mount) {
+    return "Spinal";
   }
   return "Battery";
 };

@@ -881,10 +881,11 @@ function HardpointList(args: {
   setGroups: (groups: WeaponGroup[]) => void;
 }) {
   const displacement = args.design?.displacement ?? 0;
+  const designTl = args.design?.tl ?? 0;
 
   const report = useMemo(
-    () => checkAllowance(args.groups, displacement),
-    [args.groups, displacement],
+    () => checkAllowance(args.groups, displacement, designTl),
+    [args.groups, displacement, designTl],
   );
 
   const bulkGunnery = useMemo(() => commonGunnery(args.groups), [args.groups]);
@@ -1337,7 +1338,7 @@ const ShipDesignDetails = (render: {
   }, [designs, render.content]);
   // By mount, however the design splits them into batteries: "200 Triple
   // Beam Turrets in 13 batteries".
-  const compressed = useMemo(() => armament(design?.weapons ?? null), [design]);
+  const compressed = useMemo(() => armament(design?.weapons ?? null, design?.tl ?? 0), [design]);
   const describeWeapon = useMemo(
     () => (line: ArmamentLine) => {
       const [quant, suffix] = line.mounts === 1 ? ["a", ""] : [line.mounts, "s"];

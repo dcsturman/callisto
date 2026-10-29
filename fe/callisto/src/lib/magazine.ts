@@ -1,12 +1,16 @@
 import {Weapon, countOfKind, weaponGuns, weaponMounts} from "lib/weapon";
 
-/** Missiles, torpedoes and sandcaster canisters: in a mount, or in stores. */
-export type Magazine = {missiles: number; torpedoes: number; sand: number};
+/**
+ * Missiles, torpedoes and sandcaster canisters: in a mount, or in stores. And
+ * rounds for a railgun or mass driver spinal, which feed it from stores and
+ * are written only when there are some.
+ */
+export type Magazine = {missiles: number; torpedoes: number; sand: number; rounds?: number};
 
 export const EMPTY_MAGAZINE: Magazine = {missiles: 0, torpedoes: 0, sand: 0};
 
 /** The munitions a mount can hold, in the order they are listed. */
-export const MUNITIONS: {key: keyof Magazine; kind: string; label: string}[] = [
+export const MUNITIONS: {key: "missiles" | "torpedoes" | "sand"; kind: string; label: string}[] = [
   {key: "missiles", kind: "Missile", label: "missiles"},
   {key: "torpedoes", kind: "Torpedo", label: "torpedoes"},
   {key: "sand", kind: "Sand", label: "canisters"},

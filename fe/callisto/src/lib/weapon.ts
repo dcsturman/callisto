@@ -6,7 +6,25 @@ export type WeaponMount =
   | string
   | {Turret: number}
   | {Bay: BaySize}
-  | {Battery: number};
+  | {Battery: number}
+  // A spinal mount (High Guard pp. 34-36): `{Spinal: 3}` at the design's TL,
+  // or with the weapon's own TL when it differs.
+  | {Spinal: number | Spinal};
+
+/** A spinal mount's multiple, and its own TL when it is not the design's. */
+export interface Spinal {
+  multiple: number;
+  tl?: number;
+}
+
+/** The spinal in a mount, whichever way the wire wrote it, or null. */
+export const spinalOf = (mount: WeaponMount | null | undefined): Spinal | null => {
+  if (mount == null || typeof mount !== "object" || !("Spinal" in mount)) {
+    return null;
+  }
+  const spinal = mount.Spinal;
+  return typeof spinal === "number" ? {multiple: spinal} : spinal;
+};
 
 /**
  * Human-readable names for the weapon kinds.
@@ -41,6 +59,9 @@ export const mountToString = (mount: WeaponMount): string => {
   }
   if ("Battery" in mount) {
     return `Point Defence Battery (Type ${mount.Battery})`;
+  }
+  if ("Spinal" in mount) {
+    return `Spinal Mount (${spinalOf(mount)?.multiple ?? 1}×)`;
   }
   return "Unknown Mount";
 };
@@ -365,6 +386,9 @@ export const mountName = (weapon: Weapon): string => {
       // "PointDefense Battery".
       const grade = BATTERY_TYPES[weapon.mount.Battery] ?? weapon.mount.Battery;
       return `Point Defence Battery (Type ${grade})${suffix}`;
+    } else if ("Spinal" in weapon.mount) {
+      // As the server names it: "Meson Spinal Mount (3×)".
+      return `${kind} Spinal Mount (${spinalOf(weapon.mount)?.multiple ?? 1}×)${suffix}`;
     }
     console.error("Unknown weapon mount type: " + weapon.mount);
     return "ERROR in weaponToString()";

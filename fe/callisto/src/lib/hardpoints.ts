@@ -13,6 +13,7 @@ import {
   weaponMounts,
 } from "./weapon";
 import WEAPON_MOUNTS from "./weaponMounts.json";
+import { spinalHardpoints, spinalOf, spinalProblem, spinalTl, spinalTons } from "./spinal";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
 //
@@ -99,7 +100,9 @@ export function allowanceForDisplacement(displacement: number): Allowance {
  *
  * A turret costs 1 regardless of whether it is single, double or triple — the
  * turret is the hardpoint, not the guns in it.  A Large Bay costs 5.  On small
- * craft a Barbette consumes three Firmpoints.
+ * craft a Barbette consumes three Firmpoints.  A spinal mount costs one per
+ * 100 tons of it (High Guard p. 34), which depends on its weapon and TL, so
+ * it is priced by {@link groupCost}; alone it counts as 1.
  */
 export function mountCost(mount: WeaponMount, kind: AllowanceKind): number {
   if (typeof mount === "object" && "Bay" in mount) {
@@ -109,6 +112,16 @@ export function mountCost(mount: WeaponMount, kind: AllowanceKind): number {
     return kind === "firmpoints" ? 3 : 1;
   }
   return 1;
+}
+
+/** What one mount of a group costs, a spinal by its tonnage at `designTl`. */
+function groupCost(group: WeaponGroup, kind: AllowanceKind, designTl: number): number {
+  const spinal = group.mount === null ? null : spinalOf(group.mount);
+  if (spinal != null) {
+    const tons = spinalTons(group.kind, spinal.multiple, spinalTl(spinal, designTl));
+    return tons == null ? 0 : spinalHardpoints(tons);
+  }
+  return group.mount === null ? 0 : mountCost(group.mount, kind);
 }
 
 export function isTurret(mount: WeaponMount): boolean {
@@ -134,11 +147,13 @@ export interface AllowanceReport {
  * Score an armament against a hull's allowance.
  *
  * `groups` is the row list straight out of the editor, so empty rows (mount
- * `null`) are expected and cost nothing.
+ * `null`) are expected and cost nothing. `designTl` sizes a spinal mount
+ * that does not state its own TL.
  */
 export function checkAllowance(
   groups: readonly WeaponGroup[],
   displacement: number,
+  designTl: number = 0,
 ): AllowanceReport {
   const allowance = allowanceForDisplacement(displacement);
   const rowProblems: (string | null)[] = groups.map(() => null);
@@ -152,9 +167,16 @@ export function checkAllowance(
     if (group.mount === null || group.count <= 0) {
       return;
     }
-    used += mountCost(group.mount, allowance.kind) * group.count;
+    used += groupCost(group, allowance.kind, designTl) * group.count;
     if (used > allowance.total) {
       rowProblems[index] = `Exceeds the ${allowance.total} ${allowance.kind} this hull allows`;
+    }
+    // A spinal the server would refuse: too large for its type or the hull,
+    // or below its weapon's TL.
+    const spinal = spinalOf(group.mount);
+    if (spinal != null) {
+      rowProblems[index] =
+        spinalProblem(group.kind, spinal, displacement, designTl) ?? rowProblems[index];
     }
     // The rules do not sell every weapon in every mount — there is no torpedo
     // turret and no laser bay.  The dropdown will not offer these, but a design
@@ -327,6 +349,7 @@ const MOUNT_CLASS_LABELS: Record<MountClass, string> = {
   MediumBay: "medium bay",
   LargeBay: "large bay",
   Battery: "battery",
+  Spinal: "spinal mount",
 };
 
 /**
@@ -444,7 +467,8 @@ export type MountClass =
   | "SmallBay"
   | "MediumBay"
   | "LargeBay"
-  | "Battery";
+  | "Battery"
+  | "Spinal";
 
 /** The mount class of a concrete mount, matching Rust's `From<&WeaponMount>`. */
 export function mountClassOf(mount: WeaponMount): MountClass | null {
@@ -462,6 +486,9 @@ export function mountClassOf(mount: WeaponMount): MountClass | null {
   }
   if (typeof mount === "object" && "Battery" in mount) {
     return "Battery";
+  }
+  if (typeof mount === "object" && "Spinal" in mount) {
+    return "Spinal";
   }
   return null;
 }

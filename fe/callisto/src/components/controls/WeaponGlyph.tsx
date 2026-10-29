@@ -71,6 +71,10 @@ function mountIcon(weapon: Weapon): React.FunctionComponent<React.SVGProps<SVGSV
   if ("Bay" in mount) {
     return mount.Bay === "Large" ? LargeBay : mount.Bay === "Medium" ? MediumBay : SmallBay;
   }
+  // A spinal is drawn as the largest mount there is.
+  if ("Spinal" in mount) {
+    return LargeBay;
+  }
   // A point-defence battery has no icon of its own; a turret is close enough.
   return Turret1;
 }

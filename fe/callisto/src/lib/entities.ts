@@ -106,6 +106,12 @@ export interface Ship extends Entity {
   current_sensors: string;
   active_weapons: boolean[];
   dodge_thrust: number;
+  /**
+   * She spent no Thrust and took no evasive action in the last round flown,
+   * which opens a ship under 2,000 tons to spinal fire (High Guard p. 34).
+   * Absent when false.
+   */
+  held_still?: boolean;
   assist_gunners: boolean;
   can_jump: boolean;
   sensor_locks: string[];

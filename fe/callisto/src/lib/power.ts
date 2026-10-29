@@ -2,7 +2,7 @@
  * Power arithmetic, kept apart from `entities.ts` because that module reaches
  * into the component tree and cannot be imported from a plain unit test.
  */
-import {Weapon, WeaponMount, weaponGuns, weaponToString} from "lib/weapon";
+import {Weapon, WeaponMount, spinalOf, weaponGuns, weaponToString} from "lib/weapon";
 
 /** The parts of a ship this module needs. */
 export interface PoweredShip {
@@ -130,13 +130,14 @@ const WEAPON_POWER: {[kind: string]: {[mount: string]: number}} = {
   Sand: {Turret: 0, FixedMount: 0},
   Beam: {Turret: 4, FixedMount: 4, Barbette: 12},
   Pulse: {Turret: 4, FixedMount: 4, Barbette: 12},
-  Railgun: {Turret: 2, FixedMount: 2, Barbette: 5, Small: 10, Medium: 15, Large: 25},
+  // A spinal's figure is per multiple of its Base Size (High Guard p. 35).
+  Railgun: {Turret: 2, FixedMount: 2, Barbette: 5, Small: 10, Medium: 15, Large: 25, Spinal: 500},
   Fusion: {Turret: 12, FixedMount: 12, Barbette: 20, Small: 50, Medium: 80, Large: 100},
   Plasma: {Turret: 6, FixedMount: 6, Barbette: 12},
-  Particle: {Turret: 8, FixedMount: 8, Barbette: 15, Small: 30, Medium: 50, Large: 80},
+  Particle: {Turret: 8, FixedMount: 8, Barbette: 15, Small: 30, Medium: 50, Large: 80, Spinal: 1000},
   Ion: {Barbette: 10, Small: 20, Medium: 30, Large: 40},
-  Meson: {Small: 20, Medium: 30, Large: 120},
-  MassDriver: {Small: 15, Medium: 25, Large: 35},
+  Meson: {Small: 20, Medium: 30, Large: 120, Spinal: 1000},
+  MassDriver: {Small: 15, Medium: 25, Large: 35, Spinal: 250},
   Repulsor: {Small: 50, Medium: 100, Large: 200},
   PointDefense: {},
 };
@@ -156,16 +157,18 @@ const mountKey = (mount: WeaponMount): string => {
   if ("Bay" in mount) {
     return mount.Bay;
   }
+  if ("Spinal" in mount) {
+    return "Spinal";
+  }
   return "Battery";
 };
 
 /** What one mount draws with everything in it running. */
 export const weaponMountPower = (weapon: Weapon): number => {
   const key = mountKey(weapon.mount);
-  const guns = weaponGuns(weapon).reduce(
-    (total, gun) => total + (WEAPON_POWER[gun.kind]?.[key] ?? 0),
-    0
-  );
+  const guns =
+    weaponGuns(weapon).reduce((total, gun) => total + (WEAPON_POWER[gun.kind]?.[key] ?? 0), 0) *
+    (spinalOf(weapon.mount)?.multiple ?? 1);
   // A battery draws for every mount in it.
   return (guns + mountPower(weapon.mount)) * (weapon.count ?? 1);
 };
