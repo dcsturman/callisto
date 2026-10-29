@@ -8,10 +8,7 @@ use futures::select;
 use futures::{stream::FuturesUnordered, FutureExt, SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
-use tokio_tungstenite::tungstenite::{
-  error::{Error, ProtocolError},
-  Message,
-};
+use tokio_tungstenite::tungstenite::{error::Error, Message};
 use tokio_tungstenite::WebSocketStream;
 
 #[cfg(not(feature = "no_tls_upgrade"))]
@@ -81,11 +78,82 @@ pub struct Processor {
   game_log_dir: Option<String>,
 }
 
+/// One client's socket, as the processor uses it: messages read from it
+/// directly, and messages sent to it queued for a task of its own to write.
+///
+/// The queue is the point. Sending straight to the socket made the processor
+/// wait on the slowest reader: a client not reading -- an AI crew waiting on
+/// its model, or anyone on a bad connection -- filled its socket, the next
+/// broadcast to it blocked, and every game on the server stopped until it
+/// read again. Now only that client falls behind, and when it does it is
+/// sent the latest world rather than every one it missed.
+struct Link {
+  reader: futures::stream::SplitStream<WebSocketStream<SubStream>>,
+  outbox: futures::channel::mpsc::UnboundedSender<Message>,
+}
+
+impl Link {
+  fn new(stream: WebSocketStream<SubStream>) -> Self {
+    let (mut sink, reader) = stream.split();
+    let (outbox, mut queued) = futures::channel::mpsc::unbounded::<Message>();
+    tokio::spawn(async move {
+      while let Some(first) = queued.next().await {
+        // Everything waiting, sent in order, but of the world updates among
+        // it only the last: the ones before it are already out of date.
+        let mut batch = vec![first];
+        while let Ok(Some(more)) = queued.try_next() {
+          batch.push(more);
+        }
+        let last_world = batch.iter().rposition(is_world_update);
+        for (i, message) in batch.into_iter().enumerate() {
+          if is_world_update(&message) && Some(i) != last_world {
+            continue;
+          }
+          let closing = matches!(message, Message::Close(_));
+          if sink.send(message).await.is_err() || closing {
+            return;
+          }
+        }
+      }
+    });
+    Link { reader, outbox }
+  }
+
+  /// The next message from the client.
+  async fn next(&mut self) -> Option<Result<Message, Error>> {
+    self.reader.next().await
+  }
+
+  /// Queue a message for the client; an error only if its writer has gone.
+  /// Ready at once -- nothing waits on the client -- but a future, so it
+  /// reads like the socket it stands in for.
+  fn send(&mut self, message: Message) -> std::future::Ready<Result<(), LinkClosed>> {
+    std::future::ready(self.outbox.unbounded_send(message).map_err(|_| LinkClosed))
+  }
+
+  /// Queue the close, after whatever is already queued.
+  fn close(
+    &mut self, frame: Option<tokio_tungstenite::tungstenite::protocol::CloseFrame>,
+  ) -> std::future::Ready<Result<(), LinkClosed>> {
+    self.send(Message::Close(frame))
+  }
+}
+
+/// A client's writer has stopped: its socket is closed.
+#[derive(Debug)]
+struct LinkClosed;
+
+/// Whether a message to a client is a whole world update, which a newer one
+/// makes redundant.
+fn is_world_update(message: &Message) -> bool {
+  matches!(message, Message::Text(text) if text.as_str().starts_with("{\"EntityResponse\""))
+}
+
 struct Connection {
   /// player is an [`Arc`] because its [`Server`] will have a [`std::sync::Weak`] reference back to it.
   /// It is not otherwise shared.
   player: PlayerManager,
-  stream: WebSocketStream<SubStream>,
+  stream: Link,
   /// When this connection last did something that was not a keepalive.
   ///
   /// Keepalives are excluded deliberately: the client sends one every minute
@@ -575,14 +643,10 @@ impl Processor {
             email = connections[index].player.get_email().unwrap_or("(Unauthenticated users)".to_string()),
             action = format!("Connection closed ungracefully. Now {} connections.", connections.len() - 1)
           );
-          connections[index].stream.close(None).await.unwrap_or_else(|e| {
-            if let Error::Protocol(ProtocolError::SendAfterClosing) = e {
-              // This is expected when we try to close a connection that is already closed.
-              debug!("(processor) Attempted to close a connection that was already closed.  Ignoring.");
-            } else {
-              error!("(handle_connection) Failed to close connection: {e:?}");
-            }
-          });
+          if connections[index].stream.close(None).await.is_err() {
+            // Expected: its socket had already closed.
+            debug!("(processor) Attempted to close a connection that was already closed.  Ignoring.");
+          }
           // Mark this stream for deletion
           let leaving = connections.remove(index);
           self.leave_if_service(&leaving, &mut connections).await;
@@ -674,11 +738,8 @@ impl Processor {
           // Clear the session key entry then close the socket. Mirrors
           // RequestMsg::Logout.
           connections[i].player.logout(&self.session_keys);
-          if let Err(e) = connections[i].stream.close(None).await {
-            if !matches!(e, Error::Protocol(ProtocolError::SendAfterClosing)) {
-              error!("(handle_reload_notification) Failed to close blacklisted connection: {e:?}");
-            }
-          }
+          // An error only means its socket had already closed.
+          let _ = connections[i].stream.close(None).await;
           connections.remove(i);
         }
 
@@ -723,6 +784,7 @@ impl Processor {
     authenticator.set_session_key(session_key);
     authenticator.set_email(email);
 
+    let stream = Link::new(stream);
     let mut connection = Connection {
       player: PlayerManager::new(None, authenticator, self.test_mode),
       stream,
@@ -1564,7 +1626,7 @@ fn build_scenario_load_errors_refresh(player: &PlayerManager) -> Option<Response
   Some(ResponseMsg::ScenarioLoadErrors(owned))
 }
 
-async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &ResponseMsg, context: &str) {
+async fn send_response(stream: &mut Link, message: &ResponseMsg, context: &str) {
   let encoded_message: Utf8Bytes = serde_json::to_string(message).expect("Failed to serialize response").into();
   stream.send(Message::Text(encoded_message)).await.unwrap_or_else(|e| {
     error!("(processor) Failed to send {context}: {e:?}");
