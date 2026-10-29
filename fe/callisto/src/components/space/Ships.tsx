@@ -1,7 +1,7 @@
 import * as React from "react";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
-import { Group, Mesh, SphereGeometry, Vector3 as Vector3Three } from "three";
+import { Group, InstancedMesh, Matrix4, Mesh, SphereGeometry, Vector3 as Vector3Three } from "three";
 import {
   extend,
   useThree,
@@ -25,6 +25,7 @@ import { Ship as ShipType, Missile as MissileType} from "lib/entities";
 import { isViewersOwn, undetectedTest } from "lib/contacts";
 import { Box, isBox, selectableShips, shipsInBox } from "lib/boxSelect";
 import { centroid } from "lib/squadrons";
+import { missilePositions } from "lib/missileSwarm";
 import { isReferee } from "lib/view";
 import { useViewer } from "lib/viewer";
 import { teamBodyColor, teamLabelColor } from "lib/teams";
@@ -500,10 +501,21 @@ export function Missile(args: { missile: MissileType; index: number }) {
   );
 }
 
+/**
+ * Above this many missiles in flight they are drawn as one swarm, without
+ * names or vectors. Each missile drawn on its own is a sphere, two lines and
+ * a text label: thousands of them is thousands of draw calls and text
+ * meshes, which no laptop draws at a usable rate.
+ */
+export const MISSILE_DETAIL_LIMIT = 300;
+
 /** Memoised for the reason {@link Ships} is. */
 export const Missiles = memo(function Missiles() {
   const entities = useAppSelector(entitiesSelector);
 
+  if (entities.missiles.length > MISSILE_DETAIL_LIMIT) {
+    return <MissileSwarm key={entities.missiles.length} missiles={entities.missiles} />;
+  }
   return (
     <>
       {entities.missiles.map((missile, index) => (
@@ -512,6 +524,34 @@ export const Missiles = memo(function Missiles() {
     </>
   );
 });
+
+/** A swarm of missiles as one instanced mesh: one draw call however many.
+ *  Keyed on the count by its caller, since an instanced mesh's size is fixed
+ *  when it is made. */
+function MissileSwarm(args: { missiles: MissileType[] }) {
+  const mesh = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const swarm = mesh.current;
+    if (swarm == null) {
+      return;
+    }
+    const at = missilePositions(args.missiles);
+    const place = new Matrix4();
+    for (let i = 0; i < args.missiles.length; i++) {
+      place.makeTranslation(at[i * 3], at[i * 3 + 1], at[i * 3 + 2]);
+      swarm.setMatrixAt(i, place);
+    }
+    swarm.instanceMatrix.needsUpdate = true;
+    swarm.computeBoundingSphere();
+  }, [args.missiles]);
+
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, args.missiles.length]} frustumCulled={false}>
+      <sphereGeometry args={[0.1, 6, 4]} />
+      <meshBasicMaterial color={[8.0, 0, 0]} />
+    </instancedMesh>
+  );
+}
 
 export function Route(args: { plan: FlightPath }) {
   const start = scaleVector(args.plan.path[0], -1.0 * SCALE);
