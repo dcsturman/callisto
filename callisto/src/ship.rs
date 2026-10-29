@@ -6565,3 +6565,122 @@ mod spinal_tests {
     assert_eq!(fine.spinal_problems(), Vec::<String>::new());
   }
 }
+
+/// The capitals step 7 adds for Keelhaven (High Guard 2022, with the HG FAQ's
+/// spinal multiples): each loads, with a legal spinal of the printed tonnage,
+/// the printed hull, its turrets and bays formed into batteries the hull
+/// allows, and its magazine split between the mounts and the stores.
+#[cfg(test)]
+mod capital_design_tests {
+  use super::*;
+
+  struct Printed {
+    name: &'static str,
+    tons: u32,
+    hull: u32,
+    armor: u32,
+    spinal_multiple: u8,
+    spinal_tons: u32,
+    /// Weapon entries once formed into batteries, the spinal first.
+    entries: usize,
+    /// Every mount, the spinal and each point-defence battery counting one.
+    mounts: u32,
+    /// Missiles and sand stored beyond what the mounts hold.
+    stores: (u32, u32),
+  }
+
+  const PRINTED: [Printed; 4] = [
+    // HG pp. 255-256. 50 medium missile bays hold twelve salvos of 24 each.
+    Printed {
+      name: "Battle Rider - Hadrian",
+      tons: 50_000,
+      hull: 27_500,
+      armor: 30,
+      spinal_multiple: 3,
+      spinal_tons: 18_000,
+      entries: 32,
+      mounts: 1 + 2 + 6 + 50 + 25 + 100 + 100 + 9,
+      stores: (8_640, 4_500),
+    },
+    // HG pp. 247-249. No launchers: the missiles are her fighters'.
+    Printed {
+      name: "Planetoid Monitor - Jaellemo",
+      tons: 50_000,
+      hull: 31_250,
+      armor: 15,
+      spinal_multiple: 2,
+      spinal_tons: 12_000,
+      entries: 34,
+      mounts: 1 + 100 + 100 + 20 + 30 + 15,
+      stores: (2_400, 3_000),
+    },
+    // HG pp. 265-267.
+    Printed {
+      name: "Strike Carrier - Wind",
+      tons: 75_000,
+      hull: 41_250,
+      armor: 11,
+      spinal_multiple: 3,
+      spinal_tons: 18_000,
+      entries: 34,
+      mounts: 1 + 9 + 32 + 200 + 100 + 10 + 10 + 8,
+      stores: (3_840, 3_000),
+    },
+    // HG pp. 237-239.
+    Printed {
+      name: "Light Cruiser - Valiant",
+      tons: 30_000,
+      hull: 16_500,
+      armor: 15,
+      spinal_multiple: 1,
+      spinal_tons: 6_000,
+      entries: 22,
+      mounts: 1 + 1 + 160 + 50 + 25 + 4,
+      stores: (9_600, 1_320),
+    },
+  ];
+
+  #[test_log::test(tokio::test)]
+  async fn the_keelhaven_capitals_are_built_as_printed() {
+    let templates = load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR).await.unwrap();
+    for printed in &PRINTED {
+      let name = printed.name;
+      // A spinal that fails its checks is skipped on load, so loading at all
+      // says it passed them.
+      let design = templates.get(name).unwrap_or_else(|| panic!("{name} did not load"));
+      assert_eq!(
+        (design.displacement, design.hull, design.armor),
+        (printed.tons, printed.hull, printed.armor),
+        "{name}"
+      );
+      assert!(design.spinal_problems().is_empty(), "{name}: {:?}", design.spinal_problems());
+      assert_eq!(
+        crate::rules_tables::hull_points_note(design.displacement, design.hull),
+        None,
+        "{name}"
+      );
+
+      let spinal = &design.weapons[0];
+      assert_eq!(spinal.mount.spinal_multiple(), Some(printed.spinal_multiple), "{name}");
+      assert_eq!(spinal.primary_kind(), WeaponType::Meson, "{name}");
+      assert_eq!(
+        spinal_size(spinal, design.tl).map(|(tons, _)| tons),
+        Some(printed.spinal_tons),
+        "{name}"
+      );
+
+      let limit = battery_limit(design.displacement);
+      assert_eq!(design.weapons.len(), printed.entries, "{name}");
+      assert!(design.weapons.iter().all(|weapon| weapon.mounts() <= limit), "{name}");
+      let mounts: u32 = design.weapons.iter().map(|weapon| u32::from(weapon.mounts())).sum();
+      assert_eq!(mounts, printed.mounts, "{name}");
+
+      // Every mount starts full; the book's storage is what is left over.
+      let ship = Ship::new(name.to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+      for (id, weapon) in design.weapons.iter().enumerate() {
+        assert_eq!(ship.loaded(id), ship.capacity(id), "{name}: {weapon:?} is not full");
+      }
+      assert_eq!((ship.magazine.missiles, ship.magazine.sand), printed.stores, "{name}");
+    }
+  }
+}

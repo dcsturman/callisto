@@ -1,0 +1,141 @@
+{
+  "name": "Light Cruiser - Valiant",
+  "displacement": 30000,
+  "cost_mcr": 18683.1,
+  "hull": 16500,
+  "armor": 15,
+  "maneuver": 5,
+  "jump": 4,
+  "power": 24000,
+  "fuel": 11640,
+  "crew": 445,
+  "sensors": "Advanced",
+  "countermeasures": "Military",
+  "computer": 100,
+  "weapons": [
+    {
+      "kind": "Meson",
+      "mount": {
+        "Spinal": 1
+      }
+    },
+    {
+      "kind": "Repulsor",
+      "mount": {
+        "Bay": "Medium"
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 160
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 50
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 25
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 2
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 2
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 2
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 2
+      }
+    }
+  ],
+  "screens": [
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper"
+  ],
+  "tl": 15,
+  "role": "Cruiser",
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AdvancedFireControl",
+      "level": 2
+    },
+    {
+      "kind": "AntiHijack",
+      "level": 3
+    },
+    {
+      "kind": "BattleSystem",
+      "level": 2
+    },
+    {
+      "kind": "BroadSpectrumEw",
+      "level": 0
+    },
+    {
+      "kind": "ElectronicWarfare",
+      "level": 1
+    },
+    {
+      "kind": "LaunchSolution",
+      "level": 3
+    },
+    {
+      "kind": "PointDefence",
+      "level": 2
+    },
+    {
+      "kind": "JumpControl",
+      "level": 4
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    }
+  ],
+  "magazine": {
+    "missiles": 11520,
+    "torpedoes": 0,
+    "sand": 1820
+  },
+  "computer_fib": true,
+  "radiation_shielding": true
+}

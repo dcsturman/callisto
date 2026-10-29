@@ -1,0 +1,242 @@
+{
+  "name": "Planetoid Monitor - Jaellemo",
+  "displacement": 50000,
+  "cost_mcr": 25031.3895,
+  "hull": 31250,
+  "armor": 15,
+  "maneuver": 6,
+  "jump": 0,
+  "power": 43740,
+  "fuel": 1314,
+  "crew": 1045,
+  "sensors": "Advanced",
+  "countermeasures": "Military",
+  "computer": 100,
+  "weapons": [
+    {
+      "kind": "Meson",
+      "mount": {
+        "Spinal": 2
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 100
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      },
+      "modifiers": [
+        "Accurate"
+      ],
+      "count": 100
+    },
+    {
+      "kind": "Fusion",
+      "mount": {
+        "Turret": 2
+      },
+      "modifiers": [
+        "HighYield"
+      ],
+      "count": 20
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette",
+      "modifiers": [
+        "IntenseFocus"
+      ],
+      "count": 30
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    }
+  ],
+  "screens": [
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper"
+  ],
+  "tl": 15,
+  "role": "Warship",
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AdvancedFireControl",
+      "level": 3
+    },
+    {
+      "kind": "AntiHijack",
+      "level": 3
+    },
+    {
+      "kind": "AutoRepair",
+      "level": 2
+    },
+    {
+      "kind": "BattleSystem",
+      "level": 3
+    },
+    {
+      "kind": "BroadSpectrumEw",
+      "level": 0
+    },
+    {
+      "kind": "ElectronicWarfare",
+      "level": 3
+    },
+    {
+      "kind": "Evade",
+      "level": 3
+    },
+    {
+      "kind": "LaunchSolution",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "ScreenOptimiser",
+      "level": 0
+    },
+    {
+      "kind": "VirtualCrew",
+      "level": 2
+    },
+    {
+      "kind": "VirtualGunner",
+      "level": 2
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ],
+  "magazine": {
+    "missiles": 2400,
+    "torpedoes": 0,
+    "sand": 5000
+  },
+  "computer_fib": true,
+  "radiation_shielding": true
+}

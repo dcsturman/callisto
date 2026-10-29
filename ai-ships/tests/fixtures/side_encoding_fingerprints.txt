@@ -13,6 +13,21 @@ assault_carrier_sakhai sloan vs 2e7 28ca66020bc70024
 assault_carrier_sakhai itself 4e7 e877220fcabcec7c
 assault_carrier_sakhai vs sloan 4e7 d0e3d93d35288455
 assault_carrier_sakhai sloan vs 4e7 3a67733abc53c454
+battle_rider_hadrian itself 5e3 65bddaf2152dc6c3
+battle_rider_hadrian vs sloan 5e3 e0ad3c730159ce4c
+battle_rider_hadrian sloan vs 5e3 db62cf105429ad71
+battle_rider_hadrian itself 5e5 85bb15d11f078103
+battle_rider_hadrian vs sloan 5e5 0b4146b0225a1598
+battle_rider_hadrian sloan vs 5e5 c6057bf9f182ef49
+battle_rider_hadrian itself 5e6 0d83e017f8a009d1
+battle_rider_hadrian vs sloan 5e6 773dce2cce01aeaa
+battle_rider_hadrian sloan vs 5e6 1347a68c7c7ec4d3
+battle_rider_hadrian itself 2e7 1ca43d9f83e485c6
+battle_rider_hadrian vs sloan 2e7 81711d175648bed9
+battle_rider_hadrian sloan vs 2e7 b9d9d56fd8e82974
+battle_rider_hadrian itself 4e7 410333824a8e615e
+battle_rider_hadrian vs sloan 4e7 6f4d461f12cef721
+battle_rider_hadrian sloan vs 4e7 4640a714c7100f44
 buccaneer itself 5e3 f8b9c25438bf683d
 buccaneer vs sloan 5e3 af64f1d828f1d91a
 buccaneer sloan vs 5e3 1ffb67665c6d9ca4
@@ -508,6 +523,21 @@ launch sloan vs 2e7 505c0fc8ccc14f00
 launch itself 4e7 bb9fb39651ac8cb3
 launch vs sloan 4e7 8b901e6376ce016f
 launch sloan vs 4e7 b76cd0ab9642fff0
+light_cruiser_valiant itself 5e3 e95f254bae21464b
+light_cruiser_valiant vs sloan 5e3 fb94780a7f30f4f3
+light_cruiser_valiant sloan vs 5e3 9fb865b23b8b525a
+light_cruiser_valiant itself 5e5 ed75bebb08b06dc6
+light_cruiser_valiant vs sloan 5e5 20b46cf1be842fd7
+light_cruiser_valiant sloan vs 5e5 9f2a80101089ab8e
+light_cruiser_valiant itself 5e6 bdffdcdc40921b58
+light_cruiser_valiant vs sloan 5e6 5a0209e34d8cd04d
+light_cruiser_valiant sloan vs 5e6 720eba6b9c9b2f60
+light_cruiser_valiant itself 2e7 3b16058a7d51c417
+light_cruiser_valiant vs sloan 2e7 28887b49e8dcd34a
+light_cruiser_valiant sloan vs 2e7 204ad5076bd17da7
+light_cruiser_valiant itself 4e7 e7b9affd2107161f
+light_cruiser_valiant vs sloan 4e7 cc377683a4d6fd22
+light_cruiser_valiant sloan vs 4e7 fcd25c339167ddc7
 light_fighter itself 5e3 b5ab1af5194bffcc
 light_fighter vs sloan 5e3 acc43c393f43c922
 light_fighter sloan vs 5e3 042581f3e2465ae9
@@ -718,6 +748,21 @@ pinnace sloan vs 2e7 b99396383991acd1
 pinnace itself 4e7 9645111408564af9
 pinnace vs sloan 4e7 fe9f838a12a3c6d4
 pinnace sloan vs 4e7 48cd0b722cfeb589
+planetoid_monitor_jaellemo itself 5e3 4a164bd10bbfaa17
+planetoid_monitor_jaellemo vs sloan 5e3 ba57c318b4c571ae
+planetoid_monitor_jaellemo sloan vs 5e3 4f65b250fbddf7db
+planetoid_monitor_jaellemo itself 5e5 c9ad288eb90e3ec9
+planetoid_monitor_jaellemo vs sloan 5e5 b4ef16ad354f4d4a
+planetoid_monitor_jaellemo sloan vs 5e5 77a9357ec43576c4
+planetoid_monitor_jaellemo itself 5e6 7799230553c629ef
+planetoid_monitor_jaellemo vs sloan 5e6 a95ac7742970bf48
+planetoid_monitor_jaellemo sloan vs 5e6 50586d29c1af8b76
+planetoid_monitor_jaellemo itself 2e7 9e7afb4398b5a700
+planetoid_monitor_jaellemo vs sloan 2e7 96d0d726d338b453
+planetoid_monitor_jaellemo sloan vs 2e7 b69495c1a70af65d
+planetoid_monitor_jaellemo itself 4e7 ed7b6774ad456b70
+planetoid_monitor_jaellemo vs sloan 4e7 2f3b8d69f3d9b963
+planetoid_monitor_jaellemo sloan vs 4e7 f48157b19fdeadad
 pocket_warship_halaheike itself 5e3 586619215d9d77ce
 pocket_warship_halaheike vs sloan 5e3 0f4070b60c1b4540
 pocket_warship_halaheike sloan vs 5e3 c0efa14540e890a4
@@ -988,6 +1033,21 @@ stretched_trader sloan vs 2e7 70a8506906c7a16d
 stretched_trader itself 4e7 e2dd6f1f77774d74
 stretched_trader vs sloan 4e7 23ce44eaa83a5e4f
 stretched_trader sloan vs 4e7 49c34ecff1108dad
+strike_carrier_wind itself 5e3 402ee4d9f0f97334
+strike_carrier_wind vs sloan 5e3 3e36f672558ebacc
+strike_carrier_wind sloan vs 5e3 b9cbf86cbd8b2b1c
+strike_carrier_wind itself 5e5 99bce10c87f72cdc
+strike_carrier_wind vs sloan 5e5 b623e3666e9a7b88
+strike_carrier_wind sloan vs 5e5 6a1442d81ed8b320
+strike_carrier_wind itself 5e6 6afc60d2afe19d7e
+strike_carrier_wind vs sloan 5e6 093b24403f23070e
+strike_carrier_wind sloan vs 5e6 742b47e651afba36
+strike_carrier_wind itself 2e7 df72ae98f2edb9dd
+strike_carrier_wind vs sloan 2e7 94cf9717ad5b6501
+strike_carrier_wind sloan vs 2e7 6922b6603050ed81
+strike_carrier_wind itself 4e7 97d9c39c5558ccdd
+strike_carrier_wind vs sloan 4e7 ce03559dbc69c841
+strike_carrier_wind sloan vs 4e7 6e05b00098d2d249
 subsidised_liner_type_m itself 5e3 3f6444c6eaba3d35
 subsidised_liner_type_m vs sloan 5e3 69fec79e7ecff407
 subsidised_liner_type_m sloan vs 5e3 e6d04d30d6432cd7

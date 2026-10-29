@@ -1,0 +1,181 @@
+{
+  "name": "Strike Carrier - Wind",
+  "displacement": 75000,
+  "cost_mcr": 43871.355,
+  "hull": 41250,
+  "armor": 11,
+  "maneuver": 6,
+  "jump": 3,
+  "power": 78000,
+  "fuel": 23280,
+  "crew": 980,
+  "sensors": "Advanced",
+  "countermeasures": "Military",
+  "computer": 70,
+  "weapons": [
+    {
+      "kind": "Meson",
+      "mount": {
+        "Spinal": 3
+      }
+    },
+    {
+      "kind": "Repulsor",
+      "mount": {
+        "Bay": "Medium"
+      },
+      "count": 9
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Bay": "Small"
+      },
+      "count": 32
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 200
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 100
+    },
+    {
+      "kind": "Fusion",
+      "mount": {
+        "Turret": 2
+      },
+      "count": 10
+    },
+    {
+      "kind": "Particle",
+      "mount": {
+        "Turret": 1
+      },
+      "count": 10
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    }
+  ],
+  "screens": [
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper"
+  ],
+  "tl": 15,
+  "role": "Carrier",
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AdvancedFireControl",
+      "level": 2
+    },
+    {
+      "kind": "AntiHijack",
+      "level": 1
+    },
+    {
+      "kind": "BroadSpectrumEw",
+      "level": 0
+    },
+    {
+      "kind": "ElectronicWarfare",
+      "level": 1
+    },
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    }
+  ],
+  "magazine": {
+    "missiles": 8448,
+    "torpedoes": 0,
+    "sand": 5000
+  },
+  "computer_fib": true,
+  "radiation_shielding": true
+}

@@ -1,0 +1,201 @@
+{
+  "name": "Battle Rider - Hadrian",
+  "displacement": 50000,
+  "cost_mcr": 31388.427,
+  "hull": 27500,
+  "armor": 30,
+  "maneuver": 6,
+  "jump": 0,
+  "power": 48000,
+  "fuel": 720,
+  "crew": 503,
+  "sensors": "Advanced",
+  "countermeasures": "Military",
+  "computer": 80,
+  "weapons": [
+    {
+      "kind": "Meson",
+      "mount": {
+        "Spinal": 3
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Large"
+      },
+      "modifiers": [
+        "SizeReduction",
+        "SizeReduction"
+      ],
+      "count": 2
+    },
+    {
+      "kind": "Repulsor",
+      "mount": {
+        "Bay": "Medium"
+      },
+      "count": 6
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Bay": "Medium"
+      },
+      "count": 50
+    },
+    {
+      "kind": "Railgun",
+      "mount": {
+        "Bay": "Medium"
+      },
+      "count": 25
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 100
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      },
+      "count": 100
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    }
+  ],
+  "screens": [
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "Meson",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper"
+  ],
+  "tl": 15,
+  "role": "Warship",
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AdvancedFireControl",
+      "level": 3
+    },
+    {
+      "kind": "AntiHijack",
+      "level": 2
+    },
+    {
+      "kind": "AutoRepair",
+      "level": 2
+    },
+    {
+      "kind": "BattleNetwork",
+      "level": 1
+    },
+    {
+      "kind": "BroadSpectrumEw",
+      "level": 0
+    },
+    {
+      "kind": "ElectronicWarfare",
+      "level": 2
+    },
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ],
+  "magazine": {
+    "missiles": 23040,
+    "torpedoes": 0,
+    "sand": 6500
+  },
+  "computer_fib": true,
+  "radiation_shielding": true
+}

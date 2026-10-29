@@ -4,11 +4,12 @@ This FAQ gives additional detail on the state of the Callisto project.
 
 ## The big one: no capital ships
 
-**Callisto's shipped designs stop at 5,000 tons.** Traveller goes to 1,000,000, and closing that gap is a
+**Callisto's shipped designs stop at 75,000 tons.** Traveller goes to 1,000,000, and closing that gap is a
 substantial piece of work rather than a few missing stats.  The rules that change with size are now in --
 spinal mounts, weapon batteries, High Guard's size thresholds on criticals and its large-ship critical
 tables, the frozen watch, radiation on crews and one sensor station per 7,500 tons (see *Critical hits*
-below) -- and what is left is the designs themselves, which no shipped scenario carries yet:
+below).  The first four capitals ship with the *Keelhaven* scenario (see *The capital designs* below); the
+rest of High Guard's capitals, and carriers' embarked craft, are still to come:
 
 * **Spinal mounts** are supported: a design gives a weapon the mount `{"Spinal": 3}`, a multiple of its
   type's Base Size, and it has the book's x1,000 damage multiple, dice and Power by the multiple, a Hardpoint
@@ -22,6 +23,29 @@ below) -- and what is left is the designs themselves, which no shipped scenario 
 Defensive **screens** are in for meson screens and nuclear dampers (`ScreenType`, angled by a screen
 gunner each round); black globe generators are not, being a referee's artefact rather than something a
 design buys.  The design record is `docs/screens_design.md`.
+
+### The capital designs
+
+The Hadrian battle rider, the Jaellemo planetoid monitor, the Wind strike carrier and the Valiant light
+cruiser are built from their High Guard 2022 pages, with the HG FAQ's spinal multiples (meson 3×, 2×, 3×
+and 1×). Their turrets and bays are entries with a `count` (the Hadrian's 50 medium missile bays are one
+entry), which the loader forms into batteries of up to 16; the stated magazine is the mounts' own load plus
+the book's storage, as for the Dragon and the Sloan. What their pages carry that Callisto does not model:
+
+* **Embarked craft.** The Wind's 80 light fighters, the Jaellemo's 30 heavy fighters, and the Hadrian's
+  and Valiant's pinnaces and cutters are left out of the designs; until carriers are built, a scenario puts
+  the fighters in space beside their ship. Docking spaces, hangars, launch tubes and recovery decks are not
+  modelled, and the crew figures still count the pilots. The Jaellemo carries her fighters' 2,400 missiles
+  in stores, with no launcher of her own to fire them.
+* **Railgun bay ammunition.** Railgun bays fire without using any; only a railgun spinal counts rounds.
+  The Hadrian's 200 stored shots are left out.
+* **Sensor fittings beyond the grade**: distributed and extended arrays, enhanced signal processing, deep
+  penetration scanners and the Jaellemo's three Advanced suites are all just Advanced sensors.
+* **Fittings with no play effect**: the command bridge, the Jaellemo's armoured bulkheads and backup
+  computer, fuel processors and scoops, UNREP, briefing rooms, medical bays, workshops and the armoury.
+* **The Jaellemo's hull.** HG prints a buffered planetoid but Hull 31,250, which is a planetoid's +25% on
+  50,000 tons rather than a buffered planetoid's +50%. The design keeps the printed figure.
+* None of the four has low berths, so none has a frozen watch.
 
 Everything below is a smaller deviation within the tonnage we do support.
 
@@ -47,8 +71,9 @@ Everything below is a smaller deviation within the tonnage we do support.
     Long, not the book's Distant: the HG FAQ, p. 1, corrects the Large Bay Weapons table.)
   * Which weapons fit which mounts follows the book, so the editor will not offer a pairing High Guard does not
     sell: there is no torpedo turret, no laser bay and no meson gun below bay size.
-  * **Repulsors** can be fitted but do nothing yet.  The book gives them "Special" damage because they deflect
-    rather than destroy, and that mechanic is not implemented.
+  * **Repulsors** work only against missiles: a repulsor bay on point defence deflects 1D x Effect missiles a
+    round, doubled for a medium bay and five times for a large one (High Guard p. 33). Pushing ships and
+    other objects about is not implemented.
   * **Ion cannons** drain a target's Power rather than damaging its hull, and that Power returns after a round
     or two.  A house rule spills a tenth of that into the computer's Bandwidth, which a hardened
     (/fib) computer shrugs off -- the only thing hardening does here.
@@ -657,7 +682,8 @@ an invented threshold.
 A design keeps its stated `hull`, but a test recomputes HG p. 10's figure (1 per 2.5 tons, per 2 from
 25,000 and per 1.5 from 100,000, rounded down) under every legal mix of configuration (HG p. 11) and
 reinforced or light (HG p. 12), and fails on a shipped design that matches none of them unless it is
-listed as an exception with the reason. The one exception is the Laboratory Ship, whose published 160
+listed as an exception with the reason. A planetoid's +25% is one of the mixes, which is how the Jaellemo's
+printed 31,250 for 50,000 tons passes. The one exception is the Laboratory Ship, whose published 160
 (HG p. 185) is the figure for 400 tons, not for its 360-ton dispersed hull. The loader logs the same
 check for a new design, and the Add Ship tooltip says when a stated hull is not the formula's.
 
@@ -797,7 +823,7 @@ throws what is in its mount, and an empty mount says so. A sandcaster with no
 canisters in it cannot react, whatever is in stores. A scenario reset
 restocks everything.
 
-**Where the stock comes from.** Eighteen designs state their stock in their
+**Where the stock comes from.** Twenty-two designs state their stock in their
 write-ups, and that is the ship's total: the mounts are filled first, in
 order, and the rest goes to stores. A design that states nothing carries
 twelve missiles per rack, twenty canisters per sandcaster and three torpedoes
@@ -809,6 +835,8 @@ that instead. No ship carries less than it did.
 Storage" is extra stores, not the bays' own load. The Dragon states 480 and
 the Sloan 240 (High Guard), so their design files state their whole stock:
 the Dragon 624 (one bay of 144 plus 480), the Sloan 528 (two bays plus 240).
+The capitals the same way: the Hadrian's 23,040 missiles are her 50 medium
+bays' 14,400 and 8,640 in storage.
 
 **Rule enforced — the load is per turret, not per rack** (confirmed by the user, 2026-10-29). Both books say "each
 turret with one or more missile racks holds 12 missiles" and "each turret

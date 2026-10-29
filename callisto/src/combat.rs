@@ -6179,9 +6179,11 @@ mod weapon_battery_tests {
     assert_eq!(create_sand_counts(&snapshot, &[], &HashMap::new())["Target"].len(), 5);
   }
 
-  /// Every shipped design comes out of battery forming exactly as it went in.
+  /// Every shipped design that states no batteries comes out of battery
+  /// forming exactly as it went in. One that does (the capitals, from step 7)
+  /// keeps every mount, in batteries no bigger than its hull allows.
   #[test]
-  fn shipped_designs_have_no_batteries_yet() {
+  fn shipped_designs_form_their_batteries() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ship_templates");
     let mut checked = 0;
     for entry in std::fs::read_dir(&dir).unwrap() {
@@ -6190,12 +6192,15 @@ mod weapon_battery_tests {
         continue;
       }
       let design: ShipDesignTemplate = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-      assert_eq!(
-        form_batteries(&design.weapons, design.displacement),
-        design.weapons,
-        "{}",
-        path.display()
-      );
+      let formed = form_batteries(&design.weapons, design.displacement);
+      if design.weapons.iter().all(|weapon| weapon.count == 1) {
+        assert_eq!(formed, design.weapons, "{}", path.display());
+      } else {
+        let limit = crate::ship::battery_limit(design.displacement);
+        assert!(formed.iter().all(|weapon| weapon.count <= limit), "{}", path.display());
+        let mounts = |weapons: &[Weapon]| -> u32 { weapons.iter().map(|weapon| u32::from(weapon.mounts())).sum() };
+        assert_eq!(mounts(&formed), mounts(&design.weapons), "{}", path.display());
+      }
       checked += 1;
     }
     assert!(checked > 40);
