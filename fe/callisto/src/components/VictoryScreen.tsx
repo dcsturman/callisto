@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { exit_scenario } from "lib/serverManager";
+import { exit_scenario, holdRounds } from "lib/serverManager";
 import { leaveLesson } from "lib/tutorial/launch";
 import { AppMode } from "state/tutorialSlice";
 import { SideSeen, outcome, rememberSides, timeUp } from "lib/victory";
@@ -37,11 +37,35 @@ export function VictoryScreen() {
     }
   }, [ended, dismissed]);
 
+  // While the question is open the game waits for the answer: rounds do
+  // not advance on their own (an AI side would otherwise play on behind
+  // it). Keep Going lets them go; Exit leaves the game.
+  const asking = ended != null && dismissed !== ended.headline;
+  const holding = useRef(false);
+  useEffect(() => {
+    if (!asking) {
+      return;
+    }
+    holdRounds(true);
+    holding.current = true;
+    return () => {
+      if (holding.current) {
+        holdRounds(false);
+        holding.current = false;
+      }
+    };
+  }, [asking]);
+
   if (ended == null || dismissed === ended.headline) {
     return null;
   }
 
   const exit = () => {
+    // Let go while still in the game; leaving would refuse it.
+    if (holding.current) {
+      holdRounds(false);
+      holding.current = false;
+    }
     // From a lesson, back to the lesson list, as the coach's own button does.
     if (inLesson) {
       leaveLesson();

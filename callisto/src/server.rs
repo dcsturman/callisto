@@ -66,6 +66,9 @@ struct MemberEntry {
   ships: Vec<String>,
   /// Set by the player, cleared for everyone when the round advances.
   ready: bool,
+  /// The player has asked that rounds not advance on their own: the game is
+  /// over on their screen and they have not yet said what next.
+  holding: bool,
 }
 
 impl MemberEntry {
@@ -282,6 +285,7 @@ impl ServerMembersTable {
     // and then swaps seats is still done.
     let existing = server_table.table.get(session_key);
     let ready = existing.is_some_and(|entry| entry.ready);
+    let holding = existing.is_some_and(|entry| entry.holding);
     // Nor is it giving up the other ships you answer for; `set_ships` does that.
     let ships = existing.map(|entry| entry.ships.clone()).unwrap_or_default();
     server_table.table.insert(
@@ -292,6 +296,7 @@ impl ServerMembersTable {
         ship,
         ships,
         ready,
+        holding,
       },
     );
   }
@@ -375,6 +380,19 @@ impl ServerMembersTable {
       })
   }
 
+  /// Hold the rounds, or release them: while anyone in the server holds,
+  /// they do not advance on their own. Returns false for a stranger.
+  pub fn set_holding(&mut self, server_id: &str, session_key: &str, holding: bool) -> bool {
+    self
+      .server_members
+      .get_mut(server_id)
+      .and_then(|members| members.table.get_mut(session_key))
+      .is_some_and(|entry| {
+        entry.holding = holding;
+        true
+      })
+  }
+
   /// Clear everyone's ready flag, for the start of a new round.
   pub fn clear_ready(&mut self, server_id: &str) {
     if let Some(members) = self.server_members.get_mut(server_id) {
@@ -384,9 +402,9 @@ impl ServerMembersTable {
     }
   }
 
-  /// Whether the round should advance on its own: nobody is refereeing, at
-  /// least one player holds a ship, and every player holding a ship has said
-  /// Ready.
+  /// Whether the round should advance on its own: nobody is refereeing or
+  /// holding the rounds, at least one player holds a ship, and every player
+  /// holding a ship has said Ready.
   ///
   /// Observers are not asked -- they have no orders to give. With a referee
   /// this is always false: the referee presses Next Round, as before.
@@ -394,7 +412,9 @@ impl ServerMembersTable {
   pub fn everyone_ready(&self, server_id: &str) -> bool {
     self.server_members.get(server_id).is_some_and(|members| {
       let mut crews = members.table.values().filter(|entry| entry.holds_ships()).peekable();
-      !members.table.values().any(is_referee) && crews.peek().is_some() && crews.all(|entry| entry.ready)
+      !members.table.values().any(|entry| is_referee(entry) || entry.holding)
+        && crews.peek().is_some()
+        && crews.all(|entry| entry.ready)
     })
   }
 
@@ -695,6 +715,28 @@ mod membership_tests {
     members.set_ships("s", "key-sc", vec!["Lance 1".to_string(), "Lance 2".to_string()]);
     assert!(!members.has_referee("s"));
     members.set_ready("s", "key-sc", true);
+    assert!(members.everyone_ready("s"));
+  }
+
+  /// A player holding the rounds -- the game over on their screen -- stops
+  /// them advancing on their own until they let go.
+  #[test]
+  fn a_hold_stops_the_rounds_until_released() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update(
+      "s",
+      "key-ai",
+      "ai@example.com",
+      vec![Role::General],
+      Some("Executor".to_string()),
+    );
+    members.update("s", "key-watcher", "w@example.com", vec![Role::Observer], None);
+    members.set_ready("s", "key-ai", true);
+    assert!(members.everyone_ready("s"));
+    assert!(members.set_holding("s", "key-watcher", true));
+    assert!(!members.everyone_ready("s"), "held");
+    members.set_holding("s", "key-watcher", false);
     assert!(members.everyone_ready("s"));
   }
 

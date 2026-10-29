@@ -29,6 +29,8 @@ use crate::observation::observe;
 use callisto::entity::Entities;
 use callisto::tactics;
 
+/// The shortest a round lasts with only AI sides to wait on.
+const MIN_ROUND: std::time::Duration = std::time::Duration::from_secs(2);
 /// Keepalive, matching the browser client's. Pings do not count as activity on
 /// the backend, so they keep the socket open without keeping a game alive.
 const PING_INTERVAL: Duration = Duration::from_secs(60);
@@ -250,6 +252,7 @@ async fn session(
             // Updates within a round (someone changed a plan) are not a new
             // decision.
             last_round = Some(world.round);
+            let began = tokio::time::Instant::now();
             // Say so first: a model can take half a minute, and the table
             // should see the AI thinking, not a game that has stopped.
             for ship in claimed.iter().filter(|ship| world.ships.contains_key(*ship)) {
@@ -257,12 +260,18 @@ async fn session(
                 return Ending::Dropped(e);
               }
             }
-            let mut orders = decide(commander, &world, &claimed).await;
-            orders.push(RequestMsg::SetReady(true));
+            let orders = decide(commander, &world, &claimed).await;
             for order in &orders {
               if let Err(e) = send(&mut socket, order).await {
                 return Ending::Dropped(e);
               }
+            }
+            // Not Ready before a round has lasted MIN_ROUND: with nobody
+            // else to wait on, an AI side would otherwise run the rounds as
+            // fast as it decides, too fast to watch.
+            tokio::time::sleep_until(began + MIN_ROUND).await;
+            if let Err(e) = send(&mut socket, &RequestMsg::SetReady(true)).await {
+              return Ending::Dropped(e);
             }
           }
           ResponseMsg::PleaseLogin => return Ending::Dropped("the backend forgot our session".to_string()),

@@ -450,6 +450,11 @@ export function setShipController(shipName: string, controller: Controller) {
   );
 }
 
+/** Hold the rounds -- they do not advance on their own -- or let them go. */
+export function holdRounds(holding: boolean) {
+  socket.send(JSON.stringify({ HoldRounds: holding }));
+}
+
 /** Whose orders: the ship's own, her squadron's, or her team's fleet's. */
 export type OrdersScope = "Ship" | "Squadron" | "Fleet";
 

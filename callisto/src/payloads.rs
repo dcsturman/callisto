@@ -829,6 +829,9 @@ pub enum RequestMsg {
   CaptainAction(CaptainActionMsg),
   /// A player saying their orders for this round are in, or taking it back.
   SetReady(bool),
+  /// Stop the rounds advancing on their own, or let them go again: sent
+  /// while a player's screen says the game is over and asks what next.
+  HoldRounds(bool),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),

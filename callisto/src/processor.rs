@@ -1106,6 +1106,23 @@ impl Processor {
           vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
         }
       }
+      RequestMsg::HoldRounds(holding) => {
+        let Some((server_id, session_key)) = player.server_and_session() else {
+          return error_msg("Cannot hold the rounds before joining a scenario.".to_string());
+        };
+        if !self.members.set_holding(&server_id, &session_key, holding) {
+          return error_msg("Cannot hold the rounds: you are not in this scenario.".to_string());
+        }
+        // Let go with everyone already Ready: the round they were waiting on.
+        if !holding && self.members.everyone_ready(&server_id) {
+          self.advance_round(player, Some(&server_id))
+        } else {
+          vec![ResponseMsg::SimpleMsg(format!(
+            "Rounds {}.",
+            if holding { "held" } else { "released" }
+          ))]
+        }
+      }
       RequestMsg::Update => {
         // The referee advances the round. Everyone else says Ready and waits:
         // two players pressing it would end the round before the rest of the
