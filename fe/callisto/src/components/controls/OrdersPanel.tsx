@@ -129,6 +129,18 @@ export function OrdersPanel() {
   }, [entities.ships, squadron, team]);
 
   const [chosenKey, setChosenKey] = useState<string | null>(null);
+  // A squadron picked in the roster or the 3D view is the one to give orders
+  // to: with a hundred ships the dropdown is no way to find it.
+  const focus = useAppSelector((state) => state.ui.focusSquadron);
+  useEffect(() => {
+    if (focus == null) {
+      return;
+    }
+    if (referee && fleetTeam == null && squadron == null && focus.team != null) {
+      setChosenTeam(focus.team as Team);
+    }
+    setChosenKey(`squadron:${focus.name}`);
+  }, [focus, referee, fleetTeam, squadron]);
   const target = targets.find((t) => t.key === chosenKey) ?? targets[0];
   const [draft, setDraft] = useState(target?.current ?? "");
   // A new target, or its orders changed by someone else: show them as they stand.
