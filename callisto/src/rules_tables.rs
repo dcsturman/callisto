@@ -668,14 +668,14 @@ pub const fn base_hull_points(tons: u32) -> u32 {
 
 /// The Hull figures High Guard would print for a hull of `tons`: the base
 /// (p. 10) under each legal combination of configuration (p. 11: dispersed
-/// -10%, buffered planetoid +50%) and reinforced or light (p. 12: +10%,
-/// -10%), rounded down. A design states no configuration, so a stated hull
-/// is checked against every one of them.
+/// -10%, planetoid +25%, buffered planetoid +50%) and reinforced or light
+/// (p. 12: +10%, -10%), rounded down. A design states no configuration, so a
+/// stated hull is checked against every one of them.
 #[must_use]
 pub fn hull_points_options(tons: u32) -> Vec<u32> {
   let base = u64::from(base_hull_points(tons));
   // Configuration times reinforcement, in percent.
-  [100, 110, 90, 99, 81, 150, 165, 135]
+  [100, 110, 90, 99, 81, 125, 150, 165, 135]
     .into_iter()
     .map(|percent| u32::try_from(base * percent / 100).unwrap_or(u32::MAX))
     .collect()
@@ -1461,6 +1461,8 @@ mod large_ship_tests {
     assert!(hull_points_options(1_000).contains(&440));
     assert!(hull_points_options(600).contains(&216));
     assert!(hull_points_options(75_000).contains(&41_250));
+    // A planetoid's +25%: the Jaellemo's 31,250 for 50,000 tons.
+    assert!(hull_points_options(50_000).contains(&31_250));
     assert!(hull_points_note(400, 160).is_none());
     assert!(hull_points_note(360, 160).is_some());
   }

@@ -70,6 +70,7 @@ describe("size rules", () => {
     expect(hullPointsOptions(1000)).toContain(440);
     expect(hullPointsOptions(600)).toContain(216);
     expect(hullPointsOptions(75_000)).toContain(41_250);
+    expect(hullPointsOptions(50_000)).toContain(31_250);
     expect(hullPointsOptions(500_000)).toContain(333_333);
     expect(hullPointsOptions(360)).not.toContain(160);
   });

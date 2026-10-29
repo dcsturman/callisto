@@ -85,10 +85,11 @@ export const liveMounts = (ship: Ship, index: number, mounts: number): number =>
 /**
  * The Hull figures High Guard p. 10 gives a hull of `tons`: one per 2.5
  * tons, per 2 from 25,000, per 1.5 from 100,000, under each legal mix of
- * configuration (dispersed -10%, buffered planetoid +50%) and reinforced or
- * light (+10%, -10%), rounded down -- as the server checks a design.
+ * configuration (dispersed -10%, planetoid +25%, buffered planetoid +50%)
+ * and reinforced or light (+10%, -10%), rounded down -- as the server checks
+ * a design.
  */
 export const hullPointsOptions = (tons: number): number[] => {
   const base = tons < 25_000 ? Math.floor((tons * 2) / 5) : tons < 100_000 ? Math.floor(tons / 2) : Math.floor((tons * 2) / 3);
-  return [100, 110, 90, 99, 81, 150, 165, 135].map((percent) => Math.floor((base * percent) / 100));
+  return [100, 110, 90, 99, 81, 125, 150, 165, 135].map((percent) => Math.floor((base * percent) / 100));
 };
