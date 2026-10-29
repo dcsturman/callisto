@@ -166,7 +166,8 @@ export const weaponMountPower = (weapon: Weapon): number => {
     (total, gun) => total + (WEAPON_POWER[gun.kind]?.[key] ?? 0),
     0
   );
-  return guns + mountPower(weapon.mount);
+  // A battery draws for every mount in it.
+  return (guns + mountPower(weapon.mount)) * (weapon.count ?? 1);
 };
 
 /** The parts of a ship and its design the budget needs. */

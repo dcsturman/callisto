@@ -1,4 +1,4 @@
-import {Weapon, CompressedWeapon, weaponToString, weaponKinds} from "./weapon";
+import {Weapon, CompressedWeapon, mountName, weaponToString, weaponKinds, weaponMounts} from "./weapon";
 // Type-only: `lib/entities` sits in an import cycle with the Redux slices, and
 // a value import from here would drag this module into it.
 import type {Ship} from "./entities";
@@ -117,6 +117,7 @@ export const compressedWeapons = (weapons: Weapon[] | null) => {
         kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
         mount: weapon.mount,
         total: 1,
+        mounts: weaponMounts(weapon),
         // Carried so callers can rebuild the mount faithfully; without it a
         // mixed turret reads back as whatever its first gun happens to be.
         guns: weapon.guns,
@@ -124,6 +125,32 @@ export const compressedWeapons = (weapons: Weapon[] | null) => {
     }
     return accumulator;
   }, initial_acc);
+};
+
+/** One line of a design's armament: every mount of one kind, however many
+ *  batteries they are split into. */
+export interface ArmamentLine {
+  name: string;
+  mounts: number;
+  batteries: number;
+}
+
+/**
+ * A design's armament for reading, by mount: "200 Triple Beam Turrets in 13
+ * batteries" rather than one line per battery size.
+ */
+export const armament = (weapons: Weapon[] | null): ArmamentLine[] => {
+  const lines = new Map<string, ArmamentLine>();
+  for (const weapon of weapons ?? []) {
+    const name = mountName(weapon);
+    const line = lines.get(name) ?? {name, mounts: 0, batteries: 0};
+    line.mounts += weaponMounts(weapon);
+    if (weaponMounts(weapon) > 1) {
+      line.batteries += 1;
+    }
+    lines.set(name, line);
+  }
+  return [...lines.values()];
 };
 
 // Find the weapon_id of the nth with a given name.  This is part of going

@@ -3,11 +3,14 @@ import {
   Gun,
   Weapon,
   WeaponMount,
+  batteryLimit,
+  canBeBattery,
   createWeapon,
   isUniformWeapon,
   weaponGuns,
   weaponKindLabel,
   weaponKinds,
+  weaponMounts,
 } from "./weapon";
 import WEAPON_MOUNTS from "./weaponMounts.json";
 
@@ -61,6 +64,12 @@ export interface WeaponGroup {
    * a mixed turret would be saved as a uniform one and lose its other weapons.
    */
   guns?: Gun[];
+  /**
+   * Whether these mounts fire as batteries: one gunner and one target each,
+   * split by the hull's limit (Imperial Navy p. 113). `count` is then the
+   * mounts, not the batteries.
+   */
+  battery?: boolean;
 }
 
 export const DEFAULT_GUNNERY = 0;
@@ -205,7 +214,8 @@ function groupKey(weapon: Weapon, gunnery: number): string {
   // alone collapsed every mixed turret on a ship into one group regardless of
   // what was in it, and saving then rewrote them all as the first gun's type.
   const guns = JSON.stringify(weaponGuns(weapon));
-  return `${JSON.stringify(weapon.mount)}|${gunnery}|${guns}`;
+  const battery = weaponMounts(weapon) > 1 ? "|battery" : "";
+  return `${JSON.stringify(weapon.mount)}|${gunnery}|${guns}${battery}`;
 }
 
 /**
@@ -233,12 +243,13 @@ export function groupWeapons(
     const key = groupKey(weapon, skill);
     const existing = byKey.get(key);
     if (existing) {
-      existing.count += 1;
+      existing.count += weaponMounts(weapon);
       return;
     }
     const uniform = isUniformWeapon(weapon);
     const group: WeaponGroup = {
-      count: 1,
+      count: weaponMounts(weapon),
+      battery: weaponMounts(weapon) > 1 ? true : undefined,
       mount: weapon.mount,
       kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
       gunnery: skill,
@@ -261,7 +272,7 @@ export function groupWeapons(
  * `FireAction`/`BoostTarget` keep addressing a weapon and its gunner by the
  * same `weapon_id`.  Empty and non-positive rows contribute nothing.
  */
-export function expandGroups(groups: readonly WeaponGroup[]): {
+export function expandGroups(groups: readonly WeaponGroup[], displacement: number = 0): {
   weapons: Weapon[];
   gunnery: number[];
 } {
@@ -272,13 +283,24 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
     if (group.mount === null) {
       return;
     }
+    // A mixed mount is written back exactly as it came in.
+    const one: Weapon =
+      group.guns != null
+        ? { mount: group.mount, guns: group.guns }
+        : createWeapon(group.kind, group.mount, group.modifiers);
+    if (group.battery && canBeBattery(group.mount)) {
+      // Split here as the server would, so each battery has its own gunner
+      // at its own index: full batteries first, then what is left.
+      const limit = batteryLimit(displacement);
+      for (let left = group.count; left > 0; left -= limit) {
+        const mounts = Math.min(limit, left);
+        weapons.push(mounts > 1 ? { ...one, count: mounts } : one);
+        gunnery.push(group.gunnery);
+      }
+      return;
+    }
     for (let n = 0; n < group.count; n++) {
-      // A mixed mount is written back exactly as it came in.
-      weapons.push(
-        group.guns != null
-          ? { mount: group.mount, guns: group.guns }
-          : createWeapon(group.kind, group.mount, group.modifiers),
-      );
+      weapons.push(one);
       gunnery.push(group.gunnery);
     }
   });

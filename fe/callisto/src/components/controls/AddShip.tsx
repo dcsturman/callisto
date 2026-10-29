@@ -6,15 +6,16 @@ import { POSITION_SCALE } from "lib/universal";
 import {
   ShipDesignTemplate,
   ShipDesignTemplates,
-  compressedWeapons,
+  ArmamentLine,
+  armament,
   formatMcr,
   shipWeapons,
 } from "lib/shipDesignTemplates";
 import {
   Gun,
   Weapon,
-  WeaponMount,
-  createWeapon,
+  batteryLimit,
+  canBeBattery,
   weaponToString,
   mountToString,
   WEAPON_MODIFIERS,
@@ -384,7 +385,12 @@ export const AddShip: React.FC<AddShipProps> = () => {
       // and `gunnery` is emitted index-aligned with it so weapon N and the
       // skill firing it always carry the same id.  Rows are a UI concept and
       // never go over the wire.
-      const { weapons, gunnery } = expandGroups(addShipData.armament);
+      // Batteries are split by the hull's limit, as the server would, so each
+      // one keeps its own gunner.
+      const { weapons, gunnery } = expandGroups(
+        addShipData.armament,
+        shipDesignTemplates[design]?.displacement ?? 0,
+      );
       const crew = { ...addShipData.crew, gunnery };
       const designWeapons = shipDesignTemplates[design]?.weapons ?? [];
       // Send nothing when the armament is just the design's, so an unmodified
@@ -1046,6 +1052,11 @@ function HardpointList(args: {
               type="number"
               min={0}
               aria-label={"Number of mounts in group " + (index + 1)}
+              title={
+                group.battery
+                  ? `${group.count} mounts in batteries of up to ${batteryLimit(displacement)}`
+                  : undefined
+              }
               value={empty ? "" : group.count}
               disabled={empty}
               onChange={(event) => handleCountChange(index, event.target.value)}
@@ -1237,6 +1248,17 @@ const WeaponDetailDialog = (props: {
         <div className="weapon-detail-summary">
           {group.count} x {describeGroupGuns({ ...group, guns })}
         </div>
+        {mount != null && canBeBattery(mount) && (
+          <label className="weapon-detail-modifier weapon-detail-battery">
+            <input
+              type="checkbox"
+              checked={group.battery ?? false}
+              onChange={() => onChange({ ...group, battery: !(group.battery ?? false) })}
+            />
+            Fire as batteries: one gunner and one target per battery, each mount rolling its own
+            attack (Imperial Navy p. 113)
+          </label>
+        )}
 
         {guns.map((gun, gunIndex) => (
           <div className="weapon-detail-gun" key={"detail-gun-" + gunIndex}>
@@ -1313,21 +1335,15 @@ const ShipDesignDetails = (render: {
     }
     return designs[render.content];
   }, [designs, render.content]);
-  const compressed = useMemo(
-    () => Object.values(compressedWeapons(design?.weapons ?? null)),
-    [design],
-  );
+  // By mount, however the design splits them into batteries: "200 Triple
+  // Beam Turrets in 13 batteries".
+  const compressed = useMemo(() => armament(design?.weapons ?? null), [design]);
   const describeWeapon = useMemo(
-    () => (weapon: { kind: string; mount: WeaponMount; total: number; guns?: Gun[] }) => {
-      const weapon_name = weaponToString(
-        weapon.guns != null
-          ? { mount: weapon.mount, guns: weapon.guns }
-          : createWeapon(weapon.kind, weapon.mount),
-      );
-
-      const [quant, suffix] =
-        weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
-      return `${quant} ${weapon_name}${suffix}`;
+    () => (line: ArmamentLine) => {
+      const [quant, suffix] = line.mounts === 1 ? ["a", ""] : [line.mounts, "s"];
+      const batteries =
+        line.batteries === 0 ? "" : ` in ${line.batteries} batter${line.batteries === 1 ? "y" : "ies"}`;
+      return `${quant} ${line.name}${suffix}${batteries}`;
     },
     [],
   );

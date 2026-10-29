@@ -75,7 +75,28 @@ export interface Weapon {
    * lasers and an unmodified sandcaster. Omitted from the wire when empty.
    */
   modifiers?: string[];
+  /**
+   * Mounts in a battery (Imperial Navy p. 113): one weapon to the gunner, one
+   * target a round, each mount rolling its own attack. Absent for a single
+   * mount.
+   */
+  count?: number;
 }
+
+/** How many mounts a weapon entry is: one, or a battery's worth. */
+export const weaponMounts = (weapon: {count?: number}): number => weapon.count ?? 1;
+
+/**
+ * The most mounts a battery may hold on a hull of this size (Imperial Navy
+ * p. 113), as the server splits them (`ship.rs` `battery_limit`).
+ */
+export const batteryLimit = (displacement: number): number =>
+  displacement < 1_000 ? 4 : displacement < 10_000 ? 8 : displacement < 100_000 ? 16 : 32;
+
+/** Turrets, barbettes and bays can be batteries; fixed mounts and
+ *  point-defence batteries cannot. */
+export const canBeBattery = (mount: WeaponMount): boolean =>
+  mount === "Barbette" || (typeof mount === "object" && ("Turret" in mount || "Bay" in mount));
 
 /**
  * A colour per weapon kind, used wherever a weapon is drawn: the gunner's
@@ -139,6 +160,12 @@ export const isLauncherKind = (kind: string): boolean =>
  * is not a launcher, and for a launcher in a mount the rules do not allow.
  */
 export const fullSalvo = (weapon: Weapon, kind: string): number | null => {
+  const one = mountSalvo(weapon, kind);
+  // A missile battery throws every launcher's salvo as one.
+  return one == null ? null : one * weaponMounts(weapon);
+};
+
+const mountSalvo = (weapon: Weapon, kind: string): number | null => {
   if (!isLauncherKind(kind)) {
     return null;
   }
@@ -291,6 +318,13 @@ export const createWeapon = (
     : {kind, mount};
 
 export const weaponToString = (weapon: Weapon): string => {
+  const name = mountName(weapon);
+  // "Particle Barbette ×12 (battery)", as the server names it.
+  return weaponMounts(weapon) > 1 ? `${name} ×${weaponMounts(weapon)} (battery)` : name;
+};
+
+/** The mount and what is in it, without any battery count. */
+export const mountName = (weapon: Weapon): string => {
     const kinds = weaponKinds(weapon);
     const mods = describeModifiers(
       weapon.modifiers ?? weaponGuns(weapon)[0]?.modifiers,
@@ -370,6 +404,8 @@ export interface CompressedWeapon {
     kind: string;
     mount: WeaponMount;
     total: number;
+    /** Mounts in each: more than one for a battery. */
+    mounts: number;
     /** Present when the mount holds more than one weapon type. */
     guns?: Gun[];
   };

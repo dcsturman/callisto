@@ -1074,6 +1074,17 @@ h3.control-form {
     grid-row: 1;
 }
 
+/* A battery's mounts, under the count of batteries left to order. */
+.weapon-symbol-battery {
+    font-size: var(--font-sm);
+    font-weight: bold;
+    color: white;
+    z-index: 3;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: flex-end;
+}
+
 .weapon-list {
     display: flex;
     flex-direction: row;
