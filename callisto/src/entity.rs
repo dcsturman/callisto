@@ -24,7 +24,7 @@ use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{
-  countermeasures_mod, detection_modifier_terms, detection_modifiers, Emissions, SENSOR_QUALITY_MOD,
+  countermeasures_mod, detection_modifier_terms, detection_modifiers, jam_operators, Emissions, SENSOR_QUALITY_MOD,
 };
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
@@ -222,6 +222,9 @@ pub(crate) fn detection_terms(observer: &Ship, target: &Ship, emissions: Emissio
     // check: the watch as a whole is looking, and the best of them is who
     // notices.
     ("sensor skill", i16::from(observer.get_crew().get_sensors())),
+    // What the watch carries into every check: crew lost to criticals and
+    // radiation (High Guard pp. 27, 31).
+    ("crew", observer.crew_dm()),
   ];
   terms.extend(detection_modifier_terms(
     observer.design.tl,
@@ -1576,6 +1579,7 @@ impl Entities {
           | ShipAction::Repair { .. }
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
+          | ShipAction::ReviveWatch { .. }
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => {
@@ -1602,10 +1606,13 @@ impl Entities {
   // Quality modifiers are the level of sensors as well as skill of the crew.
   // A ship with several operators uses whichever one is on the station this
   // round; one with a single operator has no choice to make and uses them.
+  //
+  // The crew's own DM -- losses and radiation -- rides with the skill, as it
+  // does on every check the crew makes.
   fn sensor_quality_modifiers(&self, ship_name: &str, operator: usize) -> i16 {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
     let skill = ship.get_crew().get_sensors_at(operator);
-    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(skill)
+    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(skill) + ship.crew_dm()
   }
 
   fn sensor_lock(
@@ -1763,7 +1770,80 @@ impl Entities {
   }
 
   fn jam_missiles(&mut self, ship_name: &String, operator: usize, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
-    self.jam_missiles_check(ship_name, Some(operator), boost, rng)
+    let mut effects = self.jam_missiles_check(ship_name, Some(operator), boost, rng);
+    effects.append(&mut self.jam_extra_stations(ship_name, operator, rng));
+    effects
+  }
+
+  /// The other sensor stations a big ship has on duty, "one on-duty sensor
+  /// operator for every full 7,500 tons" (High Guard p. 34), each jamming
+  /// a different salvo. The sensop's own action covered the first; these go
+  /// automatically to the largest other salvoes still inbound, at the same
+  /// skill and without the captain's inspire, one station to a salvo and
+  /// never more stations than salvoes.
+  fn jam_extra_stations(&mut self, ship_name: &String, operator: usize, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let stations = {
+      let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+      jam_operators(ship.design.displacement)
+    };
+    if stations <= 1 {
+      return vec![];
+    }
+    // Largest first; by name among equals, so a seeded run is repeatable.
+    let mut salvoes = self
+      .missiles
+      .iter()
+      .filter(|(_, missile)| missile.read().unwrap().target == *ship_name)
+      .map(|(missile_name, missile)| (missile_name.clone(), missile.read().unwrap().count))
+      .collect::<Vec<_>>();
+    salvoes.sort_unstable_by(|(a_name, a_count), (b_name, b_count)| b_count.cmp(a_count).then(a_name.cmp(b_name)));
+    // The first station took its pick across every salvo; the rest are
+    // one to a salvo, so there are never more jams than salvoes inbound.
+    let extra = usize::from(stations - 1).min(salvoes.len().saturating_sub(1));
+    if extra == 0 {
+      return vec![];
+    }
+    let dm = self.jam_dm(ship_name, Some(operator), 0);
+    let mut effects = Vec::new();
+    for (station, salvo) in salvoes.into_iter().take(extra).enumerate() {
+      let dice = roll_dice(2, rng);
+      let check = i16::from(dice) + dm - 10;
+      let what = format!("jams salvo {} from sensor station {}", salvo.0, station + 2);
+      if check >= 0 {
+        effects.push(sensor_check_effect(
+          ship_name,
+          &what,
+          None,
+          dice,
+          dm,
+          10,
+          &format!("effect {check}"),
+        ));
+        #[allow(clippy::cast_sign_loss)]
+        let num_missiles = (check as usize).max(1);
+        effects.append(&mut self.jam_salvoes(ship_name, &[salvo], num_missiles, rng));
+      } else {
+        effects.push(sensor_check_effect(ship_name, &what, None, dice, dm, 10, "jamming failed"));
+      }
+    }
+    effects
+  }
+
+  /// The DM on a jamming check: the suite and the operator's skill (the
+  /// suite alone when the program is jamming), countermeasures, electronic
+  /// warfare software and the captain's inspire.
+  fn jam_dm(&self, ship_name: &str, operator: Option<usize>, boost: i16) -> i16 {
+    let quality = operator.map_or_else(
+      || {
+        let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+        SENSOR_QUALITY_MOD[ship.current_sensors as usize]
+      },
+      |operator| self.sensor_quality_modifiers(ship_name, operator),
+    );
+    quality
+      + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + self.electronic_warfare_mod(ship_name)
+      + boost
   }
 
   /// One jamming attempt. `operator` is `None` when the computer is doing it
@@ -1785,23 +1865,11 @@ impl Entities {
     let dice = roll_dice(2, rng);
     // No operator means the program is doing it, and brings no skill of its
     // own -- only the suite's own quality.
-    let quality = operator.map_or_else(
-      || {
-        let ship = self.ships.get(ship_name).unwrap().read().unwrap();
-        SENSOR_QUALITY_MOD[ship.current_sensors as usize]
-      },
-      |operator| self.sensor_quality_modifiers(ship_name, operator),
-    );
-    let dm = quality
-      + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
-      + self.electronic_warfare_mod(ship_name)
-      + boost;
+    let dm = self.jam_dm(ship_name, operator, boost);
     let check = i16::from(dice) + dm - 10;
 
     debug!(
-      "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, sensor_quality mod {}, countermeasures mod {} gives an effect of {check}.",
-      quality,
-      countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures),
+      "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, DM {dm} gives an effect of {check}."
     );
 
     if check >= 0 {
@@ -2629,6 +2697,48 @@ impl Entities {
     })
   }
 
+  /// The captains' revives, as the round ends: `orders` is each ship and
+  /// how many of its frozen watch to wake. They "replace disabled or killed
+  /// crew members the following turn" (High Guard p. 27), which is the next
+  /// round from here, and lift whatever crew DM the losses carried.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  #[must_use]
+  pub fn revive_watch_pass(&self, orders: &[(String, u32)]) -> Vec<EffectMsg> {
+    orders
+      .iter()
+      .filter_map(|(ship_name, count)| {
+        let mut ship = self.ships.get(ship_name)?.write().unwrap();
+        let in_berths = ship.frozen_watch;
+        let short = ship.design.crew.saturating_sub(ship.current_crew);
+        let revived = ship.revive_watch(*count);
+        let line = if revived == 0 {
+          if in_berths == 0 {
+            "%s has no frozen watch to revive.".to_string()
+          } else if short == 0 {
+            format!("%s's crew is at full strength; the frozen watch of {in_berths} stays in the berths.")
+          } else {
+            "%s revives nobody.".to_string()
+          }
+        } else {
+          let dm = ship.crew_dm_terms()[0].1;
+          let checks = if dm < 0 {
+            format!("; still DM{dm} to every check")
+          } else {
+            String::new()
+          };
+          format!(
+            "%s revives {revived} of the frozen watch: crew back to {}%, {} left in the berths{checks}.",
+            ship.crew_percent(),
+            ship.frozen_watch
+          )
+        };
+        Some(EffectMsg::outcome(ship_name, MessageCategory::Info, line, revived > 0))
+      })
+      .collect()
+  }
+
   /// Count disabled bridge stations down at the end of the round.
   ///
   /// # Panics
@@ -3073,6 +3183,7 @@ impl Entities {
           | ShipAction::ComputerRepair { .. }
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
+          | ShipAction::ReviveWatch { .. }
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => false,
@@ -3286,12 +3397,17 @@ impl Entities {
     let short_jump = jump_range < ship.current_jump;
 
     let skill = ship.get_crew().engineer_at(engineer).jump;
+    let crew = ship.crew_dm();
     drop(ship);
 
     let target: u8 = 6;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (j-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (j-drive)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("crew", crew),
+      ],
       target,
     );
 
@@ -3347,6 +3463,7 @@ impl Entities {
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).maneuver;
+    let crew = ship.read().unwrap().crew_dm();
     let target: u8 = 10;
     // "This check suffers a cumulative DM-2 each time it is attempted after
     // the first" (Core Rulebook p. 171). The penalty only comes off with 1D
@@ -3358,6 +3475,7 @@ impl Entities {
         ("engineering (m-drive)", i16::from(skill)),
         ("captain", boost.max(0)),
         ("repeated overloads", -2 * i16::from(attempts)),
+        ("crew", crew),
       ],
       target,
     );
@@ -3426,6 +3544,7 @@ impl Entities {
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
+    let crew = ship.read().unwrap().crew_dm();
     let target: u8 = 10;
     // The same cumulative DM-2 the drive takes, for the same reason.
     let attempts = ship.read().unwrap().overload_plant_attempts;
@@ -3435,6 +3554,7 @@ impl Entities {
         ("engineering (power)", i16::from(skill)),
         ("captain", boost.max(0)),
         ("repeated overloads", -2 * i16::from(attempts)),
+        ("crew", crew),
       ],
       target,
     );
@@ -3551,10 +3671,15 @@ impl Entities {
     }
 
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
+    let crew = ship.read().unwrap().crew_dm();
     let target: u8 = 8;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (power)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("crew", crew),
+      ],
       target,
     );
 
@@ -3706,6 +3831,8 @@ impl Entities {
         ("captain", boost.max(0)),
         ("damage", -i16::from(crit_level)),
         ("auto-repair", i16::from(drones)),
+        // The drones carry no crew DM; an engineer does.
+        ("crew", if engineer.is_some() { ship_write.crew_dm() } else { 0 }),
       ],
       target,
     );
@@ -4719,6 +4846,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 10,
       role: None,
       source: None,
@@ -5167,6 +5296,109 @@ mod tests {
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { .. } if e.rendered().contains("defender jams inbound missiles") && e.rendered().contains("jamming failed")
     )));
+  }
+
+  /// A ship of 15,000 tons has two sensor stations on duty (High Guard
+  /// p. 34): the sensop's action jams across everything inbound, and the
+  /// second station jams the largest other salvo on its own, at the same
+  /// skill. Never more stations than salvoes, and none under 15,000 tons.
+  #[test_log::test]
+  fn extra_sensor_stations_jam_the_largest_other_salvoes() {
+    let big = |tons: u32, name: &str| {
+      let design = Arc::new(ShipDesignTemplate {
+        displacement: tons,
+        ..ShipDesignTemplate::default()
+      });
+      let mut crew = Crew::default();
+      crew.set_skill(Skills::Sensors, 4);
+      let mut ship = Ship::new(name.to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+      ship.set_name(name.to_string());
+      ship
+    };
+    let salvo = |name: &str, target: &str, count: u16| {
+      let mut missile = create_test_missile(name, target);
+      missile.count = count;
+      missile
+    };
+    let run = |tons: u32, counts: &[u16]| -> (Vec<String>, Vec<u16>) {
+      let mut entities = Entities::default();
+      let mut rng = StepRng::new(5, 0); // Always a 6: every check made is made.
+      entities
+        .ships
+        .insert("defender".to_string(), Arc::new(RwLock::new(big(tons, "defender"))));
+      for (i, count) in counts.iter().enumerate() {
+        let name = format!("salvo{i}");
+        entities
+          .missiles
+          .insert(name.clone(), Arc::new(RwLock::new(salvo(&name, "defender", *count))));
+      }
+      entities.fixup_pointers().unwrap();
+      let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
+      let effects = entities.sensor_actions(&actions, &BoostMap::default(), &mut rng);
+      let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+      let mut left: Vec<u16> = entities.missiles.values().map(|m| m.read().unwrap().count).collect();
+      left.sort_unstable();
+      (lines, left)
+    };
+    let station_lines = |lines: &[String]| lines.iter().filter(|l| l.contains("from sensor station")).count();
+
+    // Two stations, three salvoes: the sensop's jam and one more, on the
+    // largest salvo left.
+    let (lines, left) = run(15_000, &[40, 30, 2]);
+    assert_eq!(station_lines(&lines), 1, "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("from sensor station 2")), "{lines:?}");
+    // Both jams destroyed something.
+    assert!(left.iter().map(|c| u32::from(*c)).sum::<u32>() < 72, "{left:?}");
+
+    // One salvo: nothing for the second station to do.
+    let (lines, _) = run(15_000, &[40]);
+    assert_eq!(station_lines(&lines), 0, "{lines:?}");
+
+    // Ten stations, three salvoes: two extra jams, one to a salvo.
+    let (lines, _) = run(75_000, &[40, 30, 20]);
+    assert_eq!(station_lines(&lines), 2, "{lines:?}");
+    // A salvo the sensop's jam finished off is not one to jam again.
+    let (lines, _) = run(75_000, &[40, 30, 2]);
+    assert_eq!(station_lines(&lines), 1, "{lines:?}");
+
+    // Under 15,000 tons there is one station.
+    let (lines, _) = run(14_999, &[40, 30, 2]);
+    assert_eq!(station_lines(&lines), 0, "{lines:?}");
+  }
+
+  /// The captains' revives, as the round ends: the crew comes back from the
+  /// berths, no more than were lost, and the log says so either way.
+  #[test_log::test]
+  fn the_frozen_watch_is_revived_as_the_round_ends() {
+    let design = Arc::new(ShipDesignTemplate {
+      displacement: 6_000,
+      crew: 1_000,
+      frozen_watch: 50,
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    let mut ship = Ship::new("Big".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.current_crew = 900;
+    entities.ships.insert("Big".to_string(), Arc::new(RwLock::new(ship)));
+    let ship = Ship::new("Whole".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.ships.insert("Whole".to_string(), Arc::new(RwLock::new(ship)));
+    entities.fixup_pointers().unwrap();
+
+    let effects = entities.revive_watch_pass(&[
+      ("Big".to_string(), 30),
+      ("Whole".to_string(), 10),
+      ("Gone".to_string(), 5),
+    ]);
+    let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+      lines[0].contains("Big revives 30 of the frozen watch: crew back to 93%, 20 left"),
+      "{}",
+      lines[0]
+    );
+    assert!(lines[1].contains("full strength"), "{}", lines[1]);
+    let big = entities.ships.get("Big").unwrap().read().unwrap();
+    assert_eq!((big.current_crew, big.frozen_watch), (930, 20));
   }
 
   /// Same-round-impact jamming: when an attacker launches a missile at a

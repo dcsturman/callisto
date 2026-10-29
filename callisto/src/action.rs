@@ -412,6 +412,14 @@ pub enum ShipAction {
   LeadershipCheck {
     boosts: Vec<BoostTarget>,
   },
+  /// The captain revives `count` of the frozen watch, spare crew in low
+  /// berths who replace crew lost to criticals "the following turn" (High
+  /// Guard p. 27). It is the captain's action for the round, in place of
+  /// the leadership check, and takes effect as the round ends. A count of 0
+  /// withdraws it.
+  ReviveWatch {
+    count: u32,
+  },
   // Anti-actions: explicit "clear queued sensor/engineer action" intents.
   // Sent by the client when the user cancels a queued action (chooser → none,
   // or click-to-remove from the Actions list). Consumed in `merge`; never
@@ -573,10 +581,22 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             current_actions.retain(|action| engineer_of(action) != Some(engineer));
             current_actions.push(next_action.clone());
           }
-          // Each leadership check replaces the previous one (only one per ship per turn).
+          // Each leadership check replaces the previous one (only one per
+          // ship per turn), and the captain's revive, which is the same
+          // person's action.
           ShipAction::LeadershipCheck { .. } => {
-            current_actions.retain(|action| !matches!(action, ShipAction::LeadershipCheck { .. }));
+            current_actions
+              .retain(|action| !matches!(action, ShipAction::LeadershipCheck { .. } | ShipAction::ReviveWatch { .. }));
             current_actions.push(next_action.clone());
+          }
+          // A revive replaces the captain's earlier revive and leadership
+          // check alike; a count of 0 is the captain changing their mind.
+          ShipAction::ReviveWatch { count } => {
+            current_actions
+              .retain(|action| !matches!(action, ShipAction::LeadershipCheck { .. } | ShipAction::ReviveWatch { .. }));
+            if count > 0 {
+              current_actions.push(next_action.clone());
+            }
           }
           // Anti-actions: strip the matching kind, don't push anything.
           ShipAction::ClearSensorAction { operator } => {
@@ -607,6 +627,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             ShipAction::ClearSensorAction { .. }
               | ShipAction::ClearEngineerAction { .. }
               | ShipAction::ClearLeadershipCheck
+              | ShipAction::ReviveWatch { count: 0 }
               | ShipAction::DeleteFireAction { .. }
               | ShipAction::DeleteReloadAction { .. }
           )
@@ -725,6 +746,50 @@ mod tests {
   /// A Reload sits beside the mount's Fire rather than replacing it, keeps
   /// its place when the list is sent again, and is withdrawn by its
   /// anti-action.
+  /// The captain's revive is their action for the round: it replaces a
+  /// queued leadership check and is replaced by one, and a count of 0
+  /// withdraws it.
+  #[test]
+  fn a_revive_is_the_captains_action() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Exec".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    let queued = |entities: &Entities| -> Vec<ShipAction> {
+      entities
+        .actions
+        .iter()
+        .find(|(ship, _)| ship == "Exec")
+        .map(|(_, actions)| actions.clone())
+        .unwrap_or_default()
+    };
+    let inspire = ShipAction::LeadershipCheck {
+      boosts: vec![BoostTarget::Evade {
+        ship: "Exec".to_string(),
+      }],
+    };
+    let revive = |count| ShipAction::ReviveWatch { count };
+
+    merge(&mut entities, vec![("Exec".to_string(), vec![inspire.clone()])]);
+    merge(&mut entities, vec![("Exec".to_string(), vec![revive(10)])]);
+    assert_eq!(queued(&entities), vec![revive(10)]);
+    merge(&mut entities, vec![("Exec".to_string(), vec![revive(4)])]);
+    assert_eq!(queued(&entities), vec![revive(4)]);
+    merge(&mut entities, vec![("Exec".to_string(), vec![inspire.clone()])]);
+    assert_eq!(queued(&entities), vec![inspire]);
+    merge(&mut entities, vec![("Exec".to_string(), vec![revive(0)])]);
+    assert_eq!(queued(&entities), vec![]);
+    // A withdrawal for a ship with nothing queued queues nothing.
+    merge(&mut entities, vec![("Exec".to_string(), vec![revive(0)])]);
+    assert_eq!(queued(&entities), vec![]);
+  }
+
   #[test]
   fn a_reload_keeps_its_place_and_its_mounts_fire() {
     let mut entities = Entities::default();

@@ -1190,7 +1190,9 @@ impl PlayerManager {
         // consumes and which should never get this far -- but if one slips
         // through it belongs nowhere either.
         // Reloads are worked out per ship below, and applied after fire.
+        // A revive is applied as the round ends, below.
         ShipAction::LeadershipCheck { .. }
+        | ShipAction::ReviveWatch { .. }
         | ShipAction::ReloadAction { .. }
         | ShipAction::DeleteReloadAction { .. }
         | ShipAction::ClearSensorAction { .. }
@@ -1205,6 +1207,18 @@ impl PlayerManager {
         (ship_name.clone(), e_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
     }));
+
+    // The captains' revives, applied as the round ends so the crew is back
+    // for the next one.
+    let revives: Vec<(String, u32)> = actions
+      .iter()
+      .flat_map(|(ship_name, ship_actions)| {
+        ship_actions.iter().filter_map(move |action| match action {
+          ShipAction::ReviveWatch { count } => Some((ship_name.clone(), *count)),
+          _ => None,
+        })
+      })
+      .collect();
 
     // Who reloads what, from the ships as the round starts. A mount its own
     // gunner is reloading makes no attack and no reaction (Core Rulebook
@@ -1320,6 +1334,9 @@ impl PlayerManager {
     // Evaluate queued engineer actions at end-of-turn. Effects ride the
     // existing Effects channel.
     effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
+
+    // The frozen watch comes out of the berths for next round.
+    effects.append(&mut entities.revive_watch_pass(&revives));
 
     // Detection runs last, after movement and after any ship has jumped out.
     // The trigger for losing a stealthed ship is the range opening, which needs
