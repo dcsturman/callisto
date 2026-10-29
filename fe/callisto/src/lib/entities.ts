@@ -343,6 +343,9 @@ export interface Missile extends Entity {
   fuse: number;
   /** Rounds of thrust it has left; absent from an older server. */
   burns?: number;
+  /** Missiles in this salvo. A launch from one mount flies as one object;
+   *  absent when it is a lone missile. */
+  count?: number;
 }
 
 export const defaultMissile = () => {

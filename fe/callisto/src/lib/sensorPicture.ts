@@ -1,4 +1,5 @@
 import {Missile, Ship} from "lib/entities";
+import {missilesIn} from "lib/missileCount";
 import {Team} from "lib/teams";
 import {TURN_IN_SECONDS} from "lib/universal";
 import {vectorDistance} from "lib/Util";
@@ -153,7 +154,7 @@ export const incomingSalvoes = (observer: Ship, missiles: Missile[]): Salvo[] =>
       );
       const roundsOut =
         closing <= 0 ? Number.POSITIVE_INFINITY : Math.max(1, Math.ceil(nearest / (closing * TURN_IN_SECONDS)));
-      return {source, count: salvo.length, nearest, roundsOut};
+      return {source, count: missilesIn(salvo), nearest, roundsOut};
     })
     .sort((a, b) => a.nearest - b.nearest);
 };

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMemo } from "react";
 import { Entity, Ship } from "./entities";
+import { missileCount } from "./missileCount";
 import { isUndetected } from "./contacts";
 
 import {useAppSelector} from "state/hooks";
@@ -223,7 +224,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
             .filter((candidate) => candidate.name !== exclude)
             .map((missile) => (
               <option key={"elm-"+missile.name} value={missile.name}>
-                {nf(missile.name, missile)}
+                {nf(missileCount(missile) > 1 ? `${missile.name} ×${missileCount(missile)}` : missile.name, missile)}
               </option>
             ))}
       </select>

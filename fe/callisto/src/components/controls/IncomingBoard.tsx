@@ -2,6 +2,7 @@ import * as React from "react";
 import {useMemo} from "react";
 
 import {Ship} from "lib/entities";
+import {missileCount} from "lib/missileCount";
 import {vectorDistance} from "lib/Util";
 import {roundsToImpact} from "lib/missileEta";
 import {useAppSelector} from "state/hooks";
@@ -25,6 +26,8 @@ export function IncomingBoard(args: {ship: Ship}) {
         .map((missile) => ({
           name: missile.name,
           source: missile.source,
+          // A salvo is one object with its missiles counted in it.
+          count: missileCount(missile),
           distance: vectorDistance(missile.position, args.ship.position),
           // Thrust and all: see roundsToImpact. A salvo that will not arrive
           // within its horizon sorts last.
@@ -43,7 +46,7 @@ export function IncomingBoard(args: {ship: Ship}) {
         const rounds = target == null ? Infinity : (roundsToImpact(missile, target) ?? Infinity);
         const key = `${missile.target}\u0000${rounds}`;
         const group = groups.get(key) ?? {target: missile.target, rounds, count: 0};
-        group.count += 1;
+        group.count += missileCount(missile);
         groups.set(key, group);
       });
     return [...groups.values()].sort((a, b) => a.rounds - b.rounds || a.target.localeCompare(b.target));
@@ -53,7 +56,7 @@ export function IncomingBoard(args: {ship: Ship}) {
     const groups = new Map<number, {count: number; sources: Set<string>}>();
     for (const missile of inbound) {
       const group = groups.get(missile.rounds) ?? {count: 0, sources: new Set<string>()};
-      group.count += 1;
+      group.count += missile.count;
       group.sources.add(missile.source);
       groups.set(missile.rounds, group);
     }

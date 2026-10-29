@@ -23,10 +23,12 @@ import {
   Ship,
   Entity,
   Planet,
+  Missile,
   findShip,
   availablePower,
   stationsDown,
 } from "lib/entities";
+import { missileCount } from "lib/missileCount";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { isReferee } from "lib/view";
 import { SectionTag } from "components/controls/SectionTag";
@@ -761,6 +763,13 @@ export function EntityInfoWindow(args: { entity: Entity }) {
           <p>Radius (km): {radiusKm}</p>
         ) : isShip ? (
           <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
+        ) : "source" in args.entity ? (
+          <p>
+            {missileCount(args.entity as Missile) > 1
+              ? `Salvo of ${missileCount(args.entity as Missile)}`
+              : "One missile"}{" "}
+            from {(args.entity as Missile).source} at {(args.entity as Missile).target}
+          </p>
         ) : (
           <></>
         )}

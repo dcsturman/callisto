@@ -21,7 +21,8 @@ import {
   RANGE_BANDS,
   RANGE_BAND_NAMES
 } from "lib/universal";
-import { Ship as ShipType, Missile as MissileType} from "lib/entities";
+import { Ship as ShipType, Missile as MissileType } from "lib/entities";
+import { missileCount } from "lib/missileCount";
 import { isViewersOwn, undetectedTest } from "lib/contacts";
 import { Box, isBox, selectableShips, shipsInBox } from "lib/boxSelect";
 import { centroid } from "lib/squadrons";
@@ -494,7 +495,9 @@ export function Missile(args: { missile: MissileType; index: number }) {
           color="green"
         />
         <Text color="grey" fontSize={0.2} position={[0, -0.1, 0]}>
-          {args.missile.name}
+          {missileCount(args.missile) > 1
+            ? `${args.missile.name} ×${missileCount(args.missile)}`
+            : args.missile.name}
         </Text>
       </group>
     </>
