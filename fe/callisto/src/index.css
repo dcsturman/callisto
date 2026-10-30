@@ -4528,3 +4528,132 @@ h3.control-form {
     justify-self: end;
     margin-right: 0;
 }
+
+/* --- Flight deck: the carrier's craft and the Launch order --- */
+
+.flight-deck-facilities,
+.flight-deck-summary,
+.flight-deck-queued,
+.flight-deck-empty,
+.flight-deck-ops,
+.carrier-line {
+    margin: 4px 0;
+    font-size: var(--font-xs);
+}
+
+.flight-deck-pinned {
+    margin: 4px 0;
+    font-size: var(--font-xs);
+    color: #ffa94d;
+}
+
+.flight-deck-ops {
+    padding-left: 1.2em;
+}
+
+.flight-deck-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-sm);
+}
+
+.flight-deck-table td {
+    padding: 2px 4px;
+    vertical-align: baseline;
+}
+
+.flight-deck-name {
+    text-align: left;
+}
+
+.flight-deck-craft .flight-deck-name {
+    padding-left: 1.6em;
+    font-size: var(--font-xs);
+}
+
+.flight-deck-count {
+    text-align: right;
+    white-space: nowrap;
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+.flight-deck-states {
+    font-family: inherit;
+    font-size: var(--font-xs);
+    opacity: 0.75;
+}
+
+.flight-deck-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.flight-deck-pick-row,
+.flight-deck-buttons {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.flight-deck-count-input {
+    width: 4em;
+}
+
+.flight-deck-queued {
+    color: #ffa94d;
+}
+
+/* --- Landing: the pilot's Land on a carrier --- */
+
+.landing-control {
+    margin-top: 6px;
+}
+
+.landing-queued {
+    margin: 4px 0;
+    font-size: var(--font-xs);
+    color: #ffa94d;
+}
+
+.landing-carrier-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.landing-gates,
+.landing-notes {
+    list-style: none;
+    margin: 4px 0;
+    padding: 0;
+    font-size: var(--font-xs);
+}
+
+.landing-gate-ok {
+    opacity: 0.8;
+}
+
+.landing-gate-bad {
+    color: #ff6b6b;
+}
+
+.landing-notes {
+    opacity: 0.75;
+}
+
+.landing-odds {
+    margin: 4px 0;
+    font-size: var(--font-xs);
+}
+
+.landing-failure {
+    opacity: 0.75;
+}
+
+.ship-summary-aboard,
+.fleet-comms-aboard {
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}

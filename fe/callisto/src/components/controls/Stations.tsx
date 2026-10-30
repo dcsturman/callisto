@@ -8,6 +8,7 @@ import {StationCard} from "components/controls/StationCard";
 import {
   GiCaptainHatProfile,
   GiCrosshair,
+  GiJetFighter,
   GiMissileSwarm,
   GiJumpAcross,
   GiLaserTurret,
@@ -30,6 +31,9 @@ import {ShotOdds} from "components/controls/ShotOdds";
 import {TargetBoard} from "components/controls/TargetBoard";
 import {ComputerBoard} from "components/controls/ComputerBoard";
 import {JumpBoard} from "components/controls/JumpBoard";
+import {FlightDeck} from "components/controls/FlightDeck";
+import {LandingControl} from "components/controls/LandingControl";
+import {aboardCount} from "lib/carriers";
 import type {Engineer} from "components/controls/CrewBuilder";
 import {SectionTag} from "components/controls/SectionTag";
 import {useAppDispatch} from "state/hooks";
@@ -55,6 +59,7 @@ import {FireControl, QueuedOrders} from "components/controls/WeaponUse";
 /** Title and glyph per card, so the ordered list can still render itself. */
 const CARD_LOOK: Record<string, {title: string; icon?: React.ReactNode}> = {
   captain: {title: "Captain", icon: <GiCaptainHatProfile />},
+  flightdeck: {title: "Flight Deck", icon: <GiJetFighter />},
   pilot: {title: "Pilot", icon: <GiShipWheel />},
   sensors: {title: "Sensors", icon: <GiRadarSweep />},
   gunner: {title: "Gunner", icon: <GiLaserTurret />},
@@ -94,6 +99,10 @@ function cardCrew(
 ): string | undefined {
   if (id === "captain") {
     return `leadership ${ship.crew.leadership ?? 0}`;
+  }
+  if (id === "flightdeck") {
+    const aboard = aboardCount(ship);
+    return `${aboard} aboard`;
   }
   if (id === "pilot") {
     return `skill ${ship.crew.pilot}`;
@@ -148,12 +157,24 @@ export function Stations(args: {ship: Ship}) {
     });
   }
 
+  // Flight operations are the captain's (IN p. 97): a carrier's captain
+  // gets the deck as a card of its own, since a wing of eighty is a table.
+  if (hasRole(roles, ViewMode.Captain) && args.ship.flight_deck != null) {
+    cards.push({
+      id: "flightdeck",
+      node: <FlightDeck ship={args.ship} />,
+    });
+  }
+
   if (hasRole(roles, ViewMode.Pilot)) {
     cards.push({
       id: "pilot",
       node: (
         <>
           <PilotStation ship={args.ship} />
+          {/* Land on a carrier: the pilot's order, resolved as the round's
+              movement ends. Nothing when there is no carrier to land on. */}
+          <LandingControl ship={args.ship} />
           {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Pilot]} />}
         </>
       ),

@@ -49,6 +49,32 @@ export const projectPosition = (
   return p;
 };
 
+/**
+ * A ship's velocity after `seconds` of flying its plan, on the same terms
+ * as {@link projectPosition}: segment by segment, coasting once the plan
+ * runs out.
+ */
+export const projectVelocity = (
+  velocity: Vec3,
+  plan: [Acceleration, Acceleration | null],
+  seconds: number,
+): Vec3 => {
+  const v: Vec3 = [...velocity];
+  let remaining = seconds;
+  for (const segment of [plan[0], plan[1]]) {
+    if (segment == null || remaining <= 0) {
+      break;
+    }
+    const [accel, duration] = segment;
+    const t = Math.min(duration, remaining);
+    for (let i = 0; i < 3; i++) {
+      v[i] += accel[i] * G * t;
+    }
+    remaining -= t;
+  }
+  return v;
+};
+
 /** Range now and one turn out, both in metres. */
 export interface RangeReading {
   now: number;

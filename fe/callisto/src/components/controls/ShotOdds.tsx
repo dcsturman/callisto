@@ -8,22 +8,9 @@ import {bandName, rangeBetween} from "lib/range";
 import {shipWeapons} from "lib/shipDesignTemplates";
 import {spinalOf, weaponToString, weaponGuns} from "lib/weapon";
 import {shortBandOf, spinalRangeDm, spinalSizeDm} from "lib/spinal";
+import {chanceOf} from "lib/dice";
 import {useAppSelector} from "state/hooks";
 import {entitiesSelector, templatesSelector} from "state/serverSlice";
-
-/** Chance that 2D plus `dm` reaches 8, as a percentage. */
-const chanceOf = (dm: number): number => {
-  // 2D outcomes, 2..12, out of 36.
-  const ways = [0, 0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1];
-  let hits = 0;
-  for (let roll = 2; roll <= 12; roll++) {
-    if (roll + dm >= 8) {
-      hits += ways[roll];
-    }
-  }
-  return Math.round((hits / 36) * 100);
-};
-
 
 /**
  * What each mount would roll against a chosen target, and how often that
