@@ -800,6 +800,7 @@ async fn integration_add_ship() {
     controller: None,
     orders: None,
     software: None,
+    aboard: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -883,6 +884,7 @@ async fn integration_add_planet_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -907,6 +909,7 @@ async fn integration_add_planet_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1169,6 +1172,7 @@ async fn integration_update_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1230,6 +1234,7 @@ async fn integration_update_missile() {
       controller: None,
       orders: None,
       software: Some(vec![]),
+      aboard: None,
     }),
   )
   .await;
@@ -1253,6 +1258,7 @@ async fn integration_update_missile() {
       controller: None,
       orders: None,
       software: Some(vec![]),
+      aboard: None,
     }),
   )
   .await;
@@ -1395,6 +1401,7 @@ async fn integration_remove_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1534,6 +1541,7 @@ async fn integration_set_acceleration() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1601,6 +1609,7 @@ async fn integration_compute_path_basic() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1703,6 +1712,7 @@ async fn integration_compute_path_with_standoff() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1805,6 +1815,7 @@ async fn integration_malformed_requests() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2038,6 +2049,7 @@ async fn integration_set_crew_actions() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2125,6 +2137,7 @@ async fn integration_multi_client_test() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2146,6 +2159,7 @@ async fn integration_multi_client_test() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2168,6 +2182,7 @@ async fn integration_multi_client_test() {
     controller: None,
     orders: None,
     software: None,
+    aboard: None,
   });
   stream3.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
   loop {
@@ -2645,6 +2660,7 @@ async fn integration_switching_to_ai_calls_the_ai_service() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2806,6 +2822,7 @@ async fn integration_squadrons() {
         controller: None,
         orders: None,
         software: None,
+        aboard: None,
       }),
     )
     .await;
@@ -2883,6 +2900,7 @@ async fn integration_reload_action() {
       controller: None,
       orders: None,
       software: Some(vec![]),
+      aboard: None,
     }),
   )
   .await;

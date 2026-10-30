@@ -1364,6 +1364,7 @@ async fn test_get_entities() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     })
     .unwrap();
 
@@ -2407,6 +2408,7 @@ async fn test_set_controller_and_orders() {
       controller: Some(Controller::Ai),
       orders: Some("Close and board.".to_string()),
       software: None,
+      aboard: None,
     })
     .unwrap();
   let read = |server: &PlayerManager| {
@@ -2471,6 +2473,7 @@ async fn test_ai_report_follows_the_controller() {
       controller: Some(Controller::Ai),
       orders: None,
       software: None,
+      aboard: None,
     })
     .unwrap();
   let report = AiReport {

@@ -737,6 +737,70 @@ impl Entities {
     }
   }
 
+  /// Whether a `tons`-ton craft called `name` could go aboard `carrier` now:
+  /// a carrier on the plot, not herself, with a berth her size free.
+  ///
+  /// # Errors
+  /// Returns the reason she cannot.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  pub fn berth_check(&self, name: &str, carrier: &str, tons: u32) -> Result<(), String> {
+    if name == carrier {
+      return Err(format!("{name} cannot be aboard herself."));
+    }
+    let host = self
+      .ships
+      .get(carrier)
+      .ok_or_else(|| format!("There is no ship named {carrier} to be aboard."))?
+      .read()
+      .unwrap();
+    if !host.is_carrier() {
+      return Err(format!("{carrier} has no docking space or hangar."));
+    }
+    if !host.has_berth_for(tons) {
+      return Err(format!("{carrier} has no free berth for a {tons}-ton craft."));
+    }
+    Ok(())
+  }
+
+  /// Take the ship named `name` off the plot and into a berth of `carrier`,
+  /// as a scenario's `aboard` does at load. She is refused a carrier that is
+  /// not on the plot, is herself, has no berth her size free, or is no
+  /// carrier at all, and stays where she is.
+  ///
+  /// # Errors
+  /// Returns an error if the ship or carrier is unknown or the berth is not there.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  pub fn embark_ship(&mut self, name: &str, carrier: &str) -> Result<(), String> {
+    let tons = self
+      .ships
+      .get(name)
+      .ok_or_else(|| format!("There is no ship named {name}."))?
+      .read()
+      .unwrap()
+      .design
+      .displacement;
+    self.berth_check(name, carrier, tons)?;
+    let host = self
+      .ships
+      .get(carrier)
+      .cloned()
+      .ok_or_else(|| format!("There is no ship named {carrier}."))?;
+    let craft = self
+      .ships
+      .remove(name)
+      .ok_or_else(|| format!("There is no ship named {name}."))?;
+    // Nothing else holds the ship: the Arc was only ever ours.
+    let craft =
+      Arc::try_unwrap(craft).map_or_else(|shared| shared.read().unwrap().clone(), |lock| lock.into_inner().unwrap());
+    self.actions.retain(|(owner, _)| owner != name);
+    host.write().unwrap().embark(craft);
+    Ok(())
+  }
+
   /// Drop every queued action that addresses a weapon on `ship_name`.
   ///
   /// That is the ship's own fire, point-defense and reload orders, plus any boost a
@@ -2138,9 +2202,41 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained on a ship.
   pub fn set_squadron(&self, ships: &[String], squadron: Option<&str>) -> Result<String, String> {
-    let found = ships
+    // A craft aboard a carrier is not on the plot, so she is reached through
+    // her carrier: she keeps her team, and takes the squadron she will
+    // launch into.
+    let (on_plot, aboard): (Vec<&String>, Vec<&String>) = ships.iter().partition(|name| self.ships.contains_key(*name));
+    let carriers_of = aboard
       .iter()
-      .map(|name| self.ships.get(name).ok_or_else(|| format!("There is no ship named {name}.")))
+      .map(|name| {
+        self
+          .ships
+          .values()
+          .find(|ship| {
+            ship
+              .read()
+              .unwrap()
+              .embarked
+              .iter()
+              .any(|craft| craft.get_name() == name.as_str())
+          })
+          .cloned()
+          .map(|carrier| ((*name).clone(), carrier))
+          .ok_or_else(|| format!("There is no ship named {name}."))
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+    let set_aboard = |squadron: Option<&str>, orders: Option<String>| {
+      for (name, carrier) in &carriers_of {
+        let mut carrier = carrier.write().unwrap();
+        if let Some(craft) = carrier.embarked.iter_mut().find(|craft| craft.get_name() == name) {
+          craft.squadron = squadron.map(str::to_string);
+          craft.squadron_orders.clone_from(&orders);
+        }
+      }
+    };
+    let found = on_plot
+      .iter()
+      .map(|name| self.ships.get(*name).ok_or_else(|| format!("There is no ship named {name}.")))
       .collect::<Result<Vec<_>, _>>()?;
     let Some(name) = squadron else {
       for ship in &found {
@@ -2148,24 +2244,33 @@ impl Entities {
         ship.squadron = None;
         ship.squadron_orders = None;
       }
-      return Ok(format!("{} ship(s) left their squadron.", found.len()));
+      set_aboard(None, None);
+      return Ok(format!("{} ship(s) left their squadron.", ships.len()));
     };
     let name = squadron_name(name)?;
-    let teams: Vec<Option<Team>> = found.iter().map(|ship| ship.read().unwrap().team).collect();
+    let mut teams: Vec<Option<Team>> = found.iter().map(|ship| ship.read().unwrap().team).collect();
+    teams.extend(carriers_of.iter().map(|(_, carrier)| carrier.read().unwrap().team));
     let Some(team) = teams.first().copied() else {
       return Ok("No ships to move.".to_string());
     };
     if teams.iter().any(|other| *other != team) {
       return Err("A squadron's ships must all be on one team.".to_string());
     }
+    let in_squadron = |ship: &Ship| ship.team == team && ship.squadron.as_deref() == Some(name);
     let size = self
       .ships
       .iter()
-      .filter(|(ship_name, ship)| {
+      .map(|(ship_name, ship)| {
         let ship = ship.read().unwrap();
-        ships.contains(ship_name) || (ship.team == team && ship.squadron.as_deref() == Some(name))
+        // The craft aboard count towards the squadron they will launch into.
+        let aboard = ship
+          .embarked
+          .iter()
+          .filter(|craft| ships.contains(&craft.get_name().to_string()) || in_squadron(craft))
+          .count();
+        usize::from(ships.contains(ship_name) || in_squadron(&ship)) + aboard
       })
-      .count();
+      .sum::<usize>();
     if size > MAX_SQUADRON {
       return Err(format!(
         "A squadron holds at most {MAX_SQUADRON} ships; {name} would have {size}."
@@ -2186,7 +2291,8 @@ impl Entities {
       }
       ship.squadron = Some(name.to_string());
     }
-    Ok(format!("{} ship(s) joined {name}.", found.len()))
+    set_aboard(Some(name), orders);
+    Ok(format!("{} ship(s) joined {name}.", ships.len()))
   }
 
   /// Rename `team`'s squadron `from` to `to`.
@@ -6754,6 +6860,59 @@ mod tests {
       km < crate::ship::DEFAULT_POST_RADIUS_KM,
       "Ailreaui starts {km:.0} km from Europa"
     );
+  }
+
+  /// A ship added aboard a carrier goes into a berth, off the plot, and can
+  /// be given the squadron she will launch into while she is there.
+  #[tokio::test]
+  async fn a_ship_added_aboard_goes_into_a_berth() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    let wind = templates.get("Strike Carrier - Wind").unwrap();
+    let fighter = templates.get("Light Fighter").unwrap();
+    let mut entities = Entities::new();
+    entities.add_ship("Sirocco".to_string(), Vec3::zero(), Vec3::zero(), wind, None, None);
+    entities.add_ship("Gale 01".to_string(), Vec3::zero(), Vec3::zero(), fighter, None, None);
+    entities.add_ship("Gale 02".to_string(), Vec3::zero(), Vec3::zero(), fighter, None, None);
+
+    // Refused: herself, a ship with no berths, a ship that is not there, a
+    // craft too big for any berth.
+    assert!(entities.berth_check("Sirocco", "Sirocco", 75_000).is_err());
+    assert!(entities.berth_check("Sirocco", "Gale 01", 75_000).is_err());
+    assert!(entities.berth_check("Gale 01", "Mistral", 10).is_err());
+    assert!(entities.berth_check("Gale 01", "Sirocco", 50).is_err());
+    assert!(entities.berth_check("Gale 01", "Sirocco", 10).is_ok());
+
+    entities.embark_ship("Gale 01", "Sirocco").unwrap();
+    assert!(!entities.ships.contains_key("Gale 01"));
+    {
+      let carrier = entities.ships["Sirocco"].read().unwrap();
+      let craft = carrier.embarked.iter().find(|craft| craft.get_name() == "Gale 01").unwrap();
+      assert_eq!(craft.carrier.as_deref(), Some("Sirocco"));
+      assert!(craft.aboard.is_none());
+      assert_eq!(carrier.berths_free().len(), 79);
+    }
+
+    // The squadron reaches her through her carrier, and counts her.
+    let reply = entities
+      .set_squadron(&["Gale 01".to_string(), "Gale 02".to_string()], Some("Wind Wing 1"))
+      .unwrap();
+    assert_eq!(reply, "2 ship(s) joined Wind Wing 1.");
+    let aboard_squadron = entities.ships["Sirocco"]
+      .read()
+      .unwrap()
+      .embarked
+      .iter()
+      .find(|craft| craft.get_name() == "Gale 01")
+      .and_then(|craft| craft.squadron.clone());
+    assert_eq!(aboard_squadron.as_deref(), Some("Wind Wing 1"));
+    assert_eq!(
+      entities.ships["Gale 02"].read().unwrap().squadron.as_deref(),
+      Some("Wind Wing 1")
+    );
+    entities.set_squadron(&["Gale 01".to_string()], None).unwrap();
+    let left = entities.ships["Sirocco"].read().unwrap().embarked[0].squadron.clone();
+    assert!(left.is_none());
   }
 
   /// Keelhaven as the capital ships plan sets it: Red holds Keelhaven with

@@ -130,6 +130,10 @@ pub struct AddShipMsg {
   /// Standing orders the ship starts with.
   #[serde(default)]
   pub orders: Option<String>,
+  /// The carrier this ship starts aboard, in one of her berths and off the
+  /// plot, as a scenario file's `aboard` does. Absent puts her in space.
+  #[serde(default)]
+  pub aboard: Option<String>,
 }
 
 /// Start or stop one software package.
@@ -816,6 +820,9 @@ serde_with::serde_conv!(
     }
 );
 
+// Read once off the wire and matched on, so the biggest variant's size is of
+// no account.
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
@@ -926,6 +933,7 @@ mod tests {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     };
     let json = json!({
         "name": "ship1",
@@ -959,6 +967,7 @@ mod tests {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     };
     let json = json!({
         "name": "ship1",

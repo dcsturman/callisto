@@ -398,6 +398,13 @@ impl PlayerManager {
 
     let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
     let name = ship.name.clone();
+    // A berth is checked before the ship exists, so a refusal leaves nothing
+    // behind on the plot.
+    if let Some(carrier) = &ship.aboard {
+      entities
+        .berth_check(&name, carrier, design.displacement)
+        .map_err(|problem| format!("(PlayerManager.add_ship) {problem}"))?;
+    }
     entities.add_ship(ship.name, ship.position, ship.velocity, &design, ship.crew, ship.weapons);
 
     // Applied after creation rather than threaded through `add_ship`, which
@@ -456,6 +463,13 @@ impl PlayerManager {
     // A ship joining a team takes up its fleet's orders.
     if ship.team.is_some() {
       entities.take_up_fleet_orders(&name);
+    }
+
+    // Last, so she goes aboard with everything above already set.
+    if let Some(carrier) = &ship.aboard {
+      entities
+        .embark_ship(&name, carrier)
+        .map_err(|problem| format!("(PlayerManager.add_ship) {problem}"))?;
     }
 
     Ok("Add ship action executed".to_string())
