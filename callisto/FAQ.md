@@ -696,6 +696,15 @@ hologram projector) still come after the drive.
 A carrier destroyed takes every craft in her berths with her, each with a line. A carrier that jumps
 takes them with her, and they count as departed with her.
 
+#### Decision — what the consoles say before the engine does
+The helm's *Land on* shows the engine's gates (own side, pilot's station, Short at the end of the
+round, the velocity limit, a berth that takes her) worked out from the committed plans, and the
+check's terms and odds, so a landing that will be turned away is marked before it is ordered; the
+order can still be given, since it stands from round to round, and only the engine knows how many
+craft the decks have taken that round and what the dice say. The Flight Deck card cuts a pick at
+the tubes' rate and says how many wait. A wing in a carrier's berths is listed in the roster as
+"<wing> (aboard <carrier>)" and nowhere else: she is not a target, a contact or a marker.
+
 #### Omission — docking clamps, battle riders and tenders
 A design may state docking clamps (`DockingClamp`), and they are read and shown, but nothing docks to
 one yet: a clamped ship on the plot moving with her carrier is a different model from a berth. Battle
