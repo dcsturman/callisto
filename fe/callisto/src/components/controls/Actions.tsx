@@ -39,6 +39,17 @@ export type ActionType = {
     reviveWatch?: number | null;
     /** A revive withdrawn and not yet seen gone from the server. Transient. */
     clearRevive?: boolean;
+    /**
+     * The craft the captain launches this round, by name (carrier only). A
+     * new list replaces the last; `null` is none queued.
+     */
+    launch?: string[] | null;
+    /** A launch withdrawn and not yet seen gone from the server. Transient. */
+    clearLaunch?: boolean;
+    /** The carrier the pilot is landing on (craft only). `null` is none. */
+    land?: string | null;
+    /** A landing withdrawn and not yet seen gone from the server. Transient. */
+    clearLand?: boolean;
     // Transient anti-actions. `clearSensors` and `clearEngineers` hold the
     // crew positions whose queued action the user explicitly cancelled, and
     // are emitted as `ClearSensorAction` / `ClearEngineerAction` naming that
@@ -234,6 +245,19 @@ export function actionPayload(actions: ActionType) {
       fire_actions.push({ReviveWatch: {count: value.reviveWatch}});
     } else if (value.clearRevive) {
       fire_actions.push({ReviveWatch: {count: 0}});
+    }
+
+    // Flight operations: the carrier's Launch, withdrawn with an empty
+    // list, and the craft's Land, withdrawn with ClearLand.
+    if (value.launch != null && value.launch.length > 0) {
+      fire_actions.push({Launch: {craft: value.launch}});
+    } else if (value.clearLaunch) {
+      fire_actions.push({Launch: {craft: []}});
+    }
+    if (value.land != null && value.land !== "") {
+      fire_actions.push({Land: {carrier: value.land}});
+    } else if (value.clearLand) {
+      fire_actions.push("ClearLand");
     }
 
     // Anti-actions: explicit "strip queued sensor/engineer/leadership"
@@ -549,6 +573,21 @@ export function payloadToAction(payload: object[]): ActionType {
     );
     result[shipName] = {...result[shipName], reviveWatch: revive?.ReviveWatch.count ?? null};
 
+    // The flight orders, if any are queued.
+    const launch = actions.find(
+      (action): action is {Launch: {craft: string[]}} =>
+        typeof action === "object" && Object.hasOwn(action, "Launch")
+    );
+    const land = actions.find(
+      (action): action is {Land: {carrier: string}} =>
+        typeof action === "object" && Object.hasOwn(action, "Land")
+    );
+    result[shipName] = {
+      ...result[shipName],
+      launch: launch == null || launch.Launch.craft.length === 0 ? null : launch.Launch.craft,
+      land: land?.Land.carrier ?? null,
+    };
+
     // Anti-action flags are transient client-only state; server never echoes them.
     result[shipName] = {
       ...result[shipName],
@@ -556,6 +595,8 @@ export function payloadToAction(payload: object[]): ActionType {
       clearEngineers: [],
       clearLeadership: false,
       clearRevive: false,
+      clearLaunch: false,
+      clearLand: false,
     };
   }
   return result;

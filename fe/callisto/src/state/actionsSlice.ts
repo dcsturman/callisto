@@ -42,6 +42,10 @@ const newShipAction = () => {
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
     reviveWatch: null as number | null,
     clearRevive: false,
+    launch: null as string[] | null,
+    clearLaunch: false,
+    land: null as string | null,
+    clearLand: false,
     pendingBoosts: [] as {target: BoostTarget; on: boolean; at: number}[],
     clearSensors: [] as number[],
     clearEngineers: [] as number[],
@@ -233,6 +237,38 @@ export const actionsSlice = createSlice({
       } else {
         slot.clearRevive = slot.reviveWatch != null;
         slot.reviveWatch = null;
+      }
+      updateActions(state);
+    },
+    /**
+     * The carrier's Launch: the craft to send out this round, by name. A new
+     * list replaces the last and an empty one withdraws it, which is what
+     * the server does with an empty Launch. The captain's leadership check
+     * is untouched: flight operations are an order, not the captain's roll.
+     */
+    setLaunch: (state, item: PayloadAction<{shipName: string; craft: string[]}>) => {
+      const slot = (state[item.payload.shipName] ??= newShipAction());
+      if (item.payload.craft.length > 0) {
+        slot.launch = [...item.payload.craft];
+        slot.clearLaunch = false;
+      } else {
+        slot.clearLaunch = slot.launch != null;
+        slot.launch = null;
+      }
+      updateActions(state);
+    },
+    /**
+     * The craft's Land on a carrier, which stands until she is aboard or it
+     * is withdrawn with `null`.
+     */
+    setLand: (state, item: PayloadAction<{shipName: string; carrier: string | null}>) => {
+      const slot = (state[item.payload.shipName] ??= newShipAction());
+      if (item.payload.carrier != null) {
+        slot.land = item.payload.carrier;
+        slot.clearLand = false;
+      } else {
+        slot.clearLand = slot.land != null;
+        slot.land = null;
       }
       updateActions(state);
     },
@@ -461,6 +497,8 @@ export const actionsSlice = createSlice({
 export const {
   setActions,
   setReviveWatch,
+  setLaunch,
+  setLand,
   setSensorAction,
   setEngineerAction,
   toggleBoost,

@@ -1008,6 +1008,10 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
         assistGunners: args.ship.assist_gunners ?? false,
       }
     : null;
+  // The flight orders: the captain's Launch and the pilot's Land. Neither
+  // can be inspired, so they are lines rather than rows with a tick.
+  const launch = shows(ViewMode.Captain) ? (queued?.launch ?? null) : null;
+  const land = shows(ViewMode.Pilot) ? (queued?.land ?? null) : null;
 
   // Ships this one could be looking for. Detection is free and needs no
   // order, so these are not queued actions -- they are here because a captain
@@ -1028,6 +1032,8 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
   );
 
   const anything =
+    launch != null ||
+    land != null ||
     fireActions.length > 0 ||
     pdActions.length > 0 ||
     sensorActions.some((sensor) => sensor.action !== SensorAction.None) ||
@@ -1039,16 +1045,24 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
   }
 
   return (
-    <Actions
-      fireActions={fireActions}
-      pointDefenseActions={pdActions}
-      sensorActions={sensorActions}
-      engineerActions={engineerActions}
-      pilotState={pilotState}
-      searchTargets={searchTargets}
-      weapons={shipWeapons(args.ship, templates)}
-      gunnery={args.ship.crew?.gunnery}
-    />
+    <>
+      {launch != null && (
+        <p className="plan-accel-text flight-order-line">
+          Launch {launch.length} craft{launch.length <= 4 ? `: ${launch.join(", ")}` : ""}
+        </p>
+      )}
+      {land != null && <p className="plan-accel-text flight-order-line">Land on {land}</p>}
+      <Actions
+        fireActions={fireActions}
+        pointDefenseActions={pdActions}
+        sensorActions={sensorActions}
+        engineerActions={engineerActions}
+        pilotState={pilotState}
+        searchTargets={searchTargets}
+        weapons={shipWeapons(args.ship, templates)}
+        gunnery={args.ship.crew?.gunnery}
+      />
+    </>
   );
 }
 
