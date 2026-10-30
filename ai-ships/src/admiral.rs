@@ -355,14 +355,64 @@ fn write_squadrons(
     };
     let _ = writeln!(
       out,
-      "- {name}: {}; hull {}%{}; {:.1} km/s{nearest}{script}. Ships: {}",
+      "- {name}: {}; hull {}%{}; {:.1} km/s{nearest}{script}{}. Ships: {}",
       make_up.join(", "),
       share(hull, built),
       stock(ships.iter().copied()),
       velocity.magnitude() / 1000.0,
+      flight_deck(view, &ships),
       members.join(", ")
     );
   }
+}
+
+/// What a squadron's carriers hold and can do, and whose craft its ships
+/// are: "; Sirocco carries 80 craft (80 x Light Fighter), 60 ready,
+/// launches 10 a round, recovers 10 a round, 0 out" and "; craft of
+/// Sirocco". Empty for a squadron with neither.
+fn flight_deck(view: &Observation, ships: &[&Ship]) -> String {
+  let mut out = String::new();
+  for ship in ships.iter().filter(|ship| ship.is_carrier()) {
+    let deck = ship.flight_deck.clone().or_else(|| ship.flight_deck()).unwrap_or_default();
+    let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+    for craft in &ship.embarked {
+      *kinds.entry(craft.design.name.as_str()).or_default() += 1;
+    }
+    let make_up: Vec<String> = kinds.iter().map(|(design, n)| format!("{n} x {design}")).collect();
+    let out_now = view
+      .own
+      .iter()
+      .filter(|craft| craft.carrier.as_deref() == Some(ship.get_name()))
+      .count();
+    let rate = |per_round: u32| {
+      if per_round == 0 {
+        "through the berths, held still for 1-3 rounds".to_string()
+      } else {
+        format!("{per_round} a round")
+      }
+    };
+    let _ = write!(
+      out,
+      "; {} carries {} craft ({}), {} ready, launches {}, recovers {}, {out_now} out",
+      ship.get_name(),
+      ship.embarked.len(),
+      if make_up.is_empty() {
+        "none".to_string()
+      } else {
+        make_up.join(", ")
+      },
+      tactics::ready_craft(ship).len(),
+      rate(deck.launch_per_round),
+      rate(deck.recover_per_round),
+    );
+  }
+  let mut carriers: Vec<&str> = ships.iter().filter_map(|ship| ship.carrier.as_deref()).collect();
+  carriers.sort_unstable();
+  carriers.dedup();
+  if !carriers.is_empty() && ships.iter().all(|ship| ship.carrier.is_some()) {
+    let _ = write!(out, "; craft of {}", carriers.join(", "));
+  }
+  out
 }
 
 /// What the commander is shown this call: the round, the orders, the
@@ -469,6 +519,21 @@ fn described(schema: &Value, what: &str) -> Value {
   schema
 }
 
+/// A step's `flight`: a [`crate::fleet::FlightOrder`].
+fn flight_schema() -> Value {
+  json!({
+    "type": "object",
+    "description": "Flight operations, for a squadron with a carrier or made of her craft. Leave it out to let the crews run them: they launch when an enemy is within Very Long and bring craft home when spent.",
+    "properties": {
+      "op": {"type": "string", "enum": ["launch", "recover", "hold"],
+        "description": "launch: the carriers put their craft out, and craft already out stay out until spent. recover: every craft comes home. hold: craft aboard stay aboard, craft out stay out."},
+      "count": {"type": "integer", "description": "launch only: until this many of each carrier's craft are out; all of them if left out."},
+      "wings": {"type": "array", "items": {"type": "string"}, "description": "launch only: only craft of these squadrons, as listed under Our squadrons."}
+    },
+    "required": ["op"]
+  })
+}
+
 /// The `give_orders` tool's parameters, as JSON Schema: a [`Directive`].
 #[must_use]
 pub fn schema() -> Value {
@@ -533,6 +598,7 @@ pub fn schema() -> Value {
       "threats": {"type": "integer", "description": "Enemies that can hit the squadron it may also engage. Default 8."},
       "movement": movement,
       "dodge": {"type": "integer", "description": "G of thrust each ship keeps back to dodge, at least; the rest of her drive is for moving. Leave it out to let the crews choose."},
+      "flight": flight_schema(),
       "until": until
     }
   });
@@ -844,7 +910,7 @@ mod tests {
       .skip(1)
       .filter_map(|rest| rest.split("```").next())
       .collect();
-    assert_eq!(examples.len(), 3);
+    assert_eq!(examples.len(), 4);
     for example in examples {
       let directive: Result<Directive, _> = serde_json::from_str(example);
       assert!(directive.is_ok(), "{example}: {directive:?}");
@@ -857,5 +923,73 @@ mod tests {
     for field in ["say", "squadrons", "call_me_when"] {
       assert!(schema["properties"][field].is_object(), "{field}");
     }
+    let step = &schema["properties"]["squadrons"]["items"]["properties"]["steps"]["items"]["properties"];
+    assert_eq!(step["flight"]["properties"]["op"]["enum"], json!(["launch", "recover", "hold"]));
+  }
+
+  /// A carrier's line says what she carries and what her deck can do; a
+  /// squadron of her craft says whose they are.
+  #[tokio::test]
+  async fn the_situation_shows_the_flight_deck() {
+    use callisto::ship::{load_ship_templates_from_dir, replace_ship_templates, FeatureKind, ShipFeature};
+    replace_ship_templates(load_ship_templates_from_dir("../callisto/ship_templates").await.unwrap());
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Carrier".to_string(),
+      displacement: 50_000,
+      power: 60_000,
+      features: vec![
+        ShipFeature {
+          name: "Docking spaces".to_string(),
+          power: 0,
+          default_on: true,
+          kind: Some(FeatureKind::DockingSpace {
+            craft_tons: 50,
+            count: 10,
+          }),
+        },
+        ShipFeature {
+          name: "Launch tube".to_string(),
+          power: 500,
+          default_on: true,
+          kind: Some(FeatureKind::LaunchTube {
+            craft_tons: 50,
+            count: 1,
+          }),
+        },
+      ],
+      ..Default::default()
+    });
+    let mut carrier = Ship::new(
+      "Sirocco".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    let fighter = Arc::new(ShipDesignTemplate {
+      name: "Light Fighter".to_string(),
+      displacement: 10,
+      ..Default::default()
+    });
+    for n in 1..=3 {
+      carrier.embark(ship(&format!("Wing 1 {n}"), Some("Wing 1"), None));
+    }
+    carrier
+      .embarked
+      .iter_mut()
+      .for_each(|craft| craft.design = Arc::clone(&fighter));
+    let mut out = ship("Wing 2 1", Some("Wing 2"), None);
+    out.carrier = Some("Sirocco".to_string());
+    let view = Observation {
+      own: vec![carrier, out],
+      ..Observation::default()
+    };
+    let text = situation(&view, &Orders::default(), &Directive::default(), &|_| None);
+    assert!(
+      text.contains("Sirocco carries 3 craft (3 x Light Fighter), 3 ready, launches 10 a round, recovers through the berths, held still for 1-3 rounds, 1 out"),
+      "{text}"
+    );
+    assert!(text.contains("craft of Sirocco. Ships: Wing 2 1"), "{text}");
   }
 }

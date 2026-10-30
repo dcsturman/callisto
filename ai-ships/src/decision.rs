@@ -666,8 +666,10 @@ fn intent_of(order: &ShipOrder, view: &Observation, notes: &mut Vec<String>) -> 
     fire,
     defend: order.defend.clone(),
     // Reloading is left to tactics: spare gunners first, a mount's own gunner
-    // only where it gives up nothing.
+    // only where it gives up nothing. Flight operations likewise: the crews
+    // launch when the enemy is near and bring craft home when spent.
     reload: None,
+    flight: None,
     sensors,
     engineering,
     software: order

@@ -1,6 +1,6 @@
 import json
 import os
-FS = "Fighter Screen.json"; ABC = "Aslan Border Clash.json"; SW = "Fighter Swarm.json"
+FS = "Fighter Screen.json"; ABC = "Aslan Border Clash.json"; SW = "Fighter Swarm.json"; KH = "Keelhaven.json"
 PK = "Picket at the Refuelling Point.json"; CV = "Convoy Escape.json"; TB = "Thebus.json"
 LF = "Light Fighter"; KIN = "Colonial Cruiser - Kinunir"; PW = "Pocket Warship - Halaheike"
 DE = "Destroyer Escort - Chrysanthemum"; EE = "Ekawsiykua Escort"; MC = "Mercenary Cruiser - Type C (armed)"
@@ -14,6 +14,7 @@ SW_SQ = {"Vigilant": ["IMS Vigilant"], "Hand": ["Iron Hand"]}
 SWR_SQ = {"Alpha": ["Talon 0"], "Bravo": ["Talon 1", "Talon 2"]}
 PK_SQ = {"Picket": ["IMS Vigilant"], "Boats": ["SDB"]}
 CV_SQ = {"Escort": ["IMS"], "Convoy": ["Void Trader"]}
+KH_SQ = {"Battle Line": ["Sirocco", "Intrepid", "Dauntless"], "Screen": ["Arcturus", "Ishkur", "Ninurta", "Taipan", "Mamba", "Krait"]}
 CANT = ["cannot", "can't", "can not", "unable", "not possible", "isn't possible", "no way", "not able",
         "not supported", "no order", "no means", "nearest"]
 
@@ -313,6 +314,24 @@ case("abc-red-tonnage", "tricky", ABC, "Red", ABCR_SQ,
      [any_of(c("Iyre", "engage.max_tons", lte=500), c("Iyre", "engage.designs", contains=PC), what="Iyre on the small ones"),
       any_of(c("Warships", "engage.min_tons", gte=401), c("Warships", "engage.designs", contains=DE), what="Warships on the big"),
       any_of(c("Escorts", "engage.min_tons", gte=401), c("Escorts", "engage.designs", contains=DE), what="Escorts on the big")])
+
+# --- carriers: flight operations
+case("kh-hold-then-launch", "flight", KH, "Blue", KH_SQ,
+     {"fleet": "Keep the fighters aboard until the cruisers are fired on, then launch everything."},
+     [c("Battle Line", "flight.op", "first", eq="hold", what="first hold the craft"),
+      c("Battle Line", "until.fired_on", "first", eq=True, what="until fired on"),
+      c("Battle Line", "flight.op", "last", eq="launch", what="then launch"), steps_gte("Battle Line", 2)])
+case("kh-launch-now", "flight", KH, "Blue", KH_SQ, {"squadron": {"Battle Line": "Sirocco, launch all your fighters now."}},
+     [c("Battle Line", "flight.op", "first", eq="launch", what="launch"),
+      c("Battle Line", "flight.count", "first", absent=True, what="all of them"),
+      c("Screen", "flight", "all", absent=True, what="Screen has no flight order")])
+case("kh-launch-forty", "flight", KH, "Blue", KH_SQ, {"squadron": {"Battle Line": "Put forty fighters out and keep the rest aboard."}},
+     [c("Battle Line", "flight.op", "first", eq="launch"), c("Battle Line", "flight.count", "first", eq=40, what="forty")])
+case("kh-recover-and-jump", "flight", KH, "Blue", KH_SQ, {"fleet": "Recover the fighters, then jump out."},
+     [c("Battle Line", "flight.op", "first", eq="recover", what="recover first"), goal("Battle Line", "escape", "last"),
+      steps_gte("Battle Line", 2)])
+case("kh-crews-run-deck", "flight", KH, "Blue", KH_SQ, {"fleet": "Attack. Destroy the depot's defenders."},
+     [goal("all", "destroy"), eng_free("all"), c("Battle Line", "flight", "all", absent=True, what="the crews run the deck")])
 
 print(len(cases))
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "admiral_orders.json"), "w") as f:

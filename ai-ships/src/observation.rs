@@ -120,7 +120,7 @@ pub struct Exposure {
 }
 
 /// Everything one side may decide from.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Observation {
   pub round: u32,
   pub team: Option<Team>,
