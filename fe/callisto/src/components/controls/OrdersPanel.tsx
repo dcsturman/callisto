@@ -5,6 +5,7 @@ import { Ship } from "lib/entities";
 import { isReferee } from "lib/view";
 import { OrdersScope, setOrders, setShipController } from "lib/serverManager";
 import { squadronShips, teamSquadrons } from "lib/squadrons";
+import { aboardSummary } from "lib/carriers";
 import { TEAMS, TEAM_CSS, Team } from "lib/teams";
 import { useAppSelector } from "state/hooks";
 import { aiCrewsSelector, entitiesSelector } from "state/serverSlice";
@@ -51,7 +52,9 @@ const targetsFor = (ships: Ship[], team: string | null, fleet: boolean): Target[
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((ship) => ({
       key: `ship:${ship.name}`,
-      label: ship.name,
+      // A carrier's craft are not ships of the list, so she says how many
+      // she carries: "Sirocco (80 Light Fighter aboard)".
+      label: aboardSummary(ship) == null ? ship.name : `${ship.name} (${aboardSummary(ship)})`,
       scope: "Ship",
       through: ship.name,
       current: textOf(ship.orders),

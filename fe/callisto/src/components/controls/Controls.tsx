@@ -40,6 +40,7 @@ import { squadronShips } from "lib/squadrons";
 import { SquadronPicker } from "components/controls/SquadronPicker";
 import { SquadronsPanel } from "components/controls/SquadronsPanel";
 import { SquadronRoster } from "components/controls/SquadronRoster";
+import { aboardSummary, describeFacilities } from "lib/carriers";
 import { moveCameraTo } from "lib/camera";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
@@ -443,6 +444,18 @@ export function Controls() {
               </div>
             )}
             <ShipCommand ship={computerShip} />
+            {/* A carrier's deck in one line: her fittings, and what she has
+                aboard, which the plot cannot show. */}
+            {computerShip.flight_deck != null && (
+              <p className="carrier-line" title={describeFacilities(computerShipDesign) || undefined}>
+                Flight deck: {describeFacilities(computerShipDesign)}.{" "}
+                {aboardSummary(computerShip) ?? "Nothing aboard"}
+                {computerShip.pinned ? " · held still this round" : ""}
+              </p>
+            )}
+            {computerShip.carrier != null && (
+              <p className="carrier-line">Carrier: {computerShip.carrier}</p>
+            )}
             <h2 className="control-form">Current Position (km)</h2>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
@@ -762,7 +775,10 @@ export function EntityInfoWindow(args: { entity: Entity }) {
         {isPlanet ? (
           <p>Radius (km): {radiusKm}</p>
         ) : isShip ? (
-          <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
+          <>
+            <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
+            {aboardSummary(args.entity as Ship) != null && <p>Craft: {aboardSummary(args.entity as Ship)}</p>}
+          </>
         ) : "source" in args.entity ? (
           <p>
             {missileCount(args.entity as Missile) > 1

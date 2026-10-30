@@ -918,8 +918,9 @@ const LOG_EVERYTHING_UP_TO = 40;
 function handleEntities(json: object) {
   const entities = json as EntityList;
 
-  // Convert all ship plans to G's from m/s^2
-  entities.ships.forEach((ship) => {
+  // Convert all ship plans to G's from m/s^2, the craft in a carrier's
+  // berths included: they come out with whatever plan they carry.
+  const toG = (ship: Ship) => {
     ship.plan[0][0] = [
       ship.plan[0][0][0] / G,
       ship.plan[0][0][1] / G,
@@ -932,7 +933,9 @@ function handleEntities(json: object) {
         ship.plan[1][0][2] / G,
       ];
     }
-  });
+    (ship.embarked ?? []).forEach(toG);
+  };
+  entities.ships.forEach(toG);
 
   console.groupCollapsed(
     `Received Entities: ${entities.ships.length} ships, ${entities.missiles.length} missiles, ${entities.planets.length} planets`,

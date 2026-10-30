@@ -8,6 +8,7 @@ import { CornerPanel } from "lib/CornerPanel";
 import { POST_COLOUR, fromPost } from "lib/posts";
 import { teamLabelColor } from "lib/teams";
 import { bandName, formatBands, formatRange, rangeBetween } from "lib/range";
+import { aboardCount } from "lib/carriers";
 
 /**
  * Compact at-a-glance roster of every ship in the current scenario. Lives
@@ -92,6 +93,7 @@ export function ShipSummary() {
         // A Hold ship's place relative to her post: whether she is holding.
         post: fromPost(entities, ship),
         team: ship.team,
+        aboard: aboardCount(ship),
         range:
           rangeFrom == null || rangeFrom.name === ship.name
             ? null
@@ -141,6 +143,13 @@ export function ShipSummary() {
               className="ship-summary-name"
               style={{color: teamLabelColor(row.team, {undetected: row.undetected})}}>
               {row.name}
+              {/* Craft in her berths are not on the plot, so the count is
+                  the only sign of them. */}
+              {row.aboard > 0 && !row.undetected && (
+                <span className="ship-summary-aboard" title="Craft aboard, in her berths">
+                  {` \u2022 ${row.aboard} aboard`}
+                </span>
+              )}
               {/* Not for a ship this player cannot see: where she is would
                   give her away. */}
               {row.post && !row.undetected && (

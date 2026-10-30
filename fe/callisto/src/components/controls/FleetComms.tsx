@@ -7,6 +7,7 @@ import { useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { isReferee } from "lib/view";
 import { ShipNameTag, WithShipNames } from "components/controls/ShipNameTag";
+import { aboardSummary } from "lib/carriers";
 
 /** One AI side: its ships, and what their captains last said. */
 interface Side {
@@ -98,7 +99,11 @@ export function FleetComms() {
               )}
               {side.ships.map((ship) => (
                 <p key={ship.name} className="fleet-comms-line">
-                  <ShipNameTag ship={ship} />:{" "}
+                  <ShipNameTag ship={ship} />
+                  {aboardSummary(ship) != null && (
+                    <span className="fleet-comms-aboard"> ({aboardSummary(ship)})</span>
+                  )}
+                  :{" "}
                   {ship.ai_report?.status === "Deciding" ? (
                     "\u2026"
                   ) : ship.ai_report?.rationale != null ? (

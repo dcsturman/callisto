@@ -111,3 +111,54 @@ describe("SquadronRoster", () => {
     expect(store.getState().ui.fleetSelection).toEqual(["Lance 2"]);
   });
 });
+
+describe("SquadronRoster, craft aboard a carrier", () => {
+  const craft = (name: string, squadron: string) =>
+    ship(name, "Blue", squadron, { current_hull: 4, design: "Light Fighter" } as Partial<Ship>);
+
+  beforeEach(() => {
+    store.dispatch(
+      setEntities({
+        ships: [
+          ship("Sirocco", "Blue", undefined, {
+            position: [5_000, 0, 0],
+            flight_deck: { berths: 80, berths_free: 77, launch_per_round: 10, recover_per_round: 10, tube_tons: 100, deck_tons: 100 },
+            embarked: [craft("Gale 01", "Wind Wing 1"), craft("Gale 02", "Wind Wing 1"), craft("Gale 03", "Wind Wing 2")],
+          }),
+          ship("Gale 04", "Blue", "Wind Wing 2"),
+        ],
+        missiles: [],
+        planets: [],
+        metadata: { name: "test", description: "" },
+        filename: "",
+      }),
+    );
+  });
+
+  it("lists an embarked wing under its carrier, not as an empty squadron, and a split wing twice", () => {
+    render("Blue");
+    const lines = rows();
+    // Wind Wing 2 in space, the loose Sirocco, then the wings in her berths.
+    expect(lines.map((line) => line.replace(/\s+/g, " "))).toEqual([
+      expect.stringContaining("Wind Wing 2"),
+      expect.stringContaining("No squadron"),
+      expect.stringContaining("Wind Wing 1 (aboard Sirocco)"),
+      expect.stringContaining("Wind Wing 2 (aboard Sirocco)"),
+    ]);
+    expect(lines[2]).toContain("2");
+    expect(lines[3]).toContain("1");
+    // Nothing to tick or order until they launch, but Go finds the carrier.
+    const aboard = container.querySelectorAll("tr.roster-row")[2];
+    expect(button("Select", aboard)).toBeUndefined();
+    expect(button("Go", aboard)).toBeDefined();
+  });
+
+  it("folds open to the craft's names, each marked aboard", () => {
+    render("Blue");
+    act(() => (container.querySelectorAll("tr.roster-row")[2].querySelector(".roster-fold") as HTMLElement).click());
+    const craftRows = Array.from(container.querySelectorAll("tr.roster-ship")).map((row) => row.textContent ?? "");
+    expect(craftRows).toEqual([expect.stringContaining("Gale 01"), expect.stringContaining("Gale 02")]);
+    expect(craftRows[0]).toContain("aboard");
+    expect(container.querySelectorAll("tr.roster-ship input[type=checkbox]")).toHaveLength(0);
+  });
+});

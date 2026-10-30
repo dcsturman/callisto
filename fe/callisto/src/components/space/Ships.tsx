@@ -26,6 +26,7 @@ import { missileCount } from "lib/missileCount";
 import { isViewersOwn, undetectedTest } from "lib/contacts";
 import { Box, isBox, selectableShips, shipsInBox } from "lib/boxSelect";
 import { centroid } from "lib/squadrons";
+import { aboardCount } from "lib/carriers";
 import { missilePositions } from "lib/missileSwarm";
 import { isReferee } from "lib/view";
 import { useViewer } from "lib/viewer";
@@ -122,6 +123,7 @@ function Ship(args: {
 
   const { camera } = useThree();
   const textRef = useRef<Mesh>(null);
+  const badgeRef = useRef<Group>(null);
   const shipRef = useRef<Mesh>(null);
   const textGeoRef = useRef<TextGeometry>(null);
   const shipGeoRef = useRef<SphereGeometry>(null);
@@ -131,7 +133,16 @@ function Ship(args: {
       textRef.current.visible = !labelsUnderMarkers.has(args.ship.name);
       textRef.current.lookAt(camera.position);
     }
+    if (badgeRef.current != null) {
+      badgeRef.current.visible = !labelsUnderMarkers.has(args.ship.name);
+      badgeRef.current.lookAt(camera.position);
+    }
   });
+
+  // A carrier wears how many craft she has aboard: they are not on the
+  // plot, and the count is the only sign of them from here. Shown to those
+  // who can see her at all; an undetected ship gives nothing away.
+  const aboard = undetected ? 0 : aboardCount(args.ship);
 
   // The label's geometry is rebuilt whenever its arguments change, and an
   // options object made afresh on each render counts as a change: every
@@ -208,6 +219,13 @@ function Ship(args: {
             <textGeometry ref={textGeoRef} args={labelArgs} />
             <meshBasicMaterial attach="material" color={labelColor} />
           </mesh>
+        )}
+        {aboard > 0 && (
+          <group ref={badgeRef} position={[0.0, -2.5, 0.0]}>
+            <Text color={labelColor} fontSize={0.5} anchorY="top" anchorX="left">
+              {`${aboard} aboard`}
+            </Text>
+          </group>
         )}
       </group>
     </>

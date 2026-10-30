@@ -4,6 +4,7 @@ import { Accordion } from "lib/Accordion";
 import { Ship } from "lib/entities";
 import { moveCameraTo } from "lib/camera";
 import { centroid, hullShare, squadronStep, teamSquadrons } from "lib/squadrons";
+import { embarkedSquadrons } from "lib/carriers";
 import { TEAMS, Team, teamLabelColor } from "lib/teams";
 import { useAppDispatch, useAppSelector } from "state/hooks";
 import { entitiesSelector, templatesSelector } from "state/serverSlice";
@@ -15,6 +16,8 @@ interface Row {
   team: string | null;
   name: string | null;
   ships: Ship[];
+  /** The carrier these craft are aboard: not on the plot, so not selectable. */
+  aboard?: string;
 }
 
 /** "74%", or a dash when no design is known. */
@@ -30,7 +33,18 @@ const rowsFor = (ships: Ship[], team: string | null): Row[] => {
     ships: own.filter((ship) => ship.squadron === squadron.name).sort((a, b) => a.name.localeCompare(b.name)),
   }));
   const loose = own.filter((ship) => ship.squadron == null).sort((a, b) => a.name.localeCompare(b.name));
-  return loose.length > 0 ? [...named, { key: `${team ?? ""}\u0000`, team, name: null, ships: loose }] : named;
+  // Wings in a carrier's berths are not entities, so they would otherwise
+  // be missing from the roster altogether: a line each, under the carrier.
+  const embarked: Row[] = embarkedSquadrons(ships)
+    .filter((entry) => entry.team === team)
+    .map((entry) => ({
+      key: `${team ?? ""}\u0000${entry.name ?? ""}\u0000aboard:${entry.carrier}`,
+      team,
+      name: entry.name,
+      ships: entry.ships,
+      aboard: entry.carrier,
+    }));
+  return [...named, ...(loose.length > 0 ? [{ key: `${team ?? ""}\u0000`, team, name: null, ships: loose }] : []), ...embarked];
 };
 
 /**
@@ -55,6 +69,8 @@ export function SquadronRoster(args: { onlyTeam?: string | null }) {
     if (args.onlyTeam != null) {
       return [args.onlyTeam];
     }
+    // A craft aboard takes her carrier's team when she has none, so no team
+    // exists only in the berths.
     const present: (string | null)[] = TEAMS.filter((team) => entities.ships.some((ship) => ship.team === team));
     return entities.ships.some((ship) => ship.team == null) ? [...present, null] : present;
   }, [args.onlyTeam, entities.ships]);
@@ -86,8 +102,9 @@ export function SquadronRoster(args: { onlyTeam?: string | null }) {
               {rows.map((row) => {
                 const isOpen = open.includes(row.key);
                 const focused = row.name != null && focus?.name === row.name && (focus?.team ?? null) === row.team;
-                const step = squadronStep(row.ships, row.name);
-                const label = row.name ?? "No squadron";
+                const step = row.aboard == null ? squadronStep(row.ships, row.name) : null;
+                const label = `${row.name ?? "No squadron"}${row.aboard == null ? "" : ` (aboard ${row.aboard})`}`;
+                const carrier = row.aboard == null ? null : entities.ships.find((ship) => ship.name === row.aboard);
                 return (
                   <React.Fragment key={row.key}>
                     <tr className={focused ? "roster-row roster-row-focus" : "roster-row"}>
@@ -110,19 +127,25 @@ export function SquadronRoster(args: { onlyTeam?: string | null }) {
                         {percent(hullShare(row.ships, templates))}
                       </td>
                       <td className="roster-actions">
+                        {/* Craft aboard cannot be ticked or ordered until they
+                            launch; Go finds their carrier. */}
+                        {row.aboard == null && (
+                          <button
+                            type="button"
+                            className="squadrons-link"
+                            title="Tick these ships for the Squadrons panel, and give this squadron orders"
+                            onClick={() => select(row)}
+                          >
+                            Select
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="squadrons-link"
-                          title="Tick these ships for the Squadrons panel, and give this squadron orders"
-                          onClick={() => select(row)}
-                        >
-                          Select
-                        </button>
-                        <button
-                          type="button"
-                          className="squadrons-link"
-                          title="Put the camera over them"
-                          onClick={() => moveCameraTo(cameraQuaternion, centroid(row.ships))}
+                          title={row.aboard == null ? "Put the camera over them" : `Put the camera over ${row.aboard}`}
+                          onClick={() =>
+                            moveCameraTo(cameraQuaternion, centroid(carrier == null ? row.ships : [carrier]))
+                          }
                         >
                           Go
                         </button>
@@ -136,6 +159,19 @@ export function SquadronRoster(args: { onlyTeam?: string | null }) {
                       </tr>
                     )}
                     {isOpen &&
+                      row.aboard != null &&
+                      row.ships.map((ship) => (
+                        <tr key={ship.name} className="roster-ship">
+                          <td className="roster-name">{ship.name}</td>
+                          <td className="roster-design">aboard</td>
+                          <td className="roster-hull">{percent(hullShare([ship], templates))}</td>
+                          <td className="roster-design" title={ship.design}>
+                            {ship.design}
+                          </td>
+                        </tr>
+                      ))}
+                    {isOpen &&
+                      row.aboard == null &&
                       row.ships.map((ship) => (
                         <tr key={ship.name} className="roster-ship">
                           <td className="roster-name">
