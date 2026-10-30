@@ -10,6 +10,7 @@
 
 pub mod batch;
 pub mod game;
+pub mod generate;
 #[cfg(feature = "python")]
 mod python;
 pub mod side_batch;
