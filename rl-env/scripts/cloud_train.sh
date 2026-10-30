@@ -23,6 +23,9 @@
 #            the private key is in 1Password, whose agent signs for it
 #            (~/.ssh/config sends every host to it), asking for approval
 #   EVERY    seconds between copies home (default 600)
+#   FETCH_ONLY  1 to skip set-up and starting: only copy home a run already
+#            training on the pod, until it is done (after this Mac slept, or
+#            the copying stopped). <hours> and the settings are ignored.
 set -u
 H=$1; P=$2; NAME=$3; HOURS=$4; shift 4
 UPLOAD=${UPLOAD:-checkpoints/side-5/final.pt checkpoints/side-20-1/final.pt}
@@ -42,6 +45,7 @@ mkdir -p $HERE/logs
 say() { echo "$(date '+%H:%M') $*" | tee -a $LOG; }
 cd $HERE
 
+if [ -z "${FETCH_ONLY:-}" ]; then
 say "setting up $H:$P for $NAME"
 "${SSH[@]}" true < /dev/null || { say "cannot reach the pod"; exit 1; }
 scp -q -o ControlPath=$C -P $P scripts/cloud_setup.sh scripts/pod_supervise.sh "root@${H}:"
@@ -81,10 +85,16 @@ fi
 [ "$WANDB" = 1 ] && say "W&B is signed in"
 
 DEADLINE=$(( $(date +%s) + HOURS * 3600 ))
+# A marker left by an earlier attempt under this name would read as this
+# run being done at the first check.
+"${SSH[@]}" "rm -f callisto/rl-env/done-$NAME callisto/rl-env/fetched-$NAME" < /dev/null
 # Detached from this connection entirely (its own session, no terminal, no
 # stdin), or ssh waits for it to finish.
 "${SSH[@]}" "cd callisto/rl-env && { setsid nohup bash scripts/pod_supervise.sh $DEADLINE $NAME ${(q)@} < /dev/null > /dev/null 2>&1 & }" < /dev/null
 say "training $NAME, deadline $(date -r $DEADLINE '+%a %H:%M')"
+else
+  say "copying $NAME home from $H:$P"
+fi
 
 fetch() {
   mkdir -p checkpoints/$NAME runs/$NAME
