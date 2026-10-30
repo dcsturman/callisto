@@ -18,6 +18,8 @@ interface Target {
   scope: OrdersScope;
   through: string;
   current: string;
+  /** A squadron's ships, by name. */
+  members?: string[];
 }
 
 const textOf = (orders: string | undefined) => (orders ?? "").trim();
@@ -46,6 +48,7 @@ const targetsFor = (ships: Ship[], team: string | null, fleet: boolean): Target[
       scope: "Squadron",
       through: squadron.ships[0],
       current: textOf(members.find((ship) => ship.squadron_orders)?.squadron_orders),
+      members: squadron.ships,
     };
   });
   const each: Target[] = [...ships]
@@ -61,6 +64,18 @@ const targetsFor = (ships: Ship[], team: string | null, fleet: boolean): Target[
     }));
   return [...fleetTarget, ...squadrons, ...each];
 };
+
+/** The orders a new order to `target` replaces: the newest order wins, so
+ *  the fleet's replaces every squadron's and ship's, a squadron's its
+ *  ships'. */
+const replacedBy = (target: Target, targets: Target[]): Target[] =>
+  targets.filter(
+    (t) =>
+      t.current !== "" &&
+      (target.scope === "Fleet"
+        ? t.scope !== "Fleet"
+        : target.scope === "Squadron" && t.scope === "Ship" && (target.members ?? []).includes(t.through)),
+  );
 
 /** Orders in force, ships given the same orders read as one line. */
 interface InForce {
@@ -159,6 +174,7 @@ export function OrdersPanel() {
   const commanded = targets.filter((t) => t.scope === "Ship").map((t) => t.through);
   const peopled = entities.ships.filter((ship) => commanded.includes(ship.name) && ship.controller !== "AI");
   const inForce = groupInForce(targets.filter((t) => t.current !== ""));
+  const replaced = draft.trim() === "" ? [] : replacedBy(target, targets);
 
   return (
     <CornerPanel id="orders-panel" title="Orders" className="computer-window" tutorial="orders-panel">
@@ -231,6 +247,11 @@ export function OrdersPanel() {
           }
         }}
       />
+      {replaced.length > 0 && (
+        <p className="orders-panel-unread" title={replaced.map((t) => t.label).join(", ")}>
+          Replaces the orders to {shipsLabel(replaced.map((t) => t.label))}.
+        </p>
+      )}
       <div className="orders-panel-buttons">
         <button type="button" className="blue-button orders-panel-give" disabled={draft.trim() === target.current} onClick={send}>
           Give orders

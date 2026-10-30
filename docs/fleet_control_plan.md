@@ -303,6 +303,7 @@ By category (cases right; original prompt, then final):
 - **Layering:**
   - squadron orders add to the fleet's, and win only where the two conflict, with a one-line example;
   - a ship's own script still carries her fleet's and squadron's orders.
+  - **Later (2026-10-30): the newest order wins.** Giving the fleet orders withdraws every squadron's and ship's; giving a squadron orders withdraws its ships' (`Entities::set_orders`). Any narrower order the admiral sees is therefore newer, so "narrower wins where they differ" still holds. A fleet order may carve out exceptions by name ("everyone except Wing 1 engage; Wing 1 screen the *Cleon*"), and the Orders panel lists what a new order replaces before it is sent.
 - **What cannot be expressed:** a list (boarding, taking a ship alive, aiming at drives or weapons, formations, ends the scripts cannot test). `say` must name the part not ordered.
 - **Names:** use only names the situation lists. An unidentified enemy cannot be named: say so, and ask for `new_enemies`.
 - **`until`:** it goes on the step it ends, with an example.

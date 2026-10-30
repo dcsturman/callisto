@@ -2331,7 +2331,8 @@ impl Entities {
 
   /// Give orders: `ship_name`'s own, her squadron's (to every ship in it), or
   /// her team's fleet's (to every ship on the team). `None` or blank clears
-  /// them.
+  /// them. The newest order wins: a squadron's replaces its ships' own, and
+  /// a fleet's every squadron's and ship's on the team.
   ///
   /// # Errors
   /// Returns an error if there is no such ship, or squadron orders are given
@@ -2350,6 +2351,10 @@ impl Entities {
         .unwrap();
       (ship.team, ship.squadron.clone())
     };
+    // The newest order wins: one given to the fleet replaces its squadrons'
+    // and ships' own, one given to a squadron its ships'. Withdrawing an
+    // order leaves the narrower ones as they are.
+    let replacing = orders.is_some();
     let given = match scope {
       OrdersScope::Ship => {
         self.ships[ship_name].write().unwrap().orders.clone_from(&orders);
@@ -2362,6 +2367,9 @@ impl Entities {
           let mut ship = ship.write().unwrap();
           if ship.team == team && ship.squadron.as_deref() == Some(squadron.as_str()) {
             ship.squadron_orders.clone_from(&orders);
+            if replacing {
+              ship.orders = None;
+            }
             count += 1;
           }
         }
@@ -2373,6 +2381,10 @@ impl Entities {
           let mut ship = ship.write().unwrap();
           if ship.team == team {
             ship.fleet_orders.clone_from(&orders);
+            if replacing {
+              ship.squadron_orders = None;
+              ship.orders = None;
+            }
             count += 1;
           }
         }
@@ -6057,6 +6069,50 @@ mod tests {
     );
     entities.set_orders("Blue 3", OrdersScope::Fleet, Some("  ")).unwrap();
     assert_eq!(orders_on(&entities, "Blue 1").0, None, "blank clears");
+  }
+
+  #[test]
+  fn the_newest_order_replaces_the_narrower_ones_under_it() {
+    let entities = two_fleets(3, 1);
+    entities.set_squadron(&names("Blue", 1..=2), Some("Lance")).unwrap();
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Fighters first."))
+      .unwrap();
+    entities
+      .set_orders("Blue 2", OrdersScope::Ship, Some("Stay by the flagship."))
+      .unwrap();
+    entities.set_orders("Blue 3", OrdersScope::Ship, Some("Scout ahead.")).unwrap();
+    entities.set_orders("Red 1", OrdersScope::Ship, Some("Run.")).unwrap();
+
+    // A squadron's order replaces her ships' own, and only theirs.
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Screen the line."))
+      .unwrap();
+    assert_eq!(orders_on(&entities, "Blue 2").2, None);
+    assert_eq!(orders_on(&entities, "Blue 3").2.as_deref(), Some("Scout ahead."));
+
+    // The fleet's replaces every squadron's and ship's on the team.
+    entities.set_orders("Blue 3", OrdersScope::Fleet, Some("Engage.")).unwrap();
+    let engage = Some("Engage.".to_string());
+    for ship in ["Blue 1", "Blue 2", "Blue 3"] {
+      assert_eq!(orders_on(&entities, ship), (engage.clone(), None, None), "{ship}");
+    }
+    assert_eq!(
+      orders_on(&entities, "Red 1").2.as_deref(),
+      Some("Run."),
+      "another team's are untouched"
+    );
+
+    // A narrower order given after it stands beside it; withdrawing the
+    // fleet's leaves it alone.
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Wing 1, screen the flagship."))
+      .unwrap();
+    entities.set_orders("Blue 3", OrdersScope::Fleet, None).unwrap();
+    assert_eq!(
+      orders_on(&entities, "Blue 1").1.as_deref(),
+      Some("Wing 1, screen the flagship.")
+    );
   }
 
   #[test]
