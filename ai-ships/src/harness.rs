@@ -11,18 +11,21 @@
 //! What it is for: measuring one commander against another (a win rate over
 //! many seeds, with sides swapped), tuning, and producing the per-round log
 //! that later training reads. Victory is the side still in play at the end,
-//! having destroyed the other or driven it off (see [`Retreats`]); hull points
-//! remaining and taken are the finer score.
+//! having destroyed the other or driven it off (see [`Retreats`]); at the
+//! round limit it is judged as the game's own victory screen judges it (see
+//! [`verdict_at_the_limit`]); hull points remaining and taken are the finer
+//! score.
 
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::Arc;
 
 use callisto::authentication::MockAuthenticator;
-use callisto::entity::{Entities, Entity};
+use callisto::entity::{Entities, Entity, Vec3};
 use callisto::payloads::RequestMsg;
 use callisto::player::PlayerManager;
 use callisto::server::Server;
+use callisto::ship::{Goal, DEFAULT_POST_RADIUS_KM};
 use callisto::tactics::{self, Intent};
 use serde::{Deserialize, Serialize};
 
@@ -64,16 +67,35 @@ pub fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
   sides
 }
 
-/// The hull these ships have left, counting none for a ship no longer in play.
+/// The hull these ships have left, counting none for a ship no longer in
+/// play. A craft aboard a carrier is not on the plot but is still the side's
+/// hull: she counts at what she has, until the carrier goes down with her.
 ///
 /// # Panics
 /// Panics if a ship's lock is poisoned.
 #[must_use]
 pub fn hull_of(world: &Entities, ships: &[String]) -> u32 {
+  let aboard: BTreeMap<String, u32> = world
+    .ships
+    .values()
+    .flat_map(|ship| {
+      ship
+        .read()
+        .unwrap()
+        .embarked
+        .iter()
+        .map(|craft| (craft.get_name().to_string(), craft.current_hull))
+        .collect::<Vec<_>>()
+    })
+    .collect();
   ships
     .iter()
-    .filter_map(|name| world.ships.get(name))
-    .map(|ship| ship.read().unwrap().current_hull)
+    .map(|name| {
+      world.ships.get(name).map_or_else(
+        || aboard.get(name).copied().unwrap_or(0),
+        |ship| ship.read().unwrap().current_hull,
+      )
+    })
     .sum()
 }
 
@@ -156,6 +178,73 @@ impl Retreats {
   }
 }
 
+/// Where a side holds and how close counts, in metres: its first ship's
+/// post, or the middle of where it started with the default radius.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn post_of(start: &Entities, now: &Entities, ships: &[String]) -> (Vec3, f64) {
+  let posted = ships
+    .iter()
+    .filter_map(|name| start.ships.get(name))
+    .map(|ship| ship.read().unwrap())
+    .find(|ship| ship.post.is_some());
+  let radius = posted
+    .as_ref()
+    .and_then(|ship| ship.post_radius)
+    .unwrap_or(DEFAULT_POST_RADIUS_KM)
+    * 1000.0;
+  let at = posted
+    .and_then(|ship| now.post_position(ship.post.as_ref()?))
+    .unwrap_or_else(|| {
+      let placed: Vec<Vec3> = ships
+        .iter()
+        .filter_map(|name| start.ships.get(name))
+        .map(|ship| ship.read().unwrap().get_position())
+        .collect();
+      #[allow(clippy::cast_precision_loss)]
+      let count = placed.len().max(1) as f64;
+      placed.iter().fold(Vec3::new(0.0, 0.0, 0.0), |sum, at| sum + at) / count
+    });
+  (at, radius)
+}
+
+/// The verdict when the round limit ends a game with more than one side
+/// still in it, as the game's own victory screen gives it (`victory.ts`,
+/// `timeUp`): a side whose goal is Hold with a ship still at its post has
+/// held, and wins; if a Hold side is in the game and none has held, the post
+/// fell, and the attackers win; with no Hold side it is nobody's game.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn verdict_at_the_limit(
+  start: &Entities, end: &Entities, rosters: &BTreeMap<String, Vec<String>>, standing: &[&String],
+) -> Option<String> {
+  use cgmath::InnerSpace;
+  let holds = |ships: &[String]| {
+    ships
+      .iter()
+      .filter_map(|name| start.ships.get(name))
+      .any(|ship| ship.read().unwrap().goal == Some(Goal::Hold))
+  };
+  let holders: Vec<&String> = rosters.iter().filter(|(_, ships)| holds(ships)).map(|(side, _)| side).collect();
+  if holders.is_empty() {
+    return None;
+  }
+  let held = holders.iter().copied().find(|side| {
+    let (post, radius) = post_of(start, end, &rosters[*side]);
+    rosters[*side]
+      .iter()
+      .filter_map(|name| end.ships.get(name))
+      .any(|ship| (ship.read().unwrap().get_position() - post).magnitude() <= radius)
+  });
+  held
+    .or_else(|| standing.iter().copied().find(|side| !holders.contains(side)))
+    .cloned()
+}
+
 /// How one side came out of a game.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SideResult {
@@ -175,7 +264,8 @@ pub struct SideResult {
 pub struct Outcome {
   pub seed: u64,
   pub rounds: u32,
-  /// The one side still in play, if only one is.
+  /// The one side still in play, if only one is; or, at the round limit,
+  /// the side [`verdict_at_the_limit`] names.
   pub winner: Option<String>,
   /// Every side still in it ran at once (see [`Retreats`]): the sides broke
   /// off, and nobody won.
@@ -427,6 +517,20 @@ pub async fn play_recorded(
   }
 
   let end = player.get_entities().map_err(|e| format!("{e:?}"))?;
+  Ok(judge(
+    &start, &end, &rosters, &deciders, seed, rounds, max_rounds, fled, disengaged,
+  ))
+}
+
+/// The game's outcome once it has stopped: each side's result and the
+/// winner -- the one side still in it, or at the round limit the side the
+/// verdict there gives.
+#[allow(clippy::too_many_arguments)]
+fn judge(
+  start: &Entities, end: &Entities, rosters: &BTreeMap<String, Vec<String>>,
+  deciders: &BTreeMap<String, (String, Box<dyn Commander>)>, seed: u64, rounds: u32, max_rounds: u32,
+  fled: Vec<String>, disengaged: bool,
+) -> Outcome {
   let results: BTreeMap<String, SideResult> = rosters
     .iter()
     .map(|(side, ships)| {
@@ -436,8 +540,8 @@ pub async fn play_recorded(
           commander: deciders[side].0.clone(),
           ships_at_start: ships.len(),
           ships_at_end: ships.iter().filter(|ship| end.ships.contains_key(*ship)).count(),
-          hull_at_start: hull_of(&start, ships),
-          hull_at_end: hull_of(&end, ships),
+          hull_at_start: hull_of(start, ships),
+          hull_at_end: hull_of(end, ships),
           model_cost_usd: deciders[side].1.spent(),
         },
       )
@@ -448,12 +552,121 @@ pub async fn play_recorded(
     .filter(|(side, result)| result.ships_at_end > 0 && !fled.contains(side))
     .map(|(side, _)| side)
     .collect();
-  Ok(Outcome {
+  let winner = match standing.as_slice() {
+    [one] => Some((*one).clone()),
+    _ if rounds >= max_rounds => verdict_at_the_limit(start, end, rosters, &standing),
+    _ => None,
+  };
+  Outcome {
     seed,
     rounds,
-    winner: (standing.len() == 1).then(|| standing[0].clone()),
+    winner,
     disengaged,
     fled,
     sides: results,
-  })
+  }
+}
+
+#[cfg(test)]
+mod limit_tests {
+  use super::*;
+  use callisto::ship::{FeatureKind, Post, ShipDesignTemplate, ShipFeature, Team};
+  use cgmath::Zero;
+
+  fn design(name: &str, displacement: u32, hull: u32, features: Vec<ShipFeature>) -> Arc<ShipDesignTemplate> {
+    Arc::new(ShipDesignTemplate {
+      name: name.to_string(),
+      displacement,
+      hull,
+      features,
+      ..ShipDesignTemplate::default()
+    })
+  }
+
+  /// Blue holds a post at the origin (radius 1,000 km) and Red attacks; Blue
+  /// `away` metres from the post at the end.
+  fn world(away: f64, blue_holds: bool) -> Entities {
+    let hull = design("Hull", 400, 160, vec![]);
+    let mut world = Entities::default();
+    world.add_ship("Picket".to_string(), Vec3::new(away, 0.0, 0.0), Vec3::zero(), &hull, None, None);
+    world.add_ship(
+      "Raider".to_string(),
+      Vec3::new(3.0e7, 0.0, 0.0),
+      Vec3::zero(),
+      &hull,
+      None,
+      None,
+    );
+    {
+      let mut picket = world.ships["Picket"].write().unwrap();
+      picket.team = Some(Team::Blue);
+      picket.goal = blue_holds.then_some(Goal::Hold);
+      picket.post = blue_holds.then_some(Post::At([0.0, 0.0, 0.0]));
+      picket.post_radius = Some(1_000.0);
+    }
+    world.ships["Raider"].write().unwrap().team = Some(Team::Red);
+    world
+  }
+
+  fn verdict(away: f64, blue_holds: bool) -> Option<String> {
+    let start = world(0.0, blue_holds);
+    let end = world(away, blue_holds);
+    let rosters = sides(&start);
+    let standing: Vec<&String> = rosters.keys().collect();
+    verdict_at_the_limit(&start, &end, &rosters, &standing)
+  }
+
+  #[test]
+  fn a_holder_still_at_its_post_has_held() {
+    assert_eq!(verdict(5.0e5, true).as_deref(), Some("Blue"));
+  }
+
+  #[test]
+  fn a_post_left_falls_to_the_attackers() {
+    assert_eq!(verdict(5.0e6, true).as_deref(), Some("Red"));
+  }
+
+  #[test]
+  fn with_no_hold_side_the_limit_is_a_draw() {
+    assert_eq!(verdict(5.0e6, false), None);
+  }
+
+  /// Without a post the side holds where it started, within the default
+  /// radius.
+  #[test]
+  fn a_side_with_no_post_holds_where_it_started() {
+    let start = world(0.0, true);
+    start.ships["Picket"].write().unwrap().post = None;
+    let (post, radius) = post_of(&start, &start, &["Picket".to_string()]);
+    assert_eq!(post, Vec3::zero());
+    assert_eq!(radius, DEFAULT_POST_RADIUS_KM * 1000.0);
+  }
+
+  #[test]
+  fn hull_counts_the_craft_aboard() {
+    let berths = vec![ShipFeature {
+      name: "Docking spaces".to_string(),
+      power: 0,
+      default_on: true,
+      kind: Some(FeatureKind::DockingSpace {
+        craft_tons: 50,
+        count: 2,
+      }),
+    }];
+    let carrier = design("Carrier", 50_000, 27_500, berths);
+    let fighter = design("Fighter", 50, 20, vec![]);
+    let mut world = Entities::default();
+    world.add_ship("Mother".to_string(), Vec3::zero(), Vec3::zero(), &carrier, None, None);
+    world.add_ship("Chick".to_string(), Vec3::zero(), Vec3::zero(), &fighter, None, None);
+    world.ships["Chick"].write().unwrap().current_hull = 15;
+    world.embark_ship("Chick", "Mother").unwrap();
+    assert!(!world.ships.contains_key("Chick"), "aboard, not on the plot");
+    let roster = ["Mother".to_string(), "Chick".to_string(), "Lost".to_string()];
+    assert_eq!(hull_of(&world, &roster), 27_500 + 15);
+    assert_eq!(
+      sides(&world)["ship:Mother"].len(),
+      1,
+      "a craft is her own side when nobody has a team"
+    );
+  }
 }
