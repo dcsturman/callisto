@@ -246,6 +246,9 @@ pub struct SideCommander {
   /// Whether missiles are shared out across the side against point defence;
   /// off only to measure the old way against it (`network-legacy`).
   missile_sharing: bool,
+  /// For a side larger than the network's slots: a pass for each squadron,
+  /// by name, as the fleet commander plays one.
+  passes: std::collections::HashMap<String, SideCommander>,
 }
 
 impl SideCommander {
@@ -261,7 +264,45 @@ impl SideCommander {
       goal: None,
       last: serde_json::Value::Null,
       missile_sharing: true,
+      passes: std::collections::HashMap::new(),
     }
+  }
+
+  /// A pass for one squadron, playing as this commander does.
+  fn squadron_pass(&mut self) -> SideCommander {
+    use rand::{RngCore, SeedableRng};
+    let mut pass = SideCommander::new(Arc::clone(&self.net));
+    pass.goal = self.goal;
+    pass.missile_sharing = self.missile_sharing;
+    pass.rng = self.rng.as_mut().map(|rng| rand::rngs::SmallRng::seed_from_u64(rng.next_u64()));
+    pass
+  }
+
+  /// A side larger than the network's slots, played a squadron at a time as
+  /// the fleet commander plays it with no orders: each pass sees its
+  /// squadron, the nearest of the rest of the side, and the enemies nearest
+  /// it, so no ship is left without orders.
+  fn decide_by_squadron(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    let groups = crate::fleet::squadrons(&view.own, &[]);
+    let mut intents = Vec::new();
+    for (name, members) in &groups {
+      let ships = crate::fleet::ships_of(view, members);
+      let (shown, _) = crate::fleet::foes_for(view, &ships, &crate::fleet::Step::default());
+      let part = crate::fleet::pass_view(view, members, &shown);
+      if !self.passes.contains_key(name) {
+        let pass = self.squadron_pass();
+        self.passes.insert(name.clone(), pass);
+      }
+      let pass = self.passes.get_mut(name).expect("inserted above");
+      intents.extend(
+        pass
+          .decide_pass(&part, &PassOrders::default())
+          .into_iter()
+          .filter(|(ship, _)| members.contains(ship)),
+      );
+    }
+    self.last = serde_json::Value::Null;
+    intents
   }
 }
 
@@ -309,8 +350,9 @@ fn restrict(masks: &mut [bool], tokens: &crate::network::side::Tokens, allowed: 
   }
 }
 
-/// The network has slots for twenty ships; the rest of the side keep their
-/// course and get no fire orders, but their crews still run the deck and
+/// The network has slots for twenty ships; in one pass the rest of the side
+/// keep their course and get no fire orders (a whole side larger than that
+/// is played a squadron at a time, `SideCommander::decide_by_squadron`), but their crews still run the deck and
 /// the magazine, which an intent of no orders leaves to them.
 fn idle_beyond_the_slots(intents: &mut Vec<(String, Intent)>, view: &Observation) {
   let idle: Vec<(String, Intent)> = view
@@ -438,6 +480,9 @@ impl SideCommander {
 #[async_trait]
 impl Commander for SideCommander {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    if view.own.len() > crate::network::side::OWN {
+      return self.decide_by_squadron(view);
+    }
     self.decide_pass(view, &PassOrders::default())
   }
 
@@ -465,8 +510,8 @@ fn cached<T>(
   Some(made)
 }
 
-/// The per-side network the service plays with, built in: side-20-9
-/// (`rl-env/checkpoints/side-20-9`, exported by `scripts/export_side.py`).
+/// The per-side network the service plays with, built in: side-cap-1
+/// (`rl-env/checkpoints/side-cap-1`, exported by `scripts/export_side.py`).
 /// Replace the file to change it; its layout must match this build's.
 pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 

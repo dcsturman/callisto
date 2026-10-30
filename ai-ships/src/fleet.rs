@@ -301,7 +301,7 @@ fn middle(points: impl Iterator<Item = Vec3>) -> Option<Vec3> {
   (count > 0.0).then(|| sum / count)
 }
 
-fn ships_of<'a>(view: &'a Observation, names: &[String]) -> Vec<&'a Ship> {
+pub(crate) fn ships_of<'a>(view: &'a Observation, names: &[String]) -> Vec<&'a Ship> {
   view
     .own
     .iter()
@@ -362,7 +362,7 @@ fn reached(
 
 /// The enemies a squadron's pass is shown, in order of claim on the slots,
 /// and those it may engage (`None` for any).
-fn foes_for(view: &Observation, ships: &[&Ship], step: &Step) -> (Vec<String>, Option<Vec<String>>) {
+pub(crate) fn foes_for(view: &Observation, ships: &[&Ship], step: &Step) -> (Vec<String>, Option<Vec<String>>) {
   let centre = middle(ships.iter().map(|ship| ship.get_position())).unwrap_or(Vec3::new(0.0, 0.0, 0.0));
   let mut enemies: Vec<&Contact> = view.enemies();
   enemies.sort_by(|a, b| (a.position - centre).magnitude().total_cmp(&(b.position - centre).magnitude()));
@@ -407,7 +407,7 @@ fn foes_for(view: &Observation, ships: &[&Ship], step: &Step) -> (Vec<String>, O
 
 /// The view one squadron's pass sees: the squadron, then the rest of the
 /// side nearest first, twenty in all; and the enemies it is shown.
-fn pass_view(view: &Observation, members: &[String], shown: &[String]) -> Observation {
+pub(crate) fn pass_view(view: &Observation, members: &[String], shown: &[String]) -> Observation {
   let mut part = view.clone();
   let ships = ships_of(view, members);
   let centre = middle(ships.iter().map(|ship| ship.get_position())).unwrap_or(Vec3::new(0.0, 0.0, 0.0));

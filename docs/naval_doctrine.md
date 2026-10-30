@@ -184,6 +184,39 @@ round, with the jump drive idle:
   after that exchange, and against the other side's small ships.
 - **Caveats:** one seed each. The network was never trained on capital ships
   (retraining comes after carriers), so its run says more about the untrained
-  AI than about doctrine. "No winner" with Blue at 98% suggests the scenario's
+  AI than about doctrine. It also commanded only the first 20 ships of each
+  side by name, leaving the rest idle -- the *Cleon* among them -- until
+  large sides were played a squadron at a time (2026-10-30). "No winner" with Blue at 98% suggests the scenario's
   end conditions need a look.
 - **RAW**, with Callisto's per-missile salvos and batteries.
+
+## Spread radiation fire, then close
+
+**Finding** (2026-10-30). In Gazelle Duel (12 Gazelles a side: particle beam
+barbettes and beam laser turrets, hull 160, armour 3) the network trained
+with capital ships (side-cap-1) beat its predecessor, side-20-9, 39 games of
+40 from both seats, where side-20-9 against itself splits evenly. It won by a
+two-phase tactic neither side was taught:
+
+- **Rounds 1–6, spread the particle fire.** Particle beams carry the
+  Radiation trait: a ship's crew takes DM −1 on every check for each 10% of
+  her hull lost to radiation (HG p. 31). side-cap-1 fired at 6–7 enemy ships
+  a round, side-20-9 at about 4. By rounds 7–9 the ships facing side-cap-1
+  were at DM −2.8 to −3.3 on every check, against −1.1 when side-20-9
+  fought itself. side-20-9's hit rate fell from 26% to 8%; side-cap-1's held
+  at 28–32%. Losses were even until round 9.
+- **From round 6, close to Short.** The beam lasers join in and the range
+  penalty goes from −4 to 0. side-cap-1 then hit 61–70% of its shots against
+  4–8% from the degraded crews, and side-20-9 lost one or two ships a round
+  until it was gone.
+
+- **Why spreading beats concentrating here:** at about 28% to hit, each DM
+  costs less hit chance than the one before (28% → 17% → 8% → 3%). DM −2 on
+  two ships takes away more hits than −4 on one.
+- **Doctrine:** against crews without radiation shielding, spread particle
+  fire to wear down every enemy gun crew, then close for the kill. This is
+  the one exception to "concentrate fire": a ship destroyed stops firing, but
+  a crew at DM −3 has nearly stopped already, and more of them have.
+- **For ship design:** radiation shielding (DM −1 per 40% instead of 10%)
+  takes most of the force out of this.
+- **RAW** (HG p. 31; `callisto/FAQ.md`), found by self-play, not taught.
