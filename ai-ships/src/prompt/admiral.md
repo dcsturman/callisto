@@ -30,6 +30,7 @@ Each step of a squadron's script may set:
   - `network` (default): the crews manoeuvre as they judge best. Prefer this unless an order says how to move.
   - `burn`: `toward` a place -- or `away` from it -- at up to `thrust` G (full thrust if left out).
   - `arrive`: `at` a place, or at `band` of it on this side, by `round`, the squadron arriving together. Use this to coordinate squadrons: give each the same `round`. A round is six minutes; a ship at 2 G covers about 1,300 km in its first round from rest and 5,100 km in two. Ask only for what the ships' thrust can do. To stand off at a range from the enemy, `arrive` at that `band` of them; a `post` is a place to stay near, not a range to keep.
+- `flight`: flight operations, for a squadron with a carrier in it or made of her craft: `{"op": "launch"}` has the carriers put their craft out (every ready craft; or `count`, until that many of each carrier's are out; or only `wings`, naming craft squadrons) and keeps the craft already out from going home until they are spent; `{"op": "recover"}` brings every craft of the squadron's carriers home, and the squadron's own craft; `{"op": "hold"}` keeps craft aboard where they are. Leave it out to let the crews run the deck.
 - `dodge`: G of thrust each ship keeps back to dodge, at least -- every shot at a dodging ship is harder by her pilot's skill, for as many shots each round as G kept back. What is left of her drive is for moving, and a ship told to dodge will not run. Leave it out to let the crews choose (they keep 0 to 2 G).
 - `until`: when the step ends and the next begins: `round`, `within` (`of` a place, `band`), `fired_on`, `losses` (share of the squadron's hull lost during the step). Any one given is enough. It goes on the step it ends; the last step has none. "Fight until half lost, then jump" is `[{"until": {"losses": 0.5}}, {"goal": "escape"}]`.
 
@@ -46,6 +47,7 @@ Range bands, nearest first: `Short` (to 1,250 km), `Medium` (10,000), `Long` (25
 - Longer guns win at range: ships that outrange the enemy should be kept where they can hit and not be hit. The crews do this when free to manoeuvre.
 - Missiles are spent by the crews: they mass them against point defence and use them on fighters, which have none.
 - Fighters are good against fighters and fragile; bay weapons are poor against small craft. "Escorts on their fighters, cruisers on their cruisers" is a sound assignment -- but only when ordered.
+- Carriers keep their craft in berths, off the plot, where nothing can shoot them, and each launch tube puts out 10 craft a round (a carrier with no tube releases them through her berths over 1-3 rounds, held still and not firing meanwhile). Left to themselves the crews launch everything when an enemy comes within Very Long, and a craft whose missiles are spent flies home on her own, lands, rearms from the carrier's stores in one round aboard, and launches again. Craft aboard go down with the carrier, so launch before she is in danger; keep them aboard (`flight: hold`) only while the enemy is still far off or you want the strike held back for a moment of your choosing, and `recover` before a carrier jumps.
 - Stealth matters only for ships built for it, and only until they fire.
 - Formations and flanking do not matter here: ships have no facing and nothing blocks a shot. Only the range between ships does.
 
@@ -76,6 +78,17 @@ Orders, fleet: "All squadrons close to Medium together by round 6, then fight. T
      "until": {"round": 6, "fired_on": true}},
     {}]}],
  "call_me_when": [{"losses": 0.5}]}
+```
+
+Orders, fleet: "Keep the fighters aboard until the cruisers commit, then launch everything at their fighters."
+
+```json
+{"say": "Sirocco holds her wings aboard until fired on, then launches them all; the wings take their fighters.",
+ "squadrons": [
+  {"squadron": "Battle Line", "steps": [
+    {"flight": {"op": "hold"}, "until": {"fired_on": true}},
+    {"flight": {"op": "launch"}}]},
+  {"squadron": "*", "steps": [{"engage": {"designs": ["Heavy Fighter"]}}]}]}
 ```
 
 Orders, ship Arbiter: "Get out of there." Orders, fleet: "Hold the gate."

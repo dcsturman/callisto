@@ -705,6 +705,27 @@ craft the decks have taken that round and what the dice say. The Flight Deck car
 the tubes' rate and says how many wait. A wing in a carrier's berths is listed in the roster as
 "<wing> (aboard <carrier>)" and nowhere else: she is not a target, a contact or a marker.
 
+#### Decision — the crews run the deck unless told otherwise
+An AI side's carriers and craft run their own flight cycle (the user's ruling, 2026-10-29): the first
+launch comes from the admiral's orders or from the crews when an enemy is in contact within Very Long
+range, and after that the crews handle it. A carrier launches as many ready craft as her tubes take a
+round, one wing before the next (a craft is ready when nothing in the stores could still fill a mount
+of hers, and she has something to fight with); she launches nothing while pinned or about to jump. A
+craft goes home -- closing on her carrier and matching her velocity, then coasting on the approach
+(within Short and inside the velocity limit) and giving *Land* only while her carrier is burning no
+more than 1 G, since the landing check loses a point for every G either ship spends, and only when
+it is her wing's turn (of the craft on the approach, the first squadron by name; the check also loses
+a point for every other craft coming in that is not of her squadron) -- when her
+launchers are spent and the carrier's stores can refill them (a laser fighter is never spent), when
+no enemy is in contact at all, or when her carrier is running Jump Control; after a round aboard she
+is rearmed and launches again. A craft back in the fight withdraws any *Land* she had standing. An admiral's `flight` step overrides all of this for a squadron: `launch` (all, a count
+to have out, or named wings), `recover` (every craft of the squadron's carriers comes home), or `hold`
+(craft aboard stay aboard); a craft told to hold still goes home once spent, since rearming is the
+crews' cycle rather than an order. Two limits follow from the physics: a carrier burning away at her
+craft's full thrust cannot be caught, so a carrier that wants her craft back must ease off; and
+*Launch* is the captain's order, so the ten a round are chosen when the orders are given, not from
+what lands that round.
+
 #### Omission — docking clamps, battle riders and tenders
 A design may state docking clamps (`DockingClamp`), and they are read and shown, but nothing docks to
 one yet: a clamped ship on the plot moving with her carrier is a different model from a berth. Battle

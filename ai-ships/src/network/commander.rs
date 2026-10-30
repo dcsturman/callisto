@@ -303,6 +303,27 @@ fn restrict(masks: &mut [bool], tokens: &crate::network::side::Tokens, allowed: 
   }
 }
 
+/// The network has slots for twenty ships; the rest of the side keep their
+/// course and get no fire orders, but their crews still run the deck and
+/// the magazine, which an intent of no orders leaves to them.
+fn idle_beyond_the_slots(intents: &mut Vec<(String, Intent)>, view: &Observation) {
+  let idle: Vec<(String, Intent)> = view
+    .own
+    .iter()
+    .filter(|ship| !intents.iter().any(|(name, _)| name == ship.get_name()))
+    .map(|ship| {
+      (
+        ship.get_name().to_string(),
+        Intent {
+          rationale: "Beyond the network's twenty ships this round: holds her course.".to_string(),
+          ..Intent::default()
+        },
+      )
+    })
+    .collect();
+  intents.extend(idle);
+}
+
 impl SideCommander {
   /// One pass of the network over `view`, under `orders`.
   pub fn decide_pass(&mut self, view: &Observation, orders: &PassOrders) -> Vec<(String, Intent)> {
@@ -395,13 +416,14 @@ impl SideCommander {
     });
     let mut intents = side_intents_with(&own_ships, allowed_view.as_ref().unwrap_or(view), self.missile_sharing);
     crate::network::side::hold_at_post(&mut intents, ctx.post);
-    let intents: Vec<(String, Intent)> = intents
+    let mut intents: Vec<(String, Intent)> = intents
       .into_iter()
       .map(|(ship, mut intent)| {
         intent.rationale = rationale(&intent);
         (ship, intent)
       })
       .collect();
+    idle_beyond_the_slots(&mut intents, view);
     self.history.record(&intents);
     intents
   }

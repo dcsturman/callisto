@@ -24,7 +24,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use callisto::entity::{Entity, Vec3, DELTA_TIME_F64, G};
 use callisto::ship::{Goal, Range, Ship, MAX_SQUADRON};
-use callisto::tactics::{self, Helm, Intent};
+use callisto::tactics::{self, Flight, Helm, Intent};
 use cgmath::InnerSpace;
 use serde::{Deserialize, Serialize};
 
@@ -88,8 +88,42 @@ pub struct Step {
   /// her drive is for moving. The crews choose when this is not given.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dodge: Option<u8>,
+  /// Flight operations for the squadron's carriers and craft. The crews
+  /// run them when this is not given (see [`FlightOrder`]).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub flight: Option<FlightOrder>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub until: Option<Until>,
+}
+
+/// What a step says about flight operations. `launch` has the squadron's
+/// carriers put their craft out -- every ready craft, or only `wings`, or
+/// until `count` of hers are on the plot -- and keeps the craft already out
+/// from going home until they are spent. `recover` brings every craft of
+/// the squadron's carriers home, and the squadron's own craft. `hold` keeps
+/// craft aboard where they are and craft out where they are. Left out, the
+/// crews launch when an enemy is within Very Long and go home when spent or
+/// when nothing is left to fight.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct FlightOrder {
+  #[serde(default)]
+  pub op: FlightOp,
+  /// `launch` only: launch until this many of each carrier's craft are on
+  /// the plot. All of them when left out.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub count: Option<u32>,
+  /// `launch` only: only craft of these squadrons.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub wings: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FlightOp {
+  #[default]
+  Launch,
+  Recover,
+  Hold,
 }
 
 /// Which enemies: any named design or ship, within the tonnage limits.
@@ -499,6 +533,22 @@ pub fn describe(step: &Step) -> String {
   if let Some(dodge) = step.dodge {
     parts.push(format!("dodge {dodge} G"));
   }
+  if let Some(flight) = &step.flight {
+    parts.push(match flight.op {
+      FlightOp::Launch => {
+        let what = if !flight.wings.is_empty() {
+          flight.wings.join(", ")
+        } else if let Some(count) = flight.count {
+          format!("{count} craft")
+        } else {
+          "every craft".to_string()
+        };
+        format!("launch {what}")
+      }
+      FlightOp::Recover => "recover the craft".to_string(),
+      FlightOp::Hold => "hold the craft".to_string(),
+    });
+  }
   match step.movement.mode {
     Mode::Network => {}
     Mode::Burn => parts.push(format!(
@@ -569,6 +619,94 @@ fn hold_back(decided: &mut [(String, Intent)], ships: &[&Ship], dodge: u8) {
     }
     let left = f64::from(drive - reserve);
     intent.max_thrust = Some(intent.max_thrust.map_or(left, |cap| cap.min(left)));
+  }
+}
+
+/// The flight intents a step gives, for the squadron's own `members` and,
+/// through its carriers, for their craft wherever they are: `(ship, flight,
+/// own)`, where `own` says the ship is a member (a craft's own squadron's
+/// step outranks what her carrier's squadron says of her).
+fn flight_intents(order: &FlightOrder, members: &[String], view: &Observation) -> Vec<(String, Flight, bool)> {
+  let is_member = |name: &str| members.iter().any(|member| member == name);
+  let mut intents = Vec::new();
+  for ship in view.own.iter().filter(|ship| is_member(ship.get_name())) {
+    let name = ship.get_name();
+    if ship.is_carrier() {
+      let craft_out: Vec<&Ship> = view.own.iter().filter(|craft| craft.carrier.as_deref() == Some(name)).collect();
+      match order.op {
+        FlightOp::Launch => {
+          let ready: Vec<String> = tactics::ready_craft(ship)
+            .into_iter()
+            .filter(|craft| {
+              order.wings.is_empty()
+                || ship
+                  .craft_aboard(craft)
+                  .and_then(|craft| craft.squadron.as_deref())
+                  .is_some_and(|wing| order.wings.iter().any(|wanted| wanted.eq_ignore_ascii_case(wing)))
+            })
+            .collect();
+          // Until `count` are out: what is still wanted, less what is. With
+          // enough out, or nothing ready, she holds -- rather than being
+          // left to the crews, who would launch the rest.
+          let wanted = order
+            .count
+            .map(|count| count.saturating_sub(u32::try_from(craft_out.len()).unwrap_or(u32::MAX)));
+          let flight = if wanted == Some(0) || ready.is_empty() {
+            Flight::Hold
+          } else {
+            Flight::Launch {
+              craft: ready,
+              count: wanted,
+            }
+          };
+          intents.push((name.to_string(), flight, true));
+          // Craft already out stay out until spent.
+          intents.extend(
+            craft_out
+              .iter()
+              .map(|craft| (craft.get_name().to_string(), Flight::Hold, false)),
+          );
+        }
+        FlightOp::Recover => {
+          intents.push((name.to_string(), Flight::Hold, true));
+          intents.extend(craft_out.iter().map(|craft| {
+            (
+              craft.get_name().to_string(),
+              Flight::Land {
+                carrier: name.to_string(),
+              },
+              false,
+            )
+          }));
+        }
+        FlightOp::Hold => intents.push((name.to_string(), Flight::Hold, true)),
+      }
+    }
+    if let Some(carrier) = &ship.carrier {
+      let flight = match order.op {
+        FlightOp::Recover => Flight::Land {
+          carrier: carrier.clone(),
+        },
+        FlightOp::Launch | FlightOp::Hold => Flight::Hold,
+      };
+      intents.push((name.to_string(), flight, true));
+    }
+  }
+  intents
+}
+
+/// Put the steps' flight orders on the intents: a ship's own squadron's
+/// first, else what her carrier's squadron said of her.
+fn apply_flight(intents: &mut [(String, Intent)], orders: &[(String, Flight, bool)]) {
+  for (ship, intent) in intents.iter_mut() {
+    let chosen = orders
+      .iter()
+      .filter(|(name, _, _)| name == ship)
+      .max_by_key(|(_, _, own)| *own)
+      .map(|(_, flight, _)| flight.clone());
+    if let Some(flight) = chosen {
+      intent.flight = Some(flight);
+    }
   }
 }
 
@@ -648,6 +786,7 @@ impl Commander for FleetCommander {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     let groups = squadrons(&view.own, &self.detached());
     let mut intents = Vec::new();
+    let mut flights: Vec<(String, Flight, bool)> = Vec::new();
     for (name, members) in &groups {
       let ships = ships_of(view, members);
       let hull: u64 = ships.iter().map(|ship| u64::from(ship.current_hull)).sum();
@@ -696,6 +835,9 @@ impl Commander for FleetCommander {
       if let Some(dodge) = step.dodge {
         hold_back(&mut decided, &ships, dodge);
       }
+      if let Some(order) = &step.flight {
+        flights.extend(flight_intents(order, members, view));
+      }
       // Each ship's report says what her squadron is doing: "Lance, step 1
       // of 2: ...", or just what it is doing for a ship in no squadron, a
       // ship on her own, or a script of one step.
@@ -718,6 +860,7 @@ impl Commander for FleetCommander {
       }
       intents.extend(decided);
     }
+    apply_flight(&mut intents, &flights);
     intents
   }
 }
@@ -749,6 +892,184 @@ mod tests {
     assert_eq!(directive.squadrons[1].ship.as_deref(), Some("CS Hesperus"));
     assert_eq!(directive.squadrons[2].steps[0].goal, Some(Goal::Hold));
     assert_eq!(directive.call_me_when.len(), 2);
+  }
+
+  /// A step's flight order reads from JSON, writes back the same, and is
+  /// described in words.
+  #[test]
+  fn a_flight_order_round_trips_and_is_described() {
+    let cases = [
+      (r#"{"flight": {"op": "launch"}}"#, "launch every craft"),
+      (r#"{"flight": {"op": "launch", "count": 40}}"#, "launch 40 craft"),
+      (
+        r#"{"flight": {"op": "launch", "wings": ["Wind Wing 1", "Wind Wing 2"]}}"#,
+        "launch Wind Wing 1, Wind Wing 2",
+      ),
+      (r#"{"flight": {"op": "recover"}}"#, "recover the craft"),
+      (r#"{"flight": {"op": "hold"}}"#, "hold the craft"),
+    ];
+    for (json, words) in cases {
+      let step: Step = serde_json::from_str(json).unwrap();
+      assert_eq!(describe(&step), words);
+      let back: Step = serde_json::from_value(serde_json::to_value(&step).unwrap()).unwrap();
+      assert_eq!(back, step);
+    }
+    let plain: Step = serde_json::from_str("{}").unwrap();
+    assert_eq!(plain.flight, None);
+    assert_eq!(describe(&plain), "fight as the crews judge");
+  }
+
+  fn carrier_and_craft() -> Observation {
+    use callisto::ship::{FeatureKind, ShipDesignTemplate, ShipFeature};
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Carrier".to_string(),
+      displacement: 50_000,
+      features: vec![
+        ShipFeature {
+          name: "Docking spaces".to_string(),
+          power: 0,
+          default_on: true,
+          kind: Some(FeatureKind::DockingSpace {
+            craft_tons: 50,
+            count: 10,
+          }),
+        },
+        ShipFeature {
+          name: "Launch tube".to_string(),
+          power: 500,
+          default_on: true,
+          kind: Some(FeatureKind::LaunchTube {
+            craft_tons: 50,
+            count: 1,
+          }),
+        },
+      ],
+      ..Default::default()
+    });
+    let ship = |name: &str, design: &Arc<ShipDesignTemplate>| {
+      Ship::new(
+        name.to_string(),
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 0.0),
+        design,
+        None,
+        None,
+      )
+    };
+    let mut carrier = ship("Sirocco", &design);
+    carrier.squadron = Some("Battle Line".to_string());
+    let fighter = Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      displacement: 10,
+      ..Default::default()
+    });
+    for n in 1..=4 {
+      let mut aboard = ship(&format!("Wing A {n}"), &fighter);
+      aboard.squadron = Some("Wing A".to_string());
+      carrier.embark(aboard);
+    }
+    let mut out = ship("Wing B 1", &fighter);
+    out.squadron = Some("Wing B".to_string());
+    out.carrier = Some("Sirocco".to_string());
+    let mut escort = ship("Taipan", &design);
+    escort.squadron = Some("Screen".to_string());
+    Observation {
+      own: vec![carrier, out, escort],
+      ..Observation::default()
+    }
+  }
+
+  /// A carrier's squadron step reaches her craft wherever they are, and a
+  /// craft's own squadron step outranks it.
+  #[test]
+  fn flight_orders_reach_the_carriers_craft_and_her_own_step_wins() {
+    let view = carrier_and_craft();
+    let line = vec!["Sirocco".to_string()];
+    let wing_b = vec!["Wing B 1".to_string()];
+    let order = |op: FlightOp| FlightOrder {
+      op,
+      ..FlightOrder::default()
+    };
+
+    // Launch: the carrier launches her ready craft, and the one out stays out.
+    let launch = flight_intents(&order(FlightOp::Launch), &line, &view);
+    assert_eq!(
+      launch,
+      vec![
+        (
+          "Sirocco".to_string(),
+          Flight::Launch {
+            craft: (1..=4).map(|n| format!("Wing A {n}")).collect(),
+            count: None,
+          },
+          true
+        ),
+        ("Wing B 1".to_string(), Flight::Hold, false),
+      ]
+    );
+    // Recover: the carrier launches nothing, and her craft come home.
+    let recover = flight_intents(&order(FlightOp::Recover), &line, &view);
+    assert_eq!(recover[0], ("Sirocco".to_string(), Flight::Hold, true));
+    assert_eq!(
+      recover[1],
+      (
+        "Wing B 1".to_string(),
+        Flight::Land {
+          carrier: "Sirocco".to_string()
+        },
+        false
+      )
+    );
+    // Count: until that many are out, less the one already out; wings
+    // narrow it to the named squadrons.
+    let counted = flight_intents(
+      &FlightOrder {
+        op: FlightOp::Launch,
+        count: Some(3),
+        wings: vec!["wing a".to_string()],
+      },
+      &line,
+      &view,
+    );
+    assert!(
+      matches!(&counted[0].1, Flight::Launch { craft, count: Some(2) } if craft.len() == 4),
+      "{counted:?}"
+    );
+    let none = flight_intents(
+      &FlightOrder {
+        op: FlightOp::Launch,
+        count: Some(1),
+        wings: vec![],
+      },
+      &line,
+      &view,
+    );
+    assert_eq!(
+      none,
+      vec![
+        ("Sirocco".to_string(), Flight::Hold, true),
+        ("Wing B 1".to_string(), Flight::Hold, false)
+      ],
+      "one is out already: the carrier holds, and so does the craft out"
+    );
+
+    // The craft's own squadron's step outranks her carrier's.
+    let mut intents: Vec<(String, Intent)> = view
+      .own
+      .iter()
+      .map(|ship| (ship.get_name().to_string(), Intent::default()))
+      .collect();
+    let mut orders = flight_intents(&order(FlightOp::Launch), &line, &view);
+    orders.extend(flight_intents(&order(FlightOp::Recover), &wing_b, &view));
+    apply_flight(&mut intents, &orders);
+    assert!(matches!(intents[0].1.flight, Some(Flight::Launch { .. })));
+    assert_eq!(
+      intents[1].1.flight,
+      Some(Flight::Land {
+        carrier: "Sirocco".to_string()
+      })
+    );
+    assert_eq!(intents[2].1.flight, None, "the escort is left to the crews");
   }
 
   #[test]

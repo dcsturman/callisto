@@ -58,7 +58,8 @@ fn berth_rounds(tons: u32, rng: &mut dyn RngCore) -> u8 {
 
 /// The relative velocity a craft of `thrust` G may come in at, in m/s. A
 /// crippled craft keeps a G's worth: she may still drift into a match.
-fn landing_velocity_limit(thrust: u8) -> f64 {
+#[must_use]
+pub fn landing_velocity_limit(thrust: u8) -> f64 {
   f64::from(thrust.max(1)) * G * LANDING_SECONDS_PER_G
 }
 
