@@ -8,11 +8,11 @@ import { Provider } from "react-redux";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const sent = vi.hoisted(() => ({
-  adds: [] as { name: string; position: number[]; design: string }[],
+  adds: [] as { name: string; position: number[]; design: string; aboard?: string }[],
   squadrons: [] as [string[], string | null][],
 }));
 vi.mock("lib/serverManager", () => ({
-  addShip: (ship: { name: string; position: number[]; design: string }) => sent.adds.push(ship),
+  addShip: (ship: { name: string; position: number[]; design: string; aboard?: string }) => sent.adds.push(ship),
   setSquadron: (ships: string[], squadron: string | null) => sent.squadrons.push([ships, squadron]),
   setOrders: () => {},
   setShipController: () => {},
@@ -23,6 +23,7 @@ import { store } from "state/store";
 import { setEntities, setTemplates } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
+import * as carriers from "lib/carriers";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -131,5 +132,78 @@ describe("AddShip, several at once", () => {
     expect(sent.adds).toEqual([]);
     expect(sent.squadrons).toEqual([]);
     expect(container.textContent).toContain("A squadron holds at most 20 ships; Lance would have 21.");
+  });
+});
+
+describe("AddShip, aboard a carrier", () => {
+  const carrierDesign = {
+    ...fighter,
+    name: "Strike Carrier",
+    displacement: 75_000,
+    features: [{ name: "Docking space (10 t) x80", kind: { DockingSpace: { craft_tons: 10, count: 80 } } }],
+  };
+  const sirocco = {
+    name: "Sirocco",
+    design: "Strike Carrier",
+    team: "Blue",
+    position: [0, 0, 0],
+    velocity: [0, 0, 0],
+    flight_deck: { berths: 80, berths_free: 5, launch_per_round: 10, recover_per_round: 10, tube_tons: 100, deck_tons: 100 },
+  } as unknown as Ship;
+
+  beforeEach(() => {
+    store.dispatch(
+      setTemplates({ "Light Fighter": fighter, "Strike Carrier": carrierDesign } as unknown as ShipDesignTemplates),
+    );
+    store.dispatch(
+      setEntities({ ships: [sirocco], missiles: [], planets: [], metadata: { name: "test", description: "" }, filename: "" }),
+    );
+  });
+
+  // The batch fields are only there past a count of one, so this fills just
+  // the name and the count.
+  const fillOne = (count: string) => {
+    act(() => (container.querySelector(".accordion-header") as HTMLElement).click());
+    setValue(input('input[name="name"]'), "Gale");
+    setValue(input('input[aria-label="How many to add"]'), count);
+  };
+
+  const chooseAboard = (carrier: string) =>
+    act(() => {
+      const select = container.querySelector('select[aria-label="Carrier to start aboard"]') as HTMLSelectElement;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, carrier);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+  it("offers a carrier with a berth that takes the design, and sends the choice as `aboard`", () => {
+    render();
+    fillOne("1");
+    const options = [...container.querySelectorAll('select[aria-label="Carrier to start aboard"] option')].map((o) => o.textContent);
+    expect(options).toEqual(["In space", "Sirocco (5 berths free)"]);
+    chooseAboard("Sirocco");
+    submit();
+    expect(sent.adds).toHaveLength(1);
+    expect(sent.adds[0].aboard).toBe("Sirocco");
+  });
+
+  it("sends nothing about berths for a ship in space", () => {
+    render();
+    fillOne("1");
+    submit();
+    expect(sent.adds[0].aboard).toBeUndefined();
+  });
+
+  it("refuses a batch bigger than the berths free", () => {
+    render();
+    fillOne("6");
+    chooseAboard("Sirocco");
+    submit();
+    expect(sent.adds).toEqual([]);
+    expect(container.textContent).toContain("Sirocco has 5 berths free; 6 would not fit.");
+  });
+
+  it("describes the carrier's facilities in the design's summary", () => {
+    const { describeFacilities } = carriers;
+    expect(describeFacilities(carrierDesign as unknown as ShipDesignTemplates[string])).toBe("80 docking spaces (10 t)");
   });
 });

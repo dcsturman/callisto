@@ -372,6 +372,9 @@ export function addShip(ship: Ship) {
       // Absent means the design's own defaults, which for every switchable
       // feature so far means off.
       ...(ship.features_on ? { features_on: ship.features_on } : {}),
+      // A craft that starts in a carrier's berth, by the carrier's name:
+      // the scenario file's own marker. Absent means in space.
+      ...(ship.aboard ? { aboard: ship.aboard } : {}),
     },
   };
 

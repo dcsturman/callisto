@@ -176,6 +176,12 @@ export interface Ship extends Entity {
   flight_ops?: FlightOp[];
   /** The carrier a craft belongs to, kept after she launches. */
   carrier?: string;
+  /**
+   * The carrier a new ship starts aboard: the scenario file's marker, sent
+   * by the Add Ship dialog on its way to the server and never read back
+   * (a craft aboard comes back inside her carrier's `embarked`).
+   */
+  aboard?: string;
   /** Whole rounds a craft has spent aboard since she came in; one rearms her. */
   rounds_aboard?: number;
   /**

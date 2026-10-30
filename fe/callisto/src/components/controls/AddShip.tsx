@@ -50,6 +50,7 @@ import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
 import { Team, TEAMS, TEAM_CSS } from "lib/teams";
 import { MAX_SQUADRON, batchNames, gridPositions, sizeAfterMove } from "lib/squadrons";
+import { berthTakes, describeFacilities } from "lib/carriers";
 import { samePowerSystem } from "lib/power";
 import {
   SOFTWARE,
@@ -262,6 +263,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
       // A Harrier's holographic hull and the like. Off unless the design says
       // otherwise -- the engineer brings them up.
       featuresOn: defaultFeaturesOn(firstDesign),
+      // The carrier she starts aboard, or null for in space.
+      aboard: null as string | null,
     };
   }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
@@ -271,6 +274,17 @@ export const AddShip: React.FC<AddShipProps> = () => {
   const [batch, setBatch] = useState({ count: "1", squadron: "", spacing: "250" });
   const [batchProblem, setBatchProblem] = useState<string | null>(null);
   const batchCount = Math.min(MAX_BATCH, Math.max(1, Math.floor(Number(batch.count) || 1)));
+  // Where a new ship of this design could start aboard: a carrier with a
+  // berth free that takes her tonnage.
+  const carriers = useMemo(() => {
+    const tons = shipDesignTemplates[addShipData.design]?.displacement ?? 0;
+    return entities.ships.filter(
+      (ship) =>
+        ship.flight_deck != null &&
+        ship.flight_deck.berths_free > 0 &&
+        berthTakes(shipDesignTemplates[ship.design], tons),
+    );
+  }, [entities.ships, shipDesignTemplates, addShipData.design]);
 
   useEffect(() => {
     const current =
@@ -301,6 +315,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         orders: current.orders ?? "",
         software: current.software ?? shipDesignTemplates[current.design]?.software ?? [],
         featuresOn: featuresOnFor(current, shipDesignTemplates[current.design]),
+        // A ship on the plot is in space; one in a berth is not on the list.
+        aboard: null,
       };
       setAddShipData(template);
     }
@@ -341,6 +357,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
               orders: ship.orders ?? "",
               software: ship.software ?? shipDesignTemplates[ship.design]?.software ?? [],
               featuresOn: featuresOnFor(ship, shipDesignTemplates[ship.design]),
+              aboard: null,
             });
           }
         }
@@ -417,9 +434,17 @@ export const AddShip: React.FC<AddShipProps> = () => {
           ? undefined
           : addShipData.software,
         features_on: addShipData.featuresOn,
+        // Into the carrier's berth rather than space: the scenario file's
+        // `aboard`. Only for a new ship; one on the plot stays there.
+        aboard: shipNames.includes(name) ? undefined : (addShipData.aboard ?? undefined),
       };
 
       setBatchProblem(null);
+      const berthsFree = carriers.find((c) => c.name === addShipData.aboard)?.flight_deck?.berths_free;
+      if (!shipNames.includes(name) && addShipData.aboard != null && berthsFree != null && batchCount > berthsFree) {
+        setBatchProblem(`${addShipData.aboard} has ${berthsFree} berth${berthsFree === 1 ? "" : "s"} free; ${batchCount} would not fit.`);
+        return;
+      }
       if (batchCount > 1 && !shipNames.includes(name)) {
         const squadronName = batch.squadron.trim();
         if (squadronName !== "") {
@@ -446,7 +471,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
       setBatch({ ...batch, count: "1" });
       shipNameRef.current!.style.color = "black";
     },
-    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates, batch, batchCount, shipNames],
+    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates, batch, batchCount, shipNames, carriers],
   );
 
   // Changing the design changes the allowance, the default armament and, for a
@@ -654,6 +679,31 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 ))}
               </select>
             </label>
+            {/* Start her in a carrier's berth. A new ship only, and only
+                where a carrier has room for her. */}
+            {!updating && carriers.length > 0 && (
+              <label
+                className="emissions-toggle"
+                title="Start her aboard this carrier, in a berth, rather than in space. She takes the carrier's position and, if she has none, its team.">
+                Aboard
+                <select
+                  className="team-select"
+                  aria-label="Carrier to start aboard"
+                  value={addShipData.aboard ?? ""}
+                  onChange={(event) =>
+                    setAddShipData({ ...addShipData, aboard: event.target.value || null })
+                  }
+                >
+                  <option value="">In space</option>
+                  {carriers.map((carrier) => (
+                    <option key={carrier.name} value={carrier.name}>
+                      {carrier.name} ({carrier.flight_deck?.berths_free} berth
+                      {carrier.flight_deck?.berths_free === 1 ? "" : "s"} free)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {/* How many to add. A new ship only: an existing one is updated
                 alone. */}
             {!updating && (
@@ -1383,6 +1433,7 @@ const ShipDesignDetails = (render: {
         and {design.armor} armor.&nbsp;
         {design.power} power back {design.maneuver}G thrust and jump{" "}
         {design.jump}. {weaponDesc}.
+        {describeFacilities(design) !== "" ? ` Carries craft: ${describeFacilities(design)}.` : ""}
         {design.cost_mcr != null ? ` Price ${formatMcr(design.cost_mcr)}.` : " Price not recorded."}
       </div>
     </>
