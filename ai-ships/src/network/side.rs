@@ -37,10 +37,17 @@ use crate::network::orders;
 /// fleet, so small scenarios do not pay for the empty rows.
 pub const OWN: usize = 20;
 pub const FOES: usize = 20;
-pub const OWN_FEATS: usize = 78;
+pub const OWN_FEATS: usize = 93;
 pub const FOE_FEATS: usize = 26;
-pub const SIDE_FEATS: usize = 16;
-pub const PAIR_FEATS: usize = 39;
+pub const SIDE_FEATS: usize = 17;
+pub const PAIR_FEATS: usize = 40;
+
+/// Where the capital-ship and carrier inputs start in an own row, a pair row
+/// and the side row: everything before them is what the network read before
+/// step 12, so a network trained then loads with zero weight on the rest.
+pub const OWN_CAPITAL_AT: usize = 78;
+pub const PAIR_CAPITAL_AT: usize = 39;
+pub const SIDE_CAPITAL_AT: usize = 16;
 
 /// The heads, as the per-side network sizes them: the targets point at enemy
 /// tokens (with "none" first for fire, lock and the second operator), the
@@ -394,6 +401,119 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
     row[76] = log_distance(offset.magnitude());
     row[77] = f32::from(u8::from(offset.magnitude() <= radius));
   }
+  capital_features(ctx, me, &mut row[OWN_CAPITAL_AT..]);
+}
+
+/// A ship's spinal mounts, by index.
+fn spinal_mounts(ship: &Ship) -> Vec<usize> {
+  ship
+    .weapons()
+    .iter()
+    .enumerate()
+    .filter(|(_, weapon)| weapon.mount.spinal_multiple().is_some())
+    .map(|(mount, _)| mount)
+    .collect()
+}
+
+/// The carrier a craft belongs to, if she is on the plot with her side.
+fn carrier_of<'a>(view: &'a Observation, me: &Ship) -> Option<&'a Ship> {
+  let name = me.carrier.as_deref()?;
+  view.own.iter().find(|ship| ship.get_name() == name)
+}
+
+/// Missiles and torpedoes aboard a ship, mounts and stores together, as a
+/// share of her design's stock; 0 for a ship that carries none.
+fn stores_share(ship: &Ship) -> f32 {
+  let full = callisto::ship::Magazine::for_design(&ship.design);
+  let aboard = ship.aboard();
+  share(aboard.missiles + aboard.torpedoes, full.missiles + full.torpedoes)
+}
+
+/// Whether `craft` is where the engine lets her land on `carrier` at the
+/// round's end: within Short and inside the velocity limit, the gate
+/// `tactics` applies before it gives *Land*.
+fn on_the_approach(craft: &Ship, carrier: &Ship) -> bool {
+  let closing = (craft.get_velocity() - carrier.get_velocity()).magnitude();
+  tactics::band_between(craft, carrier) <= callisto::ship::Range::Short
+    && closing <= callisto::flight::landing_velocity_limit(craft.current_maneuver)
+}
+
+/// The capital-ship and carrier inputs, fifteen numbers from
+/// [`OWN_CAPITAL_AT`]: her spinal, her loads, her deck and her carrier.
+fn capital_features(ctx: &SideContext, me: &Ship, row: &mut [f32]) {
+  let view = ctx.view;
+  let name = me.get_name();
+  // Her spinal: whether she has one, and the share of her expected damage
+  // on the nearest contact, at the band they are at, that it would do.
+  let spinals = spinal_mounts(me);
+  row[0] = f32::from(u8::from(!spinals.is_empty()));
+  if !spinals.is_empty() {
+    let nearest = view
+      .enemies()
+      .into_iter()
+      .min_by(|a, b| {
+        let from_me = |contact: &Contact| (contact.position - me.get_position()).magnitude();
+        from_me(a).total_cmp(&from_me(b))
+      })
+      .and_then(|contact| {
+        let band = tactics::band_at((contact.position - me.get_position()).magnitude());
+        view
+          .engagement(name, &contact.name)
+          .and_then(|table| table.we_hit.iter().find(|odds| odds.band == band))
+      });
+    if let Some(odds) = nearest.filter(|odds| odds.expected_damage > 0.0) {
+      let spinal: f64 = odds
+        .by_mount
+        .iter()
+        .filter(|(mount, _)| spinals.contains(mount))
+        .map(|(_, damage)| damage)
+        .sum();
+      row[1] = (spinal / odds.expected_damage).min(1.0) as f32;
+    }
+  }
+  // Her launchers' loads: missiles and torpedoes in her mounts against what
+  // the mounts hold; 1 for a ship with no launcher, which has nothing to
+  // reload.
+  let (loaded, capacity) = (0..me.weapons().len()).fold((0, 0), |(loaded, capacity), mount| {
+    let (have, room) = (me.loaded(mount), me.capacity(mount));
+    (
+      loaded + have.missiles + have.torpedoes,
+      capacity + room.missiles + room.torpedoes,
+    )
+  });
+  row[2] = if capacity == 0 { 1.0 } else { share(loaded, capacity) };
+  // Her deck: craft aboard against her berths, what her tubes release a
+  // round against what is aboard, and the share of those aboard fit to go.
+  let aboard = me.embarked.len();
+  let berths = me.berths().len();
+  row[3] = if berths == 0 {
+    0.0
+  } else {
+    share(aboard as u32, berths as u32)
+  };
+  if aboard > 0 {
+    let tons = me.embarked.iter().map(|craft| craft.design.displacement).max().unwrap_or(0);
+    row[4] = share(me.launch_per_round(tons), aboard as u32);
+    row[5] = share(tactics::ready_craft(me).len() as u32, aboard as u32);
+  }
+  // Her carrier, for a craft: that she is one, that her carrier is on the
+  // plot with the side, the band and the closing speed between them against
+  // the landing limit (1/2 at the limit), her carrier's hull, whether her
+  // loads are spent, and her carrier's stores.
+  row[6] = f32::from(u8::from(me.carrier.is_some()));
+  if let Some(carrier) = carrier_of(view, me) {
+    row[7] = 1.0;
+    row[8] = tactics::band_between(me, carrier) as usize as f32 / 4.0;
+    let closing = (me.get_velocity() - carrier.get_velocity()).magnitude();
+    row[9] = ((closing / callisto::flight::landing_velocity_limit(me.current_maneuver)).min(2.0) / 2.0) as f32;
+    row[10] = share(carrier.current_hull, carrier.design.hull);
+    row[12] = stores_share(carrier);
+    row[14] = f32::from(u8::from(on_the_approach(me, carrier)));
+  } else if aboard > 0 {
+    row[12] = stores_share(me);
+  }
+  row[11] = f32::from(u8::from(tactics::loads_spent(me)));
+  row[13] = f32::from(u8::from(me.pinned));
 }
 
 fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mut [f32]) {
@@ -460,6 +580,10 @@ fn side_token(ctx: &SideContext, ships: &[&Ship], frame: Frame, foes: usize, row
       .count();
     row[15] = near as f32 / own.max(1) as f32;
   }
+  // The side's craft still aboard its carriers, as a share of all its hulls
+  // -- those aboard and those on the plot together.
+  let aboard: usize = ships.iter().map(|ship| ship.embarked.len()).sum();
+  row[SIDE_CAPITAL_AT] = aboard as f32 / (aboard + own).max(1) as f32;
 }
 
 fn pair(ctx: &SideContext, frame: Frame, me: &Ship, foe: &Foe, row: &mut [f32]) {
@@ -520,6 +644,12 @@ fn pair(ctx: &SideContext, frame: Frame, me: &Ship, foe: &Foe, row: &mut [f32]) 
       .filter(|missile| missile.source == foe.name && missile.target == name),
   );
   row[38] = (missiles as f32 / 5.0).min(1.0);
+  // Whether her spinal can be laid on it: not on a ship under 2,000 tons
+  // unless it held still last round (High Guard p. 34).
+  if let Some(contact) = foe.contact {
+    let can_lay = tactics::spinal_can_lay_on(contact.displacement, contact.held_still);
+    row[PAIR_CAPITAL_AT] = f32::from(u8::from(!spinal_mounts(me).is_empty() && can_lay));
+  }
 }
 
 /// Which choices of each head are open to ship `me` (token `index`).
@@ -574,6 +704,15 @@ fn ship_mask(view: &Observation, goal: Goal, me: &Ship, index: usize, own: &[&Sh
   set(mask, Head::Target2, if operators >= 2 { &contacts } else { &none_only });
   set(mask, Head::Captain, &[true; orders::RANKINGS.len()]);
   set(mask, Head::Computer, &[true, true]);
+  // Launch: a carrier with craft aboard that are ready, not pinned by a
+  // berth operation and not under Jump Control. Land: a craft whose
+  // carrier is on the plot with the side, not pinned; the engine's own gate
+  // (within Short, under the velocity limit) decides when the *Land* is
+  // given, and until then "land" flies her home.
+  let leaving = me.running_level(SoftwareKind::JumpControl).is_some();
+  let launch = !me.embarked.is_empty() && !me.pinned && !leaving && !tactics::ready_craft(me).is_empty();
+  let land = !me.pinned && carrier_of(view, me).is_some();
+  set(mask, Head::Flight, &[true, launch, land]);
 }
 
 /// An absent ship's mask: only the first choice of every head.
@@ -755,16 +894,24 @@ mod reload_tests {
     own
   }
 
+  /// The magazine input reads everything aboard, racks and stores
+  /// together; only the step-12 loaded share, which is there to say a rack
+  /// needs reloading, tells the two apart.
   #[test]
-  fn the_split_between_racks_and_stores_does_not_show() {
+  fn the_split_between_racks_and_stores_shows_only_in_the_loaded_share() {
+    let old = |row: Vec<f32>| row[..OWN_CAPITAL_AT].to_vec();
+    let loaded = |row: &[f32]| row[OWN_CAPITAL_AT + 2];
     let full = own_row(&world([12, 12], 0));
-    assert_eq!(full, own_row(&world([0, 0], 0)), "all in stores");
-    assert_eq!(full, own_row(&world([12, 0], 0)), "one rack full");
+    assert_eq!(old(full.clone()), old(own_row(&world([0, 0], 0))), "all in stores");
+    assert_eq!(old(full.clone()), old(own_row(&world([12, 0], 0))), "one rack full");
     assert_eq!(full[42], 1.0, "a full stock");
+    assert_eq!(loaded(&full), 1.0, "both racks full");
+    assert_eq!(loaded(&own_row(&world([12, 0], 0))), 0.5, "one rack of two");
+    assert_eq!(loaded(&own_row(&world([0, 0], 0))), 0.0, "all in stores");
 
     // Thirty spent reads as 90 of 120, wherever the 90 are.
     let spent = own_row(&world([3, 12], 30));
-    assert_eq!(spent, own_row(&world([12, 12], 30)));
+    assert_eq!(old(spent.clone()), old(own_row(&world([12, 12], 30))));
     assert_eq!(spent[42], 90.0 / 120.0);
   }
 }
@@ -773,8 +920,8 @@ mod reload_tests {
 /// whatever the engine learns to do with new mounts. Every shipped design is
 /// put against itself and against the P.F. Sloan, both ways, at a spread of
 /// ranges, and the side's whole encoding -- own, foe, side and pair features
-/// and the masks -- is fingerprinted against a file written before spinal
-/// mounts existed.
+/// and the masks -- is fingerprinted against a file last written for the
+/// step-12 layout (the capital-ship and carrier inputs and the flight head).
 ///
 /// Run with `UPDATE_SIDE_FINGERPRINTS=1` to rewrite the file, which should
 /// only ever happen alongside a retrain.
@@ -904,5 +1051,294 @@ mod fingerprint_tests {
       "the network now sees these differently:\n  {}",
       changed.join("\n  ")
     );
+  }
+}
+
+/// The capital-ship and carrier inputs of step 12, and the flight head's
+/// mask: what the network is told of a spinal, a magazine, a deck and a
+/// carrier, and when it may launch or land.
+#[cfg(test)]
+mod capital_tests {
+  use super::*;
+  use crate::observation::observe;
+  use callisto::entity::Entities;
+  use callisto::ship::{FeatureKind, Magazine, ShipDesignTemplate, ShipFeature, Team, Weapon, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  struct Encoded {
+    own: Vec<f32>,
+    side: Vec<f32>,
+    pairs: Vec<f32>,
+    masks: Vec<bool>,
+    tokens: Tokens,
+  }
+
+  impl Encoded {
+    fn row(&self, ship: &str) -> &[f32] {
+      let i = self.tokens.own.iter().position(|name| name == ship).expect("a token");
+      &self.own[i * OWN_FEATS..(i + 1) * OWN_FEATS]
+    }
+    fn pair(&self, ship: &str, foe: &str) -> &[f32] {
+      let i = self.tokens.own.iter().position(|name| name == ship).expect("a token");
+      let j = self.tokens.foes.iter().position(|name| name == foe).expect("a foe");
+      &self.pairs[(i * FOES + j) * PAIR_FEATS..(i * FOES + j + 1) * PAIR_FEATS]
+    }
+    fn flight(&self, ship: &str) -> [bool; 3] {
+      let i = self.tokens.own.iter().position(|name| name == ship).expect("a token");
+      let at = i * MASK_LEN + offset(Head::Flight);
+      [self.masks[at], self.masks[at + 1], self.masks[at + 2]]
+    }
+  }
+
+  fn encode(world: &Entities, side: &[&str]) -> Encoded {
+    let side: Vec<String> = side.iter().map(|name| (*name).to_string()).collect();
+    let view = observe(world, &side);
+    let memory = Memory::default();
+    let history = History::default();
+    let ctx = SideContext {
+      view: &view,
+      memory: &memory,
+      history: &history,
+      round: 1,
+      max_rounds: 20,
+      own_hull_share: 1.0,
+      enemy_hull_share: 1.0,
+      goal: Goal::Destroy,
+      post: None,
+    };
+    let (mut own, mut foes, mut side, mut pairs, mut masks) = (
+      vec![0.0; OWN * OWN_FEATS],
+      vec![0.0; FOES * FOE_FEATS],
+      vec![0.0; SIDE_FEATS],
+      vec![0.0; OWN * FOES * PAIR_FEATS],
+      vec![false; OWN * MASK_LEN],
+    );
+    let tokens = encode_side(
+      &ctx,
+      &mut Buffers {
+        own: &mut own,
+        foes: &mut foes,
+        side: &mut side,
+        pairs: &mut pairs,
+        masks: &mut masks,
+      },
+    );
+    Encoded {
+      own,
+      side,
+      pairs,
+      masks,
+      tokens,
+    }
+  }
+
+  fn feature(kind: FeatureKind) -> ShipFeature {
+    ShipFeature {
+      name: "deck".to_string(),
+      power: 0,
+      default_on: true,
+      kind: Some(kind),
+    }
+  }
+
+  /// A 50,000-ton carrier: thirty 50-ton berths, one tube, one deck, 100
+  /// missiles in stores, and a triple missile turret of her own.
+  fn carrier() -> Arc<ShipDesignTemplate> {
+    Arc::new(ShipDesignTemplate {
+      name: "Carrier".to_string(),
+      displacement: 50_000,
+      hull: 27_500,
+      maneuver: 4,
+      power: 60_000,
+      features: vec![
+        feature(FeatureKind::DockingSpace {
+          craft_tons: 50,
+          count: 30,
+        }),
+        feature(FeatureKind::LaunchTube {
+          craft_tons: 50,
+          count: 1,
+        }),
+        feature(FeatureKind::RecoveryDeck {
+          craft_tons: 50,
+          count: 1,
+        }),
+      ],
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3)],
+      magazine: Magazine {
+        missiles: 136,
+        ..Magazine::default()
+      },
+      ..ShipDesignTemplate::default()
+    })
+  }
+
+  /// A 50-ton fighter with a single missile rack and 12 missiles in all.
+  fn fighter() -> Arc<ShipDesignTemplate> {
+    Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      displacement: 50,
+      hull: 20,
+      maneuver: 6,
+      power: 60,
+      jump: 0,
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)],
+      magazine: Magazine {
+        missiles: 12,
+        ..Magazine::default()
+      },
+      ..ShipDesignTemplate::default()
+    })
+  }
+
+  fn monitor() -> Arc<ShipDesignTemplate> {
+    Arc::new(ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      hull: 15_000,
+      maneuver: 1,
+      power: 10_000,
+      tl: 15,
+      weapons: vec![
+        Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 2, tl: None }),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      ],
+      ..ShipDesignTemplate::default()
+    })
+  }
+
+  fn add(world: &mut Entities, name: &str, team: Team, at: Vec3, design: &Arc<ShipDesignTemplate>) {
+    world.add_ship(name.to_string(), at, Vec3::zero(), design, None, None);
+    world.ships[name].write().unwrap().team = Some(team);
+  }
+
+  /// The carrier on Blue at the origin with two fighters aboard and a raider
+  /// in contact at Medium.
+  fn deck() -> Entities {
+    let mut world = Entities::default();
+    add(&mut world, "Mother", Team::Blue, Vec3::zero(), &carrier());
+    add(&mut world, "Chick 1", Team::Blue, Vec3::zero(), &fighter());
+    add(&mut world, "Chick 2", Team::Blue, Vec3::zero(), &fighter());
+    add(&mut world, "Raider", Team::Red, Vec3::new(5.0e6, 0.0, 0.0), &monitor());
+    world.embark_ship("Chick 1", "Mother").unwrap();
+    world.embark_ship("Chick 2", "Mother").unwrap();
+    world.establish_initial_contacts();
+    world
+  }
+
+  #[test]
+  fn a_carrier_reads_her_deck_and_may_launch() {
+    let world = deck();
+    let encoded = encode(&world, &["Mother", "Chick 1", "Chick 2"]);
+    assert_eq!(encoded.tokens.own, vec!["Mother"], "craft aboard take no slot");
+    let row = &encoded.row("Mother")[OWN_CAPITAL_AT..];
+    assert_eq!(row[0], 0.0, "no spinal");
+    assert_eq!(row[2], 1.0, "her turret is full");
+    assert_eq!(row[3], 2.0 / 30.0, "craft aboard over berths");
+    assert_eq!(row[4], 1.0, "the tube takes ten a round: both go at once");
+    assert_eq!(row[5], 1.0, "both are ready");
+    assert_eq!(row[6], 0.0, "she is nobody's craft");
+    assert_eq!(row[12], 1.0, "her stores are full");
+    assert_eq!(encoded.flight("Mother"), [true, true, false]);
+    assert_eq!(encoded.side[SIDE_CAPITAL_AT], 2.0 / 3.0, "two hulls aboard of three");
+  }
+
+  #[test]
+  fn a_pinned_or_jumping_carrier_may_not_launch() {
+    let world = deck();
+    world.ships["Mother"].write().unwrap().pinned = true;
+    assert_eq!(encode(&world, &["Mother"]).flight("Mother"), [true, false, false]);
+    let empty = {
+      let mut world = Entities::default();
+      add(&mut world, "Mother", Team::Blue, Vec3::zero(), &carrier());
+      world
+    };
+    assert_eq!(
+      encode(&empty, &["Mother"]).flight("Mother"),
+      [true, false, false],
+      "nothing aboard"
+    );
+  }
+
+  #[test]
+  fn a_craft_reads_her_carrier_and_may_land() {
+    let mut world = deck();
+    world.add_ship(
+      "Chick 3".to_string(),
+      Vec3::new(0.0, 1.0e5, 0.0),
+      Vec3::new(0.0, 100.0, 0.0),
+      &fighter(),
+      None,
+      None,
+    );
+    {
+      let mut craft = world.ships["Chick 3"].write().unwrap();
+      craft.team = Some(Team::Blue);
+      craft.carrier = Some("Mother".to_string());
+    }
+    world.ships["Mother"].write().unwrap().current_hull = 11_000;
+    let encoded = encode(&world, &["Mother", "Chick 3"]);
+    let row = &encoded.row("Chick 3")[OWN_CAPITAL_AT..];
+    assert_eq!(row[6], 1.0, "a craft");
+    assert_eq!(row[7], 1.0, "her carrier is on the plot");
+    assert_eq!(row[8], 0.0, "Short");
+    let limit = callisto::flight::landing_velocity_limit(6);
+    assert!(
+      (row[9] - (100.0 / limit / 2.0) as f32).abs() < 1e-6,
+      "closing against the limit"
+    );
+    assert_eq!(row[10], 11_000.0 / 27_500.0, "her carrier's hull");
+    assert_eq!(row[11], 0.0, "her rack is loaded");
+    assert_eq!(row[12], 1.0, "her carrier's stores");
+    assert_eq!(row[14], 1.0, "on the approach");
+    assert_eq!(encoded.flight("Chick 3"), [true, false, true]);
+
+    // Spent, and too fast to land.
+    {
+      let mut craft = world.ships["Chick 3"].write().unwrap();
+      craft.loaded[0] = Magazine::default();
+      craft.magazine = Magazine::default();
+      craft.set_velocity(Vec3::new(0.0, 1.0e5, 0.0));
+    }
+    let encoded = encode(&world, &["Mother", "Chick 3"]);
+    let row = &encoded.row("Chick 3")[OWN_CAPITAL_AT..];
+    assert_eq!(row[2], 0.0, "nothing loaded");
+    assert_eq!(row[11], 1.0, "spent");
+    assert_eq!(row[9], 1.0, "far past the limit");
+    assert_eq!(row[14], 0.0, "not on the approach");
+    assert_eq!(encoded.flight("Chick 3"), [true, false, true], "land still flies her home");
+
+    // Her carrier gone, she has nowhere to land.
+    world.ships.remove("Mother");
+    let encoded = encode(&world, &["Chick 3"]);
+    assert_eq!(encoded.row("Chick 3")[OWN_CAPITAL_AT + 7], 0.0);
+    assert_eq!(encoded.flight("Chick 3"), [true, false, false]);
+  }
+
+  #[test]
+  fn a_spinal_is_read_against_each_target() {
+    let mut world = Entities::default();
+    add(&mut world, "Monitor", Team::Blue, Vec3::zero(), &monitor());
+    add(&mut world, "Fighter", Team::Red, Vec3::new(5.0e6, 0.0, 0.0), &fighter());
+    add(&mut world, "Cruiser", Team::Red, Vec3::new(5.5e6, 0.0, 0.0), &monitor());
+    world.establish_initial_contacts();
+    let encoded = encode(&world, &["Monitor"]);
+    let row = &encoded.row("Monitor")[OWN_CAPITAL_AT..];
+    assert_eq!(row[0], 1.0, "a spinal");
+    assert_eq!(row[1], 0.0, "it cannot be laid on the nearest contact, a fighter under way");
+    assert_eq!(row[2], 1.0, "no launcher: nothing to reload");
+    assert_eq!(encoded.pair("Monitor", "Fighter")[PAIR_CAPITAL_AT], 0.0);
+    assert_eq!(encoded.pair("Monitor", "Cruiser")[PAIR_CAPITAL_AT], 1.0);
+    assert_eq!(encoded.flight("Monitor"), [true, false, false]);
+
+    world.ships["Fighter"].write().unwrap().held_still = true;
+    let encoded = encode(&world, &["Monitor"]);
+    assert_eq!(encoded.pair("Monitor", "Fighter")[PAIR_CAPITAL_AT], 1.0, "held still");
+
+    // With the cruiser nearest, the spinal is nearly all her punch on it.
+    world.ships["Fighter"].write().unwrap().set_position(Vec3::new(6.0e6, 0.0, 0.0));
+    let share = encode(&world, &["Monitor"]).row("Monitor")[OWN_CAPITAL_AT + 1];
+    assert!(share > 0.9 && share <= 1.0, "{share}");
   }
 }

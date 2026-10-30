@@ -10,7 +10,7 @@ import torch
 
 from callisto_rl import default_pool
 from callisto_rl._engine import SideEngine, side_net_logits
-from callisto_rl.sidenet import SideNet
+from callisto_rl.sidenet import HEADS, SideNet
 from callisto_rl.vec_env import DESIGNS
 
 HERE = Path(__file__).resolve().parents[2]
@@ -48,11 +48,11 @@ def test_trimming_keeps_empty_rows_certain():
     model = net().eval()
     small = views(["Tessaly Crossing.json"])
     big = views(["Fighter Swarm.json"])
-    actions = torch.zeros(len(small[0]), small[0].shape[1], 15, dtype=torch.long)
+    actions = torch.zeros(len(small[0]), small[0].shape[1], HEADS, dtype=torch.long)
     with torch.no_grad():
         alone, _, _ = model.evaluate(*small, actions)
         mixed, _, _ = model.evaluate(*[torch.cat([s, b]) for s, b in zip(small, big)],
-                                     torch.cat([actions, torch.zeros(len(big[0]), big[0].shape[1], 15, dtype=torch.long)]))
+                                     torch.cat([actions, torch.zeros(len(big[0]), big[0].shape[1], HEADS, dtype=torch.long)]))
     assert torch.allclose(alone, mixed[: len(small[0])], atol=1e-3)
 
 

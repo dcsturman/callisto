@@ -1,6 +1,13 @@
 """Carry a trained network over to a wider observation or more action heads.
 
     .venv/bin/python scripts/widen.py checkpoints/selfplay-3/final.zip checkpoints/selfplay-3/widened.zip
+    .venv/bin/python scripts/widen.py checkpoints/side-20-9/final.pt checkpoints/widened-cap/final.pt
+
+A per-side checkpoint (``"kind": "side"``) is widened by
+:func:`callisto_rl.sidenet.widened`: new inputs get zero weight and a new
+head's rows score zero, so the network plays as it did and a new head's open
+choices start equally likely. The file written loads in this build without
+further widening, and exports (`export_side.py`) with this build's layout.
 
 When the environment gains inputs or heads, an old checkpoint no longer fits.
 This builds a network of the new shape and copies every old weight across:
@@ -149,12 +156,36 @@ def widen_pt(old_path: str, new_path: str) -> None:
     print(f"{old_path} ({old_obs} inputs, {old_outputs} outputs) -> {new_path} ({OBS_LEN}, {sum(HEAD_SIZES)})")
 
 
+def widen_side(old_path: str, new_path: str) -> None:
+    """A per-side network's checkpoint, in this build's layout."""
+    from callisto_rl._engine import OWN_FEATS, PAIR_FEATS, SIDE_FEATS, SIDE_HEAD_SIZES
+    from callisto_rl.sidenet import SideNet
+
+    saved = torch.load(old_path, map_location="cpu", weights_only=False)
+    before = {k: tuple(v.shape) for k, v in saved["state"].items()}
+    net = SideNet.load(old_path)
+    changed = [k for k, v in net.state_dict().items() if tuple(v.shape) != before[k]]
+    extra = {k: v for k, v in saved.items() if k not in ("kind", "config", "state")}
+    net.save(new_path, {**extra, "widened_from": str(old_path)})
+    print(
+        f"{old_path} -> {new_path}: own {before['own_in.0.weight'][1]} -> {OWN_FEATS}, "
+        f"side {before['side_in.0.weight'][1]} -> {SIDE_FEATS}, pair {before['pair_in.0.weight'][1]} -> {PAIR_FEATS}, "
+        f"plain {before['plain.weight'][0]} -> {net.state_dict()['plain.weight'].shape[0]} ({len(SIDE_HEAD_SIZES)} heads); "
+        f"resized {', '.join(changed) or 'nothing'}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("old")
     parser.add_argument("new")
     args = parser.parse_args()
-    (widen if args.old.endswith(".zip") else widen_pt)(args.old, args.new)
+    if args.old.endswith(".zip"):
+        widen(args.old, args.new)
+    elif torch.load(args.old, map_location="cpu", weights_only=False).get("kind") == "side":
+        widen_side(args.old, args.new)
+    else:
+        widen_pt(args.old, args.new)
 
 
 if __name__ == "__main__":

@@ -38,8 +38,11 @@ from ._engine import (
 from .policy import NEG, Heads
 
 # Head order, as the engine numbers them.
-VERB, HELM_TARGET, BAND, GUIDE, FIRE, LOCK, POSTURE, DODGE, ASSIST, JUMP, SENSOR1, SENSOR2, TARGET2, CAPTAIN, COMPUTER = range(15)
-PLAIN = [VERB, BAND, POSTURE, DODGE, ASSIST, JUMP, SENSOR1, SENSOR2, CAPTAIN, COMPUTER]
+VERB, HELM_TARGET, BAND, GUIDE, FIRE, LOCK, POSTURE, DODGE, ASSIST, JUMP, SENSOR1, SENSOR2, TARGET2, CAPTAIN, COMPUTER, FLIGHT = range(16)
+HEADS = len(SIDE_HEAD_SIZES)
+assert HEADS == 16, SIDE_HEAD_SIZES
+# The flight head came last, so an older network's plain layer is a prefix of this one's.
+PLAIN = [VERB, BAND, POSTURE, DODGE, ASSIST, JUMP, SENSOR1, SENSOR2, CAPTAIN, COMPUTER, FLIGHT]
 AT_FOES = [HELM_TARGET, FIRE, LOCK, TARGET2]  # FIRE, LOCK, TARGET2 also have "none" first
 WITH_NONE = {FIRE, LOCK, TARGET2}
 
@@ -68,11 +71,19 @@ class Layer(nn.Module):
 
 
 def widened(saved: dict, fresh: dict) -> dict:
-    """A saved network's weights, with any input added to the encoding since
-    it was trained given zero weight: an input layer saved narrower than this
-    build's has zero columns added on the right, where new inputs go. The
-    network then plays exactly as it did, the new inputs counting for nothing
-    until training gives them weight."""
+    """A saved network's weights, with anything added to the encoding since
+    it was trained given zero weight, so it plays exactly as it did until
+    training gives the new parts weight:
+
+    - an input layer saved narrower than this build's has zero columns
+      added on the right, where new inputs go (the capital-ship and carrier
+      inputs of step 12, the Hold post before them);
+    - the plain head layer saved shorter than this build's has zero rows
+      added at the end, where new heads go (the flight head): every choice
+      of a new head scores 0, so its open choices are equally likely while
+      sampling, and the first ("none") wins a greedy pick. For the flight
+      head "none" is the crews' own rules, so a widened network launches and
+      recovers as the crews do until training teaches it otherwise."""
     out = dict(saved)
     for key, value in saved.items():
         want = fresh.get(key)
@@ -81,6 +92,9 @@ def widened(saved: dict, fresh: dict) -> dict:
         if value.dim() == 2 and value.shape[0] == want.shape[0] and value.shape[1] < want.shape[1]:
             pad = torch.zeros(value.shape[0], want.shape[1] - value.shape[1], dtype=value.dtype, device=value.device)
             out[key] = torch.cat([value, pad], dim=1)
+        elif key.startswith("plain.") and value.shape[0] < want.shape[0] and value.shape[1:] == want.shape[1:]:
+            pad = torch.zeros(want.shape[0] - value.shape[0], *value.shape[1:], dtype=value.dtype, device=value.device)
+            out[key] = torch.cat([value, pad], dim=0)
     return out
 
 

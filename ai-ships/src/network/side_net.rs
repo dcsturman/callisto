@@ -13,7 +13,7 @@ use crate::network::side::{FOES, FOE_FEATS, HEAD_SIZES, MASK_LEN, OWN, OWN_FEATS
 const NEG: f32 = -1e8;
 const TOKENS: usize = OWN + FOES + 1;
 /// The ordinary heads, in the order the network's plain layer gives them.
-const PLAIN: [Head; 10] = [
+pub const PLAIN: [Head; 11] = [
   Head::Verb,
   Head::Band,
   Head::Posture,
@@ -24,6 +24,7 @@ const PLAIN: [Head; 10] = [
   Head::Sensor2,
   Head::Captain,
   Head::Computer,
+  Head::Flight,
 ];
 /// The heads that point at enemies, in the order the target scorer gives them.
 const AT_FOES: [Head; 4] = [Head::HelmTarget, Head::Fire, Head::Lock, Head::Target2];

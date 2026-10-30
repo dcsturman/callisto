@@ -1107,9 +1107,17 @@ fn can_engage(own: &Ship, weapon_id: usize, kind: WeaponType, target: &Ship) -> 
   if own.get_weapon(weapon_id).mount.spinal_multiple().is_none() {
     return true;
   }
-  let big_enough = crate::rules_tables::spinal_size_dm(target.design.displacement).is_some() || target.held_still;
   let loaded = !crate::ship::spinal_uses_rounds(kind) || own.magazine.rounds > 0;
-  big_enough && loaded
+  spinal_can_lay_on(target.design.displacement, target.held_still) && loaded
+}
+
+/// Whether a spinal mount can be laid on a ship of `displacement` tons at
+/// all: not under 2,000 tons unless she held still last round (High Guard
+/// p. 34). The rule `combat::attack_terms` applies, for those that must know
+/// it before firing.
+#[must_use]
+pub fn spinal_can_lay_on(displacement: u32, held_still: bool) -> bool {
+  crate::rules_tables::spinal_size_dm(displacement).is_some() || held_still
 }
 
 /// The mounts `intent`'s fire orders would use, each with the gun it fires:

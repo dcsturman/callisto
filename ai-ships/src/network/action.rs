@@ -16,7 +16,7 @@ use crate::decision::{straggler_margin, STRAGGLER_STEP};
 use crate::observation::Observation;
 use callisto::entity::Entity;
 use callisto::ship::{Range, Ship};
-use callisto::tactics::{self, Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
+use callisto::tactics::{self, Engage, EngineerVerb, Flight, Helm, Intent, Posture, SensorVerb};
 
 use crate::network::orders;
 use cgmath::InnerSpace;
@@ -73,10 +73,16 @@ pub enum Head {
   Captain,
   /// Fight or link.
   Computer,
+  /// Flight operations: none, launch (a carrier sends out her ready craft,
+  /// the tubes' worth a round) or land (a craft goes home to her carrier).
+  Flight,
 }
 
+/// The flight head's choices, in order.
+pub const FLIGHTS: usize = 3;
+
 impl Head {
-  pub const ALL: [Head; 15] = [
+  pub const ALL: [Head; 16] = [
     Head::Verb,
     Head::HelmTarget,
     Head::Band,
@@ -92,6 +98,7 @@ impl Head {
     Head::Target2,
     Head::Captain,
     Head::Computer,
+    Head::Flight,
   ];
 
   /// How many choices the head has.
@@ -108,6 +115,7 @@ impl Head {
       Head::Assist | Head::Jump | Head::Computer => 2,
       Head::Sensor1 | Head::Sensor2 => orders::SENSOR_ORDERS.len(),
       Head::Captain => orders::RANKINGS.len(),
+      Head::Flight => FLIGHTS,
     }
   }
 
@@ -127,7 +135,7 @@ impl Head {
 /// The number of heads.
 pub const HEADS: usize = Head::ALL.len();
 /// One ship's mask: every head's choices, end to end.
-pub const MASK_LEN: usize = Head::Computer.offset() + Head::Computer.size();
+pub const MASK_LEN: usize = Head::Flight.offset() + Head::Flight.size();
 /// Each head's size, for the Python side's action space.
 pub const HEAD_SIZES: [usize; HEADS] = {
   let mut sizes = [0; HEADS];
@@ -210,6 +218,7 @@ fn intent_of(choice: &Choice, picture: &Picture, helm: Helm, ship: &Ship, view: 
   let ranking = orders::RANKINGS[index(Head::Captain)];
   Intent {
     posture: Some(POSTURES[index(Head::Posture)]),
+    flight: flight_of(index(Head::Flight), ship),
     helm,
     evade,
     assist_gunners: Some(index(Head::Assist) == 1),
@@ -225,6 +234,23 @@ fn intent_of(choice: &Choice, picture: &Picture, helm: Helm, ship: &Ship, view: 
     software: orders::software_orders(ship, computer, leaving),
     boosts: orders::captain_boosts(ship, view, ranking, evade.is_some_and(|g| g > 0)),
     ..Intent::default()
+  }
+}
+
+/// The flight operation a ship's choice asks for. "none" leaves the deck to
+/// the crews' own rules (`tactics`: launch when an enemy is in reach, come
+/// home when spent), so a network widened with nothing learned for this head
+/// plays exactly as the crews do; "launch" and "land" are what training
+/// learns to choose over them. Where a choice does not apply -- launch with
+/// nothing aboard, land with no carrier -- it is "none".
+fn flight_of(choice: usize, ship: &Ship) -> Option<Flight> {
+  match choice {
+    1 if !ship.embarked.is_empty() => Some(Flight::Launch {
+      craft: Vec::new(),
+      count: None,
+    }),
+    2 => ship.carrier.clone().map(|carrier| Flight::Land { carrier }),
+    _ => None,
   }
 }
 
@@ -541,6 +567,11 @@ pub fn choice_of(intent: &Intent, ship: &Ship, picture: &Picture) -> Choice {
   choice[Head::Dodge as usize] = i64::from(intent.evade.unwrap_or_else(|| ship.get_dodge_thrust())).min(2);
   choice[Head::Assist as usize] = i64::from(intent.assist_gunners.unwrap_or_else(|| ship.get_assist_gunners()));
   choice[Head::Jump as usize] = i64::from(intent.engineering.iter().any(|verb| matches!(verb, EngineerVerb::Jump)));
+  choice[Head::Flight as usize] = match intent.flight {
+    Some(Flight::Launch { .. }) => 1,
+    Some(Flight::Land { .. }) => 2,
+    Some(Flight::Hold) | None => 0,
+  };
   choice
 }
 
@@ -624,5 +655,91 @@ mod spinal_tests {
     };
     assert_eq!(on("Fighter"), Some(vec![1]), "{fire:?}");
     assert_eq!(on("Cruiser"), Some(vec![0]), "{fire:?}");
+  }
+}
+
+#[cfg(test)]
+mod flight_tests {
+  use super::*;
+  use callisto::ship::ShipDesignTemplate;
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  fn ship(carrier: Option<&str>, aboard: usize) -> Ship {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new(
+      "Ship".to_string(),
+      callisto::entity::Vec3::zero(),
+      callisto::entity::Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    ship.carrier = carrier.map(str::to_string);
+    for i in 0..aboard {
+      ship.embarked.push(Ship::new(
+        format!("Craft {i}"),
+        callisto::entity::Vec3::zero(),
+        callisto::entity::Vec3::zero(),
+        &design,
+        None,
+        None,
+      ));
+    }
+    ship
+  }
+
+  /// "none" is the crews' own rules for everyone; "launch" and "land" mean
+  /// what they say where they apply, and are "none" where they do not.
+  #[test]
+  fn the_flight_head_becomes_a_flight_order() {
+    let launch = Some(Flight::Launch {
+      craft: vec![],
+      count: None,
+    });
+    assert_eq!(flight_of(0, &ship(None, 0)), None);
+    assert_eq!(flight_of(1, &ship(None, 0)), None);
+    assert_eq!(flight_of(0, &ship(None, 2)), None);
+    assert_eq!(flight_of(1, &ship(None, 2)), launch);
+    assert_eq!(flight_of(2, &ship(None, 2)), None);
+    assert_eq!(flight_of(0, &ship(Some("Mother"), 0)), None);
+    assert_eq!(flight_of(1, &ship(Some("Mother"), 0)), None);
+    assert_eq!(
+      flight_of(2, &ship(Some("Mother"), 0)),
+      Some(Flight::Land {
+        carrier: "Mother".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn a_flight_order_reads_back_as_its_choice() {
+    let me = ship(Some("Mother"), 0);
+    let picture = Picture::default();
+    let choice = |flight: Option<Flight>| {
+      choice_of(
+        &Intent {
+          flight,
+          ..Intent::default()
+        },
+        &me,
+        &picture,
+      )[Head::Flight as usize]
+    };
+    assert_eq!(choice(None), 0);
+    assert_eq!(choice(Some(Flight::Hold)), 0);
+    assert_eq!(
+      choice(Some(Flight::Launch {
+        craft: vec![],
+        count: None
+      })),
+      1
+    );
+    assert_eq!(
+      choice(Some(Flight::Land {
+        carrier: "Mother".to_string()
+      })),
+      2
+    );
   }
 }

@@ -58,6 +58,9 @@ pub struct Contact {
   /// The burn it is making this round, m/s². A contact's course is on the
   /// plot, as a console shows it; a blip's is not.
   pub burn: Vec3,
+  /// Whether it made no thrust last round: on the plot as a course that did
+  /// not bend, and what lets a spinal mount attack a ship under 2,000 tons.
+  pub held_still: bool,
   /// The sensors its class is built with.
   pub sensors: Sensors,
   pub weapons: Vec<Weapon>,
@@ -222,6 +225,29 @@ fn snapshot(world: &Entities) -> Vec<Ship> {
   ships
 }
 
+/// Every ship of another side that nobody of ours has detected, as a blip.
+fn blips_of(ships: &[Ship], own: &[Ship], team: Option<Team>, contacts: &[Contact]) -> Vec<Blip> {
+  let ours = |ship: &Ship| own.iter().any(|mine| mine.get_name() == ship.get_name());
+  ships
+    .iter()
+    .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))
+    .filter(|ship| !contacts.iter().any(|contact| contact.name == ship.get_name()))
+    .filter_map(|blip| {
+      let (nearest, distance) = own
+        .iter()
+        .map(|ship| (ship.get_name(), (ship.get_position() - blip.get_position()).magnitude()))
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+      Some(Blip {
+        name: blip.get_name().to_string(),
+        position: blip.get_position(),
+        velocity: blip.get_velocity(),
+        nearest: nearest.to_string(),
+        distance,
+      })
+    })
+    .collect()
+}
+
 /// What the side made of these ships may know of this world.
 ///
 /// # Panics
@@ -268,6 +294,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
         velocity: contact.get_velocity(),
         current_maneuver: contact.current_maneuver,
         burn: contact.plan.0 .0,
+        held_still: contact.held_still,
         sensors: contact.design.sensors,
         weapons: contact.weapons().to_vec(),
         crit_level: contact.crit_level,
@@ -283,24 +310,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     })
     .collect();
 
-  let blips: Vec<Blip> = ships
-    .iter()
-    .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))
-    .filter(|ship| !contacts.iter().any(|contact| contact.name == ship.get_name()))
-    .filter_map(|blip| {
-      let (nearest, distance) = own
-        .iter()
-        .map(|ship| (ship.get_name(), (ship.get_position() - blip.get_position()).magnitude()))
-        .min_by(|a, b| a.1.total_cmp(&b.1))?;
-      Some(Blip {
-        name: blip.get_name().to_string(),
-        position: blip.get_position(),
-        velocity: blip.get_velocity(),
-        nearest: nearest.to_string(),
-        distance,
-      })
-    })
-    .collect();
+  let blips = blips_of(&ships, &own, team, &contacts);
   let enemy_ships: Vec<&Ship> = ships
     .iter()
     .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))

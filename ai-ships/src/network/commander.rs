@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::commander::Commander;
 use crate::observation::Observation;
 use async_trait::async_trait;
-use callisto::tactics::{EngineerVerb, Helm, Intent, SensorVerb};
+use callisto::tactics::{EngineerVerb, Flight, Helm, Intent, SensorVerb};
 use rand::SeedableRng;
 
 use crate::network::action::{side_intents, side_intents_with, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
@@ -107,9 +107,14 @@ fn rationale(intent: &Intent) -> String {
       .software
       .iter()
       .any(|order| order.running && order.program == callisto::software::SoftwareKind::JumpControl);
+  let flight = match &intent.flight {
+    Some(Flight::Launch { .. }) => ", launching her craft".to_string(),
+    Some(Flight::Land { carrier }) => format!(", going home to {carrier}"),
+    Some(Flight::Hold) | None => String::new(),
+  };
   let lead = if withdrawing { "Withdrawing to jump: " } else { "" };
   format!(
-    "{lead}{}{fire}{dodge}{jamming}.",
+    "{lead}{}{fire}{dodge}{jamming}{flight}.",
     if withdrawing { helm } else { capitalise(&helm) }
   )
 }
@@ -137,6 +142,7 @@ fn label(head: Head, choice: usize, picture: &Picture) -> String {
     Head::Sensor1 | Head::Sensor2 => format!("{:?}", orders::SENSOR_ORDERS[choice]),
     Head::Captain => format!("{:?}", orders::RANKINGS[choice]),
     Head::Computer => ["fight", "link"][choice].to_string(),
+    Head::Flight => ["none", "launch", "land"][choice].to_string(),
   }
 }
 

@@ -532,6 +532,9 @@ fn masks(me: &Ship, view: &Observation, goal: Goal, friends: &[&Ship], enemies: 
   set(mask, Head::Target2, if operators >= 2 { &contacts } else { &none_only });
   set(mask, Head::Captain, &[true; orders::RANKINGS.len()]);
   set(mask, Head::Computer, &[true, true]);
+  // The per-ship network does not run the deck: its flight head is closed
+  // to all but "none", which leaves it to the crews' rules.
+  set(mask, Head::Flight, &[true, false, false]);
 }
 
 /// Open the choices `open` says in `head`, and the first one whatever, so a
