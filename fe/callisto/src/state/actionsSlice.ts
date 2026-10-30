@@ -241,7 +241,8 @@ export const actionsSlice = createSlice({
       updateActions(state);
     },
     /**
-     * The carrier's Launch: the craft to send out this round, by name. A new
+     * The carrier's Launch: the craft to send out, by name. It stands until
+     * every one is out, the server dropping each as she goes. A new
      * list replaces the last and an empty one withdraws it, which is what
      * the server does with an empty Launch. The captain's leadership check
      * is untouched: flight operations are an order, not the captain's roll.

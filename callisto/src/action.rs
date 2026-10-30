@@ -420,8 +420,9 @@ pub enum ShipAction {
   ReviveWatch {
     count: u32,
   },
-  /// The carrier's captain launches these craft from her berths this
-  /// round: through a powered launch tube, ten a tube (HG FAQ), and they are
+  /// The carrier's captain launches these craft from her berths, standing
+  /// until all are out: through a powered launch tube, ten a tube a round
+  /// (HG FAQ), the rest waiting for the next round, and they are
   /// on the plot as the round ends; with no working tube, through the berths
   /// in D3 rounds (1D for craft of 2,000 tons and up), the carrier pinned
   /// meanwhile (HG p. 61). One list per ship: a new list replaces the last,

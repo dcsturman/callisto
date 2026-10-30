@@ -3291,7 +3291,7 @@ impl Entities {
           .is_some_and(|s| s.read().unwrap().sensor_locks.iter().any(|n| n == target))
       };
 
-      actions.retain(|action| {
+      actions.retain_mut(|action| {
         match action {
           // Keep FireActions, JamComms if the target still exists.
           ShipAction::JamComms { target, .. } | ShipAction::FireAction { target, .. } => {
@@ -3310,8 +3310,16 @@ impl Entities {
           // Keep JamMissiles and PointDefense in all cases.
           ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles { .. } => true,
           // A Land order stands until the craft is aboard, or the carrier is
-          // gone. A Launch is one round's order.
+          // gone.
           ShipAction::Land { carrier } => self.ships.contains_key(carrier),
+          // A Launch stands until every craft on it is out: those the tubes
+          // had no room for wait for next round. Craft launched, lost, or in
+          // a berth release (which runs on its own) come off the list.
+          ShipAction::Launch { craft } => {
+            let carrier = self.ships[ship_name.as_str()].read().unwrap();
+            craft.retain(|name| carrier.craft_aboard(name).is_some() && !carrier.in_flight_op(name));
+            !craft.is_empty()
+          }
           // Engineer actions should be scrubbed each turn - they are one-time actions.
           // LeadershipCheck is also one-shot (the captain re-queues it each
           // turn through the Captain HUD).
@@ -3330,7 +3338,6 @@ impl Entities {
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
           | ShipAction::ReviveWatch { .. }
-          | ShipAction::Launch { .. }
           | ShipAction::ClearLand
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }

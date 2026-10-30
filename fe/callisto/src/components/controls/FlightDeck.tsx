@@ -223,7 +223,7 @@ export function FlightDeck(args: {ship: Ship}) {
               ? "Nothing picked."
               : rate > 0
                 ? `${picked.length} picked: ${split.now.length} launch this round${
-                    split.waits.length > 0 ? `, ${split.waits.length} wait for next round's order` : ""
+                    split.waits.length > 0 ? `, the other ${split.waits.length} in the rounds after` : ""
                   }.`
                 : `${picked.length} picked: all through the berths, D3 rounds each, the carrier held still until the last is out.`}
           </p>
@@ -248,14 +248,19 @@ export function FlightDeck(args: {ship: Ship}) {
           </div>
           {queued != null && (
             <p className="flight-deck-queued">
-              Launch queued: {queued.length} craft
-              {rate > 0 && queued.length > rate ? ` (${rate} this round, ${queued.length - rate} wait)` : ""}.
+              Launching {queued.length} craft
+              {rate === 0
+                ? " through the berths"
+                : queued.length > rate
+                  ? `: ${rate} this round, ${queued.length - rate} waiting for the tubes`
+                  : " this round"}
+              . The order stands until every one is out.
             </p>
           )}
         </div>
       )}
       {!canOrder && queued != null && (
-        <p className="flight-deck-queued">Launch queued: {queued.length} craft.</p>
+        <p className="flight-deck-queued">Launching {queued.length} craft: the order stands until every one is out.</p>
       )}
     </div>
   );

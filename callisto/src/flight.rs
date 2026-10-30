@@ -100,7 +100,8 @@ pub fn pinned_ships(entities: &Entities) -> HashSet<String> {
 /// berth operation holds still. Before fire and movement.
 ///
 /// A carrier with a powered tube that takes the craft launches through it,
-/// ten a tube a round, and the surplus waits for next round's order. One
+/// ten a tube a round, and the surplus waits: the order stands until every
+/// craft on it is out (`Entities::reset_actions`). One
 /// with no working tube releases through the berths: D3 rounds (1D for a
 /// large craft) with the carrier pinned until the last is out, each craft
 /// on her own count.
@@ -730,6 +731,43 @@ mod tests {
     assert_eq!(out.team, Some(crate::ship::Team::Blue));
     let km = (out.get_position() - entities.ships["Carrier"].read().unwrap().get_position()).magnitude() / 1000.0;
     assert!(km < 10.0 && km > 1.0, "launched {km:.1} km from the carrier");
+  }
+
+  #[tokio::test]
+  async fn a_launch_stands_until_every_craft_is_out() {
+    let design = carrier_design("Tube Carrier", 30, 1, 1);
+    let mut entities = carrier_world(&design, 12).await;
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    order(&mut entities, "Carrier", ShipAction::Launch { craft: names(12) });
+    let standing = |entities: &Entities| -> Option<Vec<String>> {
+      entities
+        .actions
+        .iter()
+        .find(|(ship, _)| ship == "Carrier")
+        .and_then(|(_, actions)| {
+          actions.iter().find_map(|action| match action {
+            ShipAction::Launch { craft } => Some(craft.clone()),
+            _ => None,
+          })
+        })
+    };
+    begin_round(&mut entities, &mut rng);
+    let snapshot = entities.ship_deep_copy();
+    end_round(&mut entities, &snapshot, &mut rng);
+    entities.reset_actions();
+    assert_eq!(
+      standing(&entities),
+      Some(vec!["Fighter 11".to_string(), "Fighter 12".to_string()])
+    );
+    begin_round(&mut entities, &mut rng);
+    let snapshot = entities.ship_deep_copy();
+    end_round(&mut entities, &snapshot, &mut rng);
+    entities.reset_actions();
+    assert!(
+      aboard(&entities, "Carrier").is_empty(),
+      "the last two went out in the second round"
+    );
+    assert_eq!(standing(&entities), None, "the order is done");
   }
 
   #[tokio::test]
