@@ -45,7 +45,13 @@ cd $HERE
 say "setting up $H:$P for $NAME"
 "${SSH[@]}" true < /dev/null || { say "cannot reach the pod"; exit 1; }
 scp -q -o ControlPath=$C -P $P scripts/cloud_setup.sh scripts/pod_supervise.sh "root@${H}:"
-"${SSH[@]}" 'bash cloud_setup.sh > setup.log 2>&1; echo $? > setup.done' < /dev/null
+# The pod builds the branch the Mac is on, pushed: the checkpoints copied over
+# are for this build's network layout.
+BRANCH=${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}
+if [ -n "$(git log "origin/$BRANCH..$BRANCH" 2>/dev/null)" ]; then
+  say "$BRANCH has commits not pushed; push them first"; exit 1
+fi
+"${SSH[@]}" "BRANCH=$BRANCH bash cloud_setup.sh > setup.log 2>&1; echo \$? > setup.done" < /dev/null
 if [ "$("${SSH[@]}" cat setup.done < /dev/null)" != 0 ]; then
   say "setup failed; the end of its log:"; "${SSH[@]}" 'tail -20 setup.log' < /dev/null | tee -a $LOG; exit 1
 fi
