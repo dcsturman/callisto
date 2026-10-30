@@ -163,3 +163,38 @@ Work that needs no GPU, done on the Mac while side-5 trains:
 - choosing orders on the GPU, not the cpu;
 - a short run on the machine's first hour to measure its speed, so the
   budget above becomes a number.
+
+## Run: side-cap-1 (capital ships and carriers)
+
+The first run on the step-12 layout: the capital-ship and carrier inputs and the
+`Flight` head (`docs/capital_ships_plan.md`). It starts from side-20-9 widened to
+that layout (`checkpoints/side-20-9-wide/final.pt`, made by `scripts/widen.py`;
+it plays Fighter Screen 20–0 against `close` from each seat, as side-20-9 does),
+and trains on `CAPITAL_POOL`: the side pool plus twelve generated fights
+(`gen:capital`, `gen:carrier`, `gen:fleet`, four seeds each). Settings are
+side-20-9's, with side-20-9 added as a teacher.
+
+```
+cd rl-env
+UPLOAD="checkpoints/side-20-9-wide/final.pt checkpoints/side-20-9/side_120017863_decisions.pt checkpoints/side-20-8/final.pt checkpoints/side-5/final.pt" \
+nohup caffeinate -i scripts/cloud_train.sh <ip> <port> side-cap-1 8 \
+  --init-from checkpoints/side-20-9-wide/final.pt --steps 120000000 --games 512 --rollout 8 --groups 2 --threads 14 \
+  --teachers "0.15=pt~:checkpoints/side-20-9/side_120017863_decisions.pt,0.10=pt~:checkpoints/side-20-8/final.pt,0.05=pt~:checkpoints/side-5/final.pt" \
+  --baselines-start 0.12 --baselines-end 0.12 --baselines close,hold,charger,kiter --hold-bonus 0.005 \
+  --destroy-goals 1.0 --random-goals 0 --firepower-bonus 0.2 --random-starts 0.3 --max-rounds 60 \
+  --learning-rate 0.00015 --final-lr-fraction 0.0 --entropy 0.01 --wandb > /dev/null 2>&1 &
+```
+
+`--threads 14` is for a 16-vCPU pod; raise it to the pod's vCPUs less two. 512
+games × rollout 8 keeps about 4,000 samples per update. The 8-hour limit allows
+for the generated fights being slower than the old pool.
+
+A smoke run on the Mac (400,000 decisions, 32 games × rollout 128, 6 threads)
+trained, exported and loaded in the AI service.
+
+**After it, before shipping it:** export the last checkpoint and check
+- Fighter Screen, Thebus and Aslan Border Clash: at least side-20-9's results
+  (Fighter Screen 20–0 against `close` from each seat);
+- Keelhaven and the generated fights: better than the crews' heuristic
+  (`--side Blue=network --side Red=close` and the reverse), with carriers
+  launching.
