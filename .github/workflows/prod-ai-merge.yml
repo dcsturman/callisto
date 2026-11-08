@@ -22,7 +22,7 @@ env:
   BACKEND_URL: https://callisto-be-ul7hz2fcvq-uc.a.run.app
   # This service's own URL: the audience the backend's calls must name.
   AI_URL: https://callisto-ai-ul7hz2fcvq-uc.a.run.app
-  # Who may call /crew and /release: the backend's service account.
+  # Who may hold sides open on /crew: the backend's service account.
   ALLOWED_CALLERS: 402344016908-compute@developer.gserviceaccount.com
   # The service's own identity: calls Vertex AI and logs in to the backend.
   SERVICE_ACCOUNT: callisto-ai@callisto-1731280702227.iam.gserviceaccount.com
@@ -69,17 +69,18 @@ jobs:
           cache-from: type=gha,scope=ai-ships-prod
           cache-to: type=gha,mode=max,scope=ai-ships-prod
 
-      # One instance, always on, CPU always allocated: a crew is a WebSocket
-      # the service opened to the backend and a loop that waits on it, not a
-      # request, so Cloud Run would otherwise throttle or stop it between the
-      # backend's calls. Callers must present an identity token (the backend's).
+      # Scales to zero. The backend holds a WebSocket open to /crew for each AI
+      # side, and Cloud Run keeps the instance, with CPU, while one is open;
+      # with none it costs nothing. A request may last an hour at most, after
+      # which the backend opens the side again. Callers must present an
+      # identity token (the backend's).
       - name: "Deploy to Prod Cloud Run"
         run:
           gcloud run deploy ${{ env.APP }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}
             --region=${{ env.REGION }}
             --service-account=${{ env.SERVICE_ACCOUNT }}
             --no-allow-unauthenticated
-            --min-instances=1 --max-instances=1 --no-cpu-throttling
+            --min-instances=0 --max-instances=1 --cpu-throttling --timeout=3600
             --update-env-vars=CALLISTO_BACKEND=${{ env.BACKEND_WS }},CALLISTO_BACKEND_AUDIENCE=${{ env.BACKEND_URL }},CALLISTO_AI_AUDIENCE=${{ env.AI_URL }},CALLISTO_AI_ALLOWED_CALLERS=${{ env.ALLOWED_CALLERS }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},CALLISTO_AI_MODEL=${{ env.MODEL }},RUST_LOG=info
       - name: 'Retire the previous revision'
         run: |
