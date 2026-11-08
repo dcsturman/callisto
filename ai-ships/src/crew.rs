@@ -8,7 +8,7 @@
 //! with nobody doing anything, so Cloud Run can scale to zero. A crew that
 //! reconnected after that would keep an abandoned game alive for ever. So the
 //! rule is: if the backend *closed* the connection, the crew is done until the
-//! backend asks again with `/crew`. If the connection merely *dropped* -- a
+//! backend states the side again on `/crew`. If the connection merely *dropped* -- a
 //! redeploy, a network blip -- the crew reconnects a few times with backoff,
 //! and then gives up.
 

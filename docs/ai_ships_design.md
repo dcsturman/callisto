@@ -660,21 +660,26 @@ This exists for three reasons, in order of when they matter:
 
 **The backend engages the service.** When a ship becomes `controller: Ai`
 -- loaded from a scenario file, or because someone at its console pressed
-"Switch to AI" -- the backend calls the service: `POST /crew {scenario_id,
-side, team, ships}`. A side is every AI ship on one team (id: the team's
-name), or one unaligned AI ship on its own (id: `ship:` and its name), and
-each call states the side's whole ship list, so a missed or repeated call is
-healed by the next. The backend works this out after every request by
-comparing what is true with what it last said, and calls only for sides that
-changed. The service then does what any player does: opens a WebSocket
+"Switch to AI" -- the backend holds a WebSocket open to the service's
+`/crew` for the ship's side, and sends on it `{scenario_id, side, team,
+ships}`. A side is every AI ship on one team (id: the team's name), or one
+unaligned AI ship on its own (id: `ship:` and its name), and each message
+states the side's whole ship list, so a repeated one is harmless and a
+connection opened again after a drop restates the side in full. The backend
+works this out after every request by comparing what is true with what it
+last said, and speaks only for sides that changed. The held connection is
+also what keeps the service running on Cloud Run, which gives an instance
+CPU only while a request is open; with no side held it scales to zero (see
+[ai_ships_deploy.md](ai_ships_deploy.md#running-costs)). The service then does what any player does: opens a WebSocket
 to the backend, logs in with its identity token, joins the scenario, claims
 those ships, and sends `SetReady(false)`. When the ships die, the scenario
-ends, or someone switches a ship back, the backend calls `POST /release
-{scenario_id, side}` and the connection closes. The backend knows the
+ends, or someone switches a ship back, the backend closes the side's
+connection to `/crew`, and the crew closes its own connection to the
+backend. The backend knows the
 service's address from `CALLISTO_AI_SERVICE` and authenticates its calls as
 a bearer token: the shared secret locally, otherwise its own identity token
 from the metadata server naming the service as audience, the ordinary Cloud
-Run service-to-service arrangement. Calls never hold up the game. If the service is
+Run service-to-service arrangement. Connections never hold up the game. If the service is
 down the backend logs it and the ship sits there, as a ship with no crew
 does.
 
@@ -683,7 +688,7 @@ number in `EntityResponse`, and when it ticks it builds each team's
 observation with a plain function, makes one model call per team, sends the
 messages, and says ready.
 
-The service's HTTP API is therefore: `/crew` and `/release` for the backend;
+The service's API is therefore: `/crew` for the backend;
 `/healthz` and `/status` (what it is crewing, last decision time, model
 errors) for operations; `/decide/{team}` to force a re-decision, for
 debugging. Everything a player does goes through the backend.

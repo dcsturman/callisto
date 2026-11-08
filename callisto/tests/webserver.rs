@@ -2564,45 +2564,49 @@ async fn integration_a_dropped_service_leaves_the_game() {
   send_quit(&mut gm).await;
 }
 
-/// The next call a stand-in AI service received, or `None` after a wait.
-/// A stand-in AI service that records the path and body of every call: its
-/// URL, and the calls as they come.
+/// A stand-in AI service: its URL, and what it is told as it comes. Each
+/// side held open on it is reported as `/crew` and the side, once for every
+/// message stating the side, and as `/release` and the side when its
+/// connection closes.
+// The handshake callback's error type is tungstenite's, not ours.
+#[allow(clippy::result_large_err)]
 async fn fake_ai_service() -> (String, tokio::sync::mpsc::UnboundedReceiver<String>) {
-  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
   let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
   let ai_url = format!("http://{}", listener.local_addr().unwrap());
   let (calls_tx, calls_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
   tokio::spawn(async move {
-    loop {
-      let Ok((mut socket, _)) = listener.accept().await else {
-        return;
-      };
+    while let Ok((stream, _)) = listener.accept().await {
       let calls_tx = calls_tx.clone();
       tokio::spawn(async move {
-        let mut request = Vec::new();
-        let mut buffer = [0u8; 4096];
-        while !request.ends_with(b"}") {
-          let Ok(read) = socket.read(&mut buffer).await else {
-            return;
-          };
-          if read == 0 {
-            break;
+        let mut path = String::new();
+        let Ok(mut socket) = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response: Response| {
+          path = request.uri().path().to_string();
+          Ok(response)
+        })
+        .await
+        else {
+          return;
+        };
+        let mut side = String::new();
+        while let Some(Ok(message)) = socket.next().await {
+          match message {
+            tokio_tungstenite::tungstenite::Message::Text(text) => {
+              side = text.to_string();
+              let _ = calls_tx.send(format!("{path} {side}"));
+            }
+            tokio_tungstenite::tungstenite::Message::Close(_) => break,
+            _ => {}
           }
-          request.extend_from_slice(&buffer[..read]);
         }
-        let _ = socket
-          .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
-          .await;
-        let request = String::from_utf8_lossy(&request).to_string();
-        let path = request.split_whitespace().nth(1).unwrap_or_default().to_string();
-        let body = request.rsplit("\r\n\r\n").next().unwrap_or_default().to_string();
-        let _ = calls_tx.send(format!("{path} {body}"));
+        let _ = calls_tx.send(format!("/release {side}"));
       });
     }
   });
   (ai_url, calls_rx)
 }
 
+/// The next call a stand-in AI service received, or `None` after a wait.
 async fn next_call(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> Option<String> {
   tokio::time::timeout(Duration::from_secs(5), rx.recv()).await.ok().flatten()
 }
