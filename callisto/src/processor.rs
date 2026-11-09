@@ -400,6 +400,33 @@ impl Processor {
     }
   }
 
+  /// A game with no person connected is not being played: its AI crews are
+  /// let go now, not once the seats expire. The crews count as members, so
+  /// without this a game left to them would never empty and they would play
+  /// on for ever. Anyone coming back brings them back with their next
+  /// message, through [`Self::reconcile_ai_crews`].
+  fn release_unattended_ai_crews(&mut self, connections: &[Connection]) {
+    let attended: std::collections::HashSet<&str> = connections
+      .iter()
+      .filter(|connection| !connection.player.is_service())
+      .filter_map(|connection| connection.player.server.as_deref().map(Server::get_id))
+      .collect();
+    let unattended: Vec<String> = self
+      .ai_sides
+      .keys()
+      .filter(|id| !attended.contains(id.as_str()))
+      .cloned()
+      .collect();
+    for scenario_id in unattended {
+      if let (Some(client), Some(before)) = (&self.ai_service, self.ai_sides.remove(&scenario_id)) {
+        info!("(processor) Nobody is playing {scenario_id}; releasing its AI crews.");
+        for call in plan_calls(&scenario_id, &before, &Sides::new()) {
+          client.send(call);
+        }
+      }
+    }
+  }
+
   /// Let services log in. Without this, `ServiceLogin` is refused.
   #[must_use]
   pub fn with_service_auth(mut self, service_auth: ServiceAuth) -> Self {
@@ -532,6 +559,7 @@ impl Processor {
               let _ = connection.stream.close(None).await;
             }
             connections.clear();
+            self.release_unattended_ai_crews(&connections);
           }
         }
         ActiveProcessorEvent::Reload(Some(notification)) => {
@@ -556,7 +584,9 @@ impl Processor {
               // there. Keepalives are excluded on purpose: the client sends one
               // every minute whether or not anyone is at the keyboard, so
               // counting them would mean nothing was ever idle.
-              if !matches!(parsed_message, RequestMsg::Ping) {
+              // An AI crew's orders are not somebody being there either: a
+              // game left to its AI crews would otherwise play on for ever.
+              if !matches!(parsed_message, RequestMsg::Ping) && !current_connection.player.is_service() {
                 current_connection.last_active = Instant::now();
               }
 
@@ -650,6 +680,7 @@ impl Processor {
           // Mark this stream for deletion
           let leaving = connections.remove(index);
           self.leave_if_service(&leaving, &mut connections).await;
+          self.release_unattended_ai_crews(&connections);
           debug!("(processor) Removed connection.  Now {} connections.", connections.len());
         }
         ActiveProcessorEvent::Message(Some((index, Some(res)))) => {
@@ -659,6 +690,7 @@ impl Processor {
           info!("(processor) Connection {index} disconnected.  Removing.");
           let leaving = connections.remove(index);
           self.leave_if_service(&leaving, &mut connections).await;
+          self.release_unattended_ai_crews(&connections);
         }
         ActiveProcessorEvent::Message(None) => {
           warn!("(processor) Strange response from message stream.  Exiting.");
@@ -875,7 +907,7 @@ impl Processor {
   /// Whoever pressed Next Round -- or, with no referee, whoever was last to say
   /// Ready -- runs it; every ready flag is cleared for the round that follows.
   fn advance_round(&mut self, player: &PlayerManager, server_id: Option<&str>) -> Vec<ResponseMsg> {
-    let effects = player.update();
+    let (effects, summary) = player.play_round();
     if let Some(server_id) = server_id {
       self.members.clear_ready(server_id);
     }
@@ -886,6 +918,7 @@ impl Processor {
         let resolved = EffectsMsg {
           round: entities.round.saturating_sub(1),
           effects,
+          summary,
         };
         if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
           log.round(resolved.round, &resolved.effects, &entities);
@@ -1690,6 +1723,7 @@ mod idle_tests {
   #[test]
   fn effects_go_to_the_whole_scenario() {
     assert!(is_broadcast_message(&ResponseMsg::Effects(crate::payloads::EffectsMsg {
+      summary: crate::payloads::RoundSummary::default(),
       round: 1,
       effects: vec![]
     })));

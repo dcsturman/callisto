@@ -82,16 +82,26 @@ with the built-in network, so it needs no Vertex AI.
 
 ## Running costs
 
-The service is pinned at one instance with CPU always allocated
-(`--min-instances=1 --no-cpu-throttling`). A crew is a WebSocket the service
-opened to the backend and a loop waiting on it, not a request, so on Cloud
-Run's default settings it would be throttled or stopped between the backend's
-calls. That makes it an always-on instance: a few tens of dollars a month at
-the smallest size. Model calls are on top, at a few cents per game.
+The service scales to zero (`--min-instances=0`, CPU throttled, as Cloud Run
+does by default) and costs nothing while no game has AI ships. A crew is not
+a request: it is a WebSocket the service opened to the backend and a loop
+waiting on it, and Cloud Run gives an instance CPU, and keeps it, only while
+a request is open. So the backend supplies the requests: for each AI side it
+holds a WebSocket open to the service's `/crew`, carrying the side's ship
+list, and closes it to release the side. While any side is held the instance
+runs and bills; when none is, it stops.
 
-If that is too much while canary is quiet, `--min-instances=0` lets it stop;
-the backend calls `/crew` again whenever a ship becomes AI-crewed, but a crew
-whose instance stopped mid-game is not restarted until something changes.
+A request lasts an hour at most (`--timeout=3600`). When one is cut, or a
+redeploy drops it, the backend opens the side again and the service carries
+on with the crew it was running; a crew whose connection is not back within
+90 seconds is released. If the instance itself was stopped, the side is
+crewed afresh when the backend reconnects.
+
+Until 2026-11-05 the service ran with `--min-instances=1
+--no-cpu-throttling`, an always-on instance in each of canary and
+production, about $45-50 a month apiece whether or not anyone played.
+
+Model calls are on top, at a few cents per game.
 
 ## Locally
 

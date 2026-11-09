@@ -2,12 +2,13 @@
 //!
 //! The backend decides nothing for an AI ship. When ships become AI-controlled
 //! it asks this service to crew them, one *side* at a time (every AI ship on a
-//! team, or one unaligned ship), with `POST /crew`. For each side the service
-//! opens a WebSocket to the backend and plays exactly as a human crew would:
-//! it logs in, joins the scenario, claims the side's ships, and each round
-//! decides, gives its orders and says Ready. `POST /release` ends it.
+//! team, or one unaligned ship), by holding a WebSocket open to `/crew` for
+//! the side. For each side the service opens a WebSocket of its own to the
+//! backend and plays exactly as a human crew would: it logs in, joins the
+//! scenario, claims the side's ships, and each round decides, gives its
+//! orders and says Ready. The backend closing its connection ends it.
 //!
-//! * [`api`] -- the HTTP endpoints the backend calls, and who may call them.
+//! * [`api`] -- the endpoints the backend calls, and who may call them.
 //! * [`crews`] -- one running crew per side, started, updated and stopped.
 //! * [`crew`] -- a single side's connection to the backend and its round loop.
 //! * [`commander`] -- what decides a side's orders each round.
