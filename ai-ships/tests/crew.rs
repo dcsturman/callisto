@@ -182,3 +182,47 @@ async fn a_dropped_connection_is_retried_then_given_up() {
   assert!(matches!(ending, Ending::Dropped(_)), "{ending:?}");
   assert_eq!(accepts.load(Ordering::SeqCst), 3, "the first try and two retries");
 }
+
+/// A join that finds no such scenario -- a second backend Cloud Run started,
+/// without the game -- is tried again, and the crew reaches the game.
+#[tokio::test]
+async fn a_join_that_finds_no_game_is_tried_again() {
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let (ships_tx, ships_rx) = watch::channel(vec!["Invigilator".to_string()]);
+  let crew = tokio::spawn(run(
+    config(port, 2),
+    "thebus-1".to_string(),
+    "Red".to_string(),
+    ships_rx,
+    Box::new(Idle),
+  ));
+
+  // The backend without the game: logs the crew in, refuses the join.
+  let (stream, _) = listener.accept().await.unwrap();
+  let mut empty = tokio_tungstenite::accept_async(stream).await.unwrap();
+  assert!(matches!(request(&mut empty).await, Some(RequestMsg::ServiceLogin(_))));
+  reply(
+    &mut empty,
+    ResponseMsg::AuthResponse(AuthResponse {
+      email: "ai-ships@callisto.local".to_string(),
+      scenario: None,
+      roles: None,
+      ship: None,
+      ai_allowed: false,
+    }),
+  )
+  .await;
+  assert!(matches!(request(&mut empty).await, Some(RequestMsg::JoinScenario(_))));
+  reply(&mut empty, ResponseMsg::Error("No such scenario".to_string())).await;
+
+  // The backend with the game.
+  let (stream, _) = listener.accept().await.unwrap();
+  let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+  admit(&mut socket).await;
+  reply(&mut socket, world(1)).await;
+  assert!(matches!(request(&mut socket).await, Some(RequestMsg::SetRole(_))));
+
+  drop(ships_tx);
+  assert_eq!(crew.await.unwrap(), Ending::Released);
+}

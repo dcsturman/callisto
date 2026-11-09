@@ -2309,8 +2309,8 @@ impl Ship {
       Some(thrust) if thrust > self.max_acceleration() => {
         let old_max_acceleration = self.max_acceleration();
         warn!(
-          "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
-          thrust, old_max_acceleration
+          "(Ship.set_agility_thrust) {}: thrust {} exceeds max acceleration {}",
+          self.name, thrust, old_max_acceleration
         );
         self.dodge_thrust = old_agility;
         self.assist_gunners = old_assist;
@@ -2326,7 +2326,10 @@ impl Ship {
         // Second see if we can accommodate assist gunner
         if let Some(assist) = assist {
           if assist && self.max_acceleration() < 1 {
-            warn!("(Ship.set_agility_thrust) No thrust available to reserve for assisting gunners.");
+            warn!(
+              "(Ship.set_agility_thrust) {}: no thrust available to reserve for assisting gunners (dodge {thrust:?}).",
+              self.name
+            );
             self.dodge_thrust = old_agility;
             Err(InvalidThrustError(
               "No thrust available to reserve for assisting gunners".to_string(),
@@ -2346,7 +2349,10 @@ impl Ship {
   /// Spend one point of the pilot's dodge on an attack.
   pub fn decrement_dodge_thrust(&mut self) {
     if self.get_dodge_thrust() == 0 {
-      warn!("(Ship.decrement_dodge_thrust) Attempting to decrement a 0 dodge thrust; should never happen.");
+      warn!(
+        "(Ship.decrement_dodge_thrust) {}: attempting to decrement a 0 dodge thrust; should never happen.",
+        self.name
+      );
     }
     self.dodge_spent = self.dodge_spent.saturating_add(1);
   }

@@ -1,24 +1,26 @@
-//! The HTTP endpoints: who may call them, and what they do.
+//! The endpoints: who may call them, and what a side's held connection does.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use ai_ships::api::{router, App, Callers};
+use ai_ships::api::{router, App, Callers, CREW_ENDED};
 use ai_ships::auth::Credential;
 use ai_ships::commander::{Commander, Idle};
 use ai_ships::crew::CrewConfig;
-use ai_ships::crews::Crews;
+use ai_ships::crews::{CrewStatus, Crews};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use callisto::authentication::UserDirectory;
 use callisto::service_auth::ServiceAuth;
-use http_body_util::BodyExt;
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::Message;
 use tower::ServiceExt;
 
-fn app() -> Arc<App> {
-  // Nothing listens on port 9, so crews started here fail quietly.
+/// The app, with crews pointed at `backend`.
+fn app(backend: &str) -> Arc<App> {
   let config = CrewConfig {
-    backend: "ws://127.0.0.1:9".to_string(),
+    backend: backend.to_string(),
     credential: Credential::SharedSecret("local-secret".to_string()),
     reconnect_attempts: 0,
     reconnect_backoff: Duration::from_millis(1),
@@ -32,30 +34,69 @@ fn app() -> Arc<App> {
   })
 }
 
-fn post(path: &str, token: Option<&str>, body: &str) -> Request<Body> {
-  let builder = Request::post(path).header("content-type", "application/json");
-  let builder = match token {
-    Some(token) => builder.header("authorization", format!("Bearer {token}")),
-    None => builder,
-  };
-  builder.body(Body::from(body.to_string())).unwrap()
+/// A backend that takes a crew's connection and keeps it, saying nothing, so
+/// the crew runs until it is released.
+async fn quiet_backend() -> String {
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let url = format!("ws://{}", listener.local_addr().unwrap());
+  tokio::spawn(async move {
+    while let Ok((stream, _)) = listener.accept().await {
+      tokio::spawn(async move {
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        while socket.next().await.is_some() {}
+      });
+    }
+  });
+  url
 }
 
-fn get(path: &str, token: &str) -> Request<Body> {
-  Request::get(path)
-    .header("authorization", format!("Bearer {token}"))
-    .body(Body::empty())
-    .unwrap()
+/// Serve the app; its `ws://` URL.
+async fn serve(app: Arc<App>) -> String {
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let url = format!("ws://{}", listener.local_addr().unwrap());
+  tokio::spawn(async move { axum::serve(listener, router(app)).await.unwrap() });
+  url
+}
+
+type Socket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn hold(url: &str, token: Option<&str>) -> Result<Socket, Box<tokio_tungstenite::tungstenite::Error>> {
+  let mut request = format!("{url}/crew").into_client_request().unwrap();
+  if let Some(token) = token {
+    request
+      .headers_mut()
+      .insert("authorization", format!("Bearer {token}").parse().unwrap());
+  }
+  tokio_tungstenite::connect_async(request)
+    .await
+    .map(|(socket, _)| socket)
+    .map_err(Box::new)
 }
 
 const CREW: &str = r#"{"scenario_id":"thebus-1","side":"Red","team":"Red","ships":["Invigilator"]}"#;
 
+/// What the service is crewing, once it has had a moment to act.
+async fn crewing(app: &App, want: usize) -> Vec<CrewStatus> {
+  for _ in 0..100 {
+    if app.crews.status().len() == want {
+      break;
+    }
+    tokio::time::sleep(Duration::from_millis(20)).await;
+  }
+  app.crews.status()
+}
+
 #[tokio::test]
 async fn only_a_caller_with_the_credential_is_heard() {
-  let app = app();
+  let app = app("ws://127.0.0.1:9");
+  let url = serve(app.clone()).await;
   for token in [None, Some("guess")] {
-    let response = router(app.clone()).oneshot(post("/crew", token, CREW)).await.unwrap();
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    match hold(&url, token).await.map_err(|e| *e) {
+      Err(tokio_tungstenite::tungstenite::Error::Http(response)) => {
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+      }
+      other => panic!("a caller without the credential was let in: {other:?}"),
+    }
   }
   assert_eq!(app.crews.status(), vec![], "nothing was started");
 
@@ -66,30 +107,69 @@ async fn only_a_caller_with_the_credential_is_heard() {
   assert_eq!(health.status(), StatusCode::OK, "health needs no credential");
 }
 
+/// Holding a side crews it, a later message changes its ships, and closing
+/// the connection releases it.
 #[tokio::test]
-async fn crew_then_release_a_side() {
-  let app = app();
-  let response = router(app.clone())
-    .oneshot(post("/crew", Some("local-secret"), CREW))
+async fn a_side_is_crewed_while_it_is_held() {
+  let app = app(&quiet_backend().await);
+  let url = serve(app.clone()).await;
+  let mut socket = hold(&url, Some("local-secret")).await.unwrap();
+  socket.send(Message::text(CREW)).await.unwrap();
+  let crews = crewing(&app, 1).await;
+  assert_eq!(
+    (crews[0].scenario_id.as_str(), crews[0].side.as_str(), crews[0].ships.clone()),
+    ("thebus-1", "Red", vec!["Invigilator".to_string()])
+  );
+
+  socket
+    .send(Message::text(CREW.replace(r#"["Invigilator"]"#, r#"["Invigilator","Cicada"]"#)))
     .await
     .unwrap();
-  assert_eq!(response.status(), StatusCode::NO_CONTENT);
+  for _ in 0..100 {
+    if app.crews.status()[0].ships.len() == 2 {
+      break;
+    }
+    tokio::time::sleep(Duration::from_millis(20)).await;
+  }
+  assert_eq!(app.crews.status()[0].ships, vec!["Invigilator", "Cicada"]);
 
-  let status = router(app.clone()).oneshot(get("/status", "local-secret")).await.unwrap();
-  let body = status.into_body().collect().await.unwrap().to_bytes();
-  let crews: serde_json::Value = serde_json::from_slice(&body).unwrap();
-  assert_eq!(crews[0]["scenario_id"], "thebus-1");
-  assert_eq!(crews[0]["side"], "Red");
-  assert_eq!(crews[0]["ships"], serde_json::json!(["Invigilator"]));
+  socket.close(None).await.unwrap();
+  assert_eq!(crewing(&app, 0).await, vec![], "closing released the side");
+}
 
-  let response = router(app.clone())
-    .oneshot(post(
-      "/release",
-      Some("local-secret"),
-      r#"{"scenario_id":"thebus-1","side":"Red"}"#,
-    ))
-    .await
-    .unwrap();
-  assert_eq!(response.status(), StatusCode::NO_CONTENT);
-  assert_eq!(app.crews.status(), vec![]);
+/// A connection that drops leaves its crew playing, for the backend to hold
+/// it again.
+#[tokio::test]
+async fn a_dropped_side_is_crewed_on() {
+  let app = app(&quiet_backend().await);
+  let url = serve(app.clone()).await;
+  let mut socket = hold(&url, Some("local-secret")).await.unwrap();
+  socket.send(Message::text(CREW)).await.unwrap();
+  assert_eq!(crewing(&app, 1).await.len(), 1);
+  drop(socket);
+  tokio::time::sleep(Duration::from_millis(300)).await;
+  assert_eq!(app.crews.status().len(), 1, "a drop is not a release");
+  assert!(app.crews.status()[0].running);
+}
+
+/// A crew that ends by itself closes its side's connection, saying so.
+#[tokio::test]
+async fn a_crew_that_ends_says_so() {
+  // Nothing listens on port 9, so the crew fails at once.
+  let app = app("ws://127.0.0.1:9");
+  let url = serve(app.clone()).await;
+  let mut socket = hold(&url, Some("local-secret")).await.unwrap();
+  socket.send(Message::text(CREW)).await.unwrap();
+  let closed = tokio::time::timeout(Duration::from_secs(5), async {
+    loop {
+      match socket.next().await {
+        Some(Ok(Message::Close(frame))) => return frame,
+        Some(Ok(_)) => {}
+        other => panic!("the connection ended without a close: {other:?}"),
+      }
+    }
+  })
+  .await
+  .expect("the service never closed the side");
+  assert_eq!(closed.map(|frame| frame.reason.to_string()).as_deref(), Some(CREW_ENDED));
 }

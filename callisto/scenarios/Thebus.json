@@ -76,7 +76,7 @@
       "current_jump": 0,
       "transmitting": true,
       "crew": {
-        "pilot": 1,
+        "pilot": 4,
         "engineering_jump": 0,
         "engineering_power": 1,
         "engineering_maneuver": 1,
@@ -253,13 +253,25 @@
               "kind": "Missile"
             }
           ]
+        },
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 2
+          }
+        },
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 2
+          }
         }
       ],
       "team": "Blue",
       "goal": "destroy",
       "active_sensors": false,
       "crew": {
-        "pilot": 1,
+        "pilot": 3,
         "engineering_jump": 1,
         "engineering_power": 1,
         "engineering_maneuver": 1,
@@ -267,7 +279,9 @@
         "sensors": 1,
         "gunnery": [
           1,
-          1
+          1,
+          2,
+          2
         ],
         "leadership": 0
       },
