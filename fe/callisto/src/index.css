@@ -4479,6 +4479,166 @@ h3.control-form {
     color: #9aa092;
 }
 
+/* Summary or details: two tabs under the heading, the chosen one filled. */
+.results-view {
+    display: flex;
+    gap: 4px;
+    margin: 0 0 6px 0;
+}
+
+.results-view-tab {
+    padding: 1px 10px;
+    border: 1px solid #4a5148;
+    border-radius: 3px;
+    background: transparent;
+    color: #9aa092;
+    font-family: inherit;
+    font-size: var(--font-sm);
+    cursor: pointer;
+}
+
+.results-view-tab:hover {
+    color: #c8cdc1;
+}
+
+.results-view-tab:focus-visible {
+    outline: 1px solid currentColor;
+}
+
+.results-view-on {
+    background: rgba(200, 205, 193, 0.14);
+    border-color: #9aa092;
+    color: #c8cdc1;
+    font-weight: 600;
+}
+
+/* The round added up. */
+.round-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.summary-heading {
+    margin: 0 0 3px 0;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #343a33;
+    font-size: var(--font-md);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #9aa092;
+}
+
+.summary-table-wrap {
+    overflow-x: auto;
+}
+
+.summary-fire {
+    border-collapse: collapse;
+    font-size: var(--font-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-fire th,
+.summary-fire td {
+    padding: 1px 8px 1px 0;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.summary-fire thead th {
+    font-weight: normal;
+    color: #9aa092;
+}
+
+.summary-fire th[scope="row"],
+.summary-fire thead th:first-child {
+    text-align: left;
+    font-weight: 700;
+}
+
+.summary-side h3 {
+    margin: 2px 0;
+    font-size: var(--font-sm);
+}
+
+.summary-row {
+    margin: 2px 0 2px 0.6em;
+}
+
+/* A ship's name that opens her lines: the name as the log draws it, as a
+   button that does not look like one until it is pointed at. */
+.summary-ship {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+}
+
+.summary-ship:hover,
+.summary-ship:focus-visible {
+    text-decoration: underline;
+    outline: none;
+}
+
+.summary-by,
+.summary-times {
+    color: #9aa092;
+}
+
+.summary-squadron {
+    font-weight: 700;
+}
+
+.summary-members {
+    display: block;
+    font-size: var(--font-xs);
+}
+
+.summary-members .summary-ship {
+    font-weight: 600;
+}
+
+/* One hurt ship a row: name, hull, the figures, who did it. */
+.summary-hurt {
+    display: grid;
+    grid-template-columns: minmax(6em, 9em) 4.5em 1fr;
+    align-items: center;
+    column-gap: 6px;
+    margin: 2px 0 2px 0.6em;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-hurt-by {
+    grid-column: 2 / -1;
+    font-size: var(--font-xs);
+}
+
+.summary-hurt-by:empty {
+    display: none;
+}
+
+.summary-hull {
+    display: flex;
+    height: 6px;
+    border: 1px solid #4a5148;
+    background: #1c201b;
+}
+
+.summary-hull-left {
+    background: #7d9a6e;
+}
+
+.summary-hull-lost {
+    background: #ffb84d;
+}
+
+.summary-crits {
+    color: #ffb84d;
+}
+
 /* The player's own choice of console columns (View panel, Columns), over
    what the screen's width would give. Last, so it wins over the widths. */
 :root[data-columns="1"] {

@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react";
 import { Event } from "components/space/Effects";
+import { RoundSummary } from "components/space/RoundSummary";
 import { UserList, UserContext } from "components/UserList";
 import {
   ActionType,
@@ -28,6 +29,7 @@ import {
 import {
   setComputerShipName,
   setEvents,
+  setRoundSummary,
   setProposedPlan,
   setShowResults,
   setScenarioDirty,
@@ -1018,7 +1020,7 @@ function handleFlightPath(json: object) {
 let nextEventId = Date.now();
 
 /** One round's results, as the server sends them. */
-type EffectsBatch = { round: number; effects: object[] };
+type EffectsBatch = { round: number; effects: object[]; summary?: RoundSummary };
 
 function handleEffect(batch: EffectsBatch) {
   const json = batch.effects;
@@ -1040,6 +1042,8 @@ function handleEffect(batch: EffectsBatch) {
   }));
 
   store.dispatch(setEvents(events));
+  // Absent for a round where nothing was hit, and from an older server.
+  store.dispatch(setRoundSummary(batch.summary ?? null));
   store.dispatch(setShowResults(true));
 }
 

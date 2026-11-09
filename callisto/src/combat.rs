@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::hash::BuildHasher;
 use std::sync::{Arc, RwLock};
@@ -795,6 +795,7 @@ fn aim(
   // outcome hidden at the end of it.
   let attack_roll = format!("{roll}{attack_mod:+}={hit_roll}{breakdown} vs {STANDARD_ROLL_THRESHOLD}");
   shot.rolled = Some((roll, attack_mod));
+  defender.note_attack(attacker_name);
   shot.hit = hit_roll >= STANDARD_ROLL_THRESHOLD;
   shot.breakdown.clone_from(&breakdown);
 
@@ -1026,8 +1027,26 @@ impl Landing {
 
 /// Land a hit on `defender`, after the screens angled at it: the hull it
 /// loses, the criticals, and the hit's own line.
-#[allow(clippy::too_many_lines)]
 fn land(
+  landing: Landing, screening: Screening, defender: &mut Ship, rng: &mut dyn RngCore, shot: &mut Shot,
+) -> Vec<EffectMsg> {
+  // Noted on the defender for the round summary: the hull counted is what
+  // she lost, so damage past her last hull point, and a critical's own hull
+  // damage, both come out right.
+  let attacker = landing.attacker.clone();
+  let hull = defender.get_current_hull_points();
+  let effects = land_hit(landing, screening, defender, rng, shot);
+  defender.note_hit(
+    &attacker,
+    hull.saturating_sub(defender.get_current_hull_points()),
+    shot.criticals,
+  );
+  effects
+}
+
+/// [`land`], short of noting the hit.
+#[allow(clippy::too_many_lines)]
+fn land_hit(
   landing: Landing, screening: Screening, defender: &mut Ship, rng: &mut dyn RngCore, shot: &mut Shot,
 ) -> Vec<EffectMsg> {
   let Landing {
@@ -2044,6 +2063,9 @@ pub(crate) fn aim_fire_actions<S: BuildHasher>(
   // Railgun and mass driver spinals fire rounds straight from stores; what
   // they spend is taken off the live ship once every order is worked through.
   let mut rounds_left = attacker.magazine.rounds;
+  // Targets already reported out of contact: one line per target, not one
+  // per mount that tried to fire on it.
+  let mut unseen: HashSet<&str> = HashSet::new();
 
   let said: Vec<Vec<EffectMsg>> = actions
     .iter()
@@ -2079,7 +2101,11 @@ pub(crate) fn aim_fire_actions<S: BuildHasher>(
           attacker.get_name(),
           target
         );
-        return vec![no_contact_effect(attacker.get_name(), target, "fire on")];
+        return if unseen.insert(target.as_str()) {
+          vec![no_contact_effect(attacker.get_name(), target, "fire on")]
+        } else {
+          vec![]
+        };
       }
 
       // Ships do not shoot their own side. Only attacks are blocked: plotting a
@@ -6216,13 +6242,14 @@ mod tests {
   }
 
   /// A ship cannot shoot what it has not detected. The order is accepted but
-  /// resolves to a refusal rather than an attack, and no damage is dealt.
+  /// resolves to a refusal rather than an attack, and no damage is dealt. A
+  /// ship whose every mount tried is refused once, not once a mount.
   #[test]
   fn firing_at_an_undetected_ship_is_refused() {
     let mut rng = StdRng::seed_from_u64(7);
     let design = Arc::new(ShipDesignTemplate {
       name: "TestShip".to_string(),
-      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1); 3],
       ..ShipDesignTemplate::default()
     });
 
@@ -6242,15 +6269,18 @@ mod tests {
     ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
     let mut sand_counts = HashMap::new();
 
-    let actions = vec![ShipAction::FireAction {
-      weapon_id: 0,
-      target: "Target".to_string(),
-      called_shot_system: None,
-      firing_kind: None,
-      salvo_size: None,
-      fire_control_dm: 0,
-      computer_fired: false,
-    }];
+    // Every mount tries, but the table hears it once.
+    let actions: Vec<ShipAction> = (0..3)
+      .map(|weapon_id| ShipAction::FireAction {
+        weapon_id,
+        target: "Target".to_string(),
+        called_shot_system: None,
+        firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
+      })
+      .collect();
 
     let (missiles, effects) = do_fire_actions(
       &attacker,
@@ -6262,12 +6292,11 @@ mod tests {
     );
 
     assert!(missiles.is_empty(), "no missile should launch at an undetected ship");
-    assert!(
-      effects
-        .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("cannot fire on"))),
-      "expected a refusal effect, got {effects:?}"
-    );
+    let refusals = effects
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("cannot fire on")))
+      .count();
+    assert_eq!(refusals, 1, "one refusal for the target, not one per mount: {effects:?}");
     assert_eq!(
       ships.get("Target").unwrap().read().unwrap().current_hull,
       starting_hull,

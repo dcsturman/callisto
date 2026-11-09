@@ -29,6 +29,7 @@ pub mod service_auth;
 pub mod sessions;
 pub mod ship;
 pub mod software;
+pub mod summary;
 pub mod tactics;
 
 #[macro_use]

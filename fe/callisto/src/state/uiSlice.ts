@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { FlightPath } from "lib/flightPath";
 import { Entity } from 'lib/entities';
 import { Event } from 'components/space/Effects';
+import { RoundSummary } from 'components/space/RoundSummary';
 
 const INITIAL_QUATERNION: [number, number, number, number] = [0, 0.7071, 0, -0.7071];
 
@@ -43,6 +44,13 @@ export interface UISlice {
      */
     resultShips: string[];
     resultCategories: string[];
+    /** The last round's results added up, when anything was hit. */
+    summary: RoundSummary | null;
+    /**
+     * Whether the results window shows the round added up or line by line.
+     * The summary first: at fleet scale a round is hundreds of lines.
+     */
+    resultsView: "summary" | "details";
     /**
      * Whether the Scenario Builder holds edits that have not been saved.
      *
@@ -88,6 +96,8 @@ const initialState: UISlice  = {
     showAlliesOnTargets: false,
     resultShips: [],
     resultCategories: [],
+    summary: null,
+    resultsView: "summary",
     scenarioDirty: false,
     scenarioSaves: 0,
     renames: 0,
@@ -164,6 +174,19 @@ export const uiSlice = createSlice({
         ? state.resultCategories.filter((kind) => kind !== action.payload)
         : [...state.resultCategories, action.payload];
     },
+    /** A round's summary, as the server sent it with the round's results. */
+    setRoundSummary: (state, action: PayloadAction<RoundSummary | null>) => {
+        state.summary = action.payload;
+    },
+    setResultsView: (state, action: PayloadAction<"summary" | "details">) => {
+        state.resultsView = action.payload;
+    },
+    /** From a ship in the summary to her lines in the details, and only hers. */
+    showShipResults: (state, action: PayloadAction<string>) => {
+        state.resultShips = [action.payload];
+        state.resultCategories = [];
+        state.resultsView = "details";
+    },
     /** Back to showing everything. */
     clearResultFilters: (state) => {
       state.resultShips = [];
@@ -217,6 +240,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, scenarioSaved, renamed, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, setFleetSelection, tickShips, setFocusSquadron, setSquadronMarkers, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, scenarioSaved, renamed, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, setRoundSummary, setResultsView, showShipResults, setFleetSelection, tickShips, setFocusSquadron, setSquadronMarkers, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

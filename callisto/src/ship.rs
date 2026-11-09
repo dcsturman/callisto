@@ -1,7 +1,7 @@
 #![allow(clippy::elidable_lifetime_names)]
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::BuildHasher;
@@ -136,6 +136,20 @@ fn get_ship_template_for_deserialization(name: &str) -> Option<Arc<ShipDesignTem
   DESERIALIZING_SHIP_TEMPLATES
     .with(|templates| templates.borrow().as_ref().and_then(|snapshot| snapshot.get(name).cloned()))
     .or_else(|| get_ship_template(name))
+}
+
+/// What one ship did to another in a round, kept on the ship it was done
+/// to (`Ship::taken`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Taken {
+  /// Attacks that got as far as a roll.
+  pub attacks: u32,
+  pub hits: u32,
+  /// Hull lost to those hits, criticals' own hull damage included.
+  pub hull: u32,
+  pub criticals: u32,
+  /// Missiles of the attacker's that point defence stopped short.
+  pub intercepted: u32,
 }
 
 #[skip_serializing_none]
@@ -527,6 +541,12 @@ pub struct Ship {
   pub radiation_hull_lost: u32,
   #[serde(default, skip_serializing_if = "is_zero_u32")]
   pub meson_hull_lost: u32,
+  /// What each ship did to this one this round, by the attacker's name: the
+  /// round summary's raw material. Cleared as each round starts; never on
+  /// the wire or in a scenario.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  pub taken: BTreeMap<String, Taken>,
   /// Who is giving this ship its orders: the people at its consoles, or the
   /// AI service.
   ///
@@ -2411,6 +2431,7 @@ impl Ship {
       frozen_watch: design.frozen_watch,
       radiation_hull_lost: 0,
       meson_hull_lost: 0,
+      taken: BTreeMap::new(),
       controller: Controller::Human,
       ai_report: None,
       orders: None,
@@ -3078,6 +3099,24 @@ impl Ship {
     }
   }
 
+  /// An attack by `attacker` that got as far as its roll.
+  pub fn note_attack(&mut self, attacker: &str) {
+    self.taken.entry(attacker.to_string()).or_default().attacks += 1;
+  }
+
+  /// A hit by `attacker`: the hull it took, and the criticals it caused.
+  pub fn note_hit(&mut self, attacker: &str, hull: u32, criticals: u32) {
+    let taken = self.taken.entry(attacker.to_string()).or_default();
+    taken.hits += 1;
+    taken.hull = taken.hull.saturating_add(hull);
+    taken.criticals = taken.criticals.saturating_add(criticals);
+  }
+
+  /// `count` of `attacker`'s missiles stopped by this ship's point defence.
+  pub fn note_intercepted(&mut self, attacker: &str, count: u32) {
+    self.taken.entry(attacker.to_string()).or_default().intercepted += count;
+  }
+
   /// Revive up to `count` of the frozen watch, who replace crew lost to
   /// criticals (High Guard p. 27). Returns how many came out of the berths:
   /// no more than are in them, and no more than the complement is short.
@@ -3175,8 +3214,8 @@ impl Ship {
       Some(thrust) if thrust > self.max_acceleration() => {
         let old_max_acceleration = self.max_acceleration();
         warn!(
-          "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
-          thrust, old_max_acceleration
+          "(Ship.set_agility_thrust) {}: thrust {} exceeds max acceleration {}",
+          self.name, thrust, old_max_acceleration
         );
         self.dodge_thrust = old_agility;
         self.assist_gunners = old_assist;
@@ -3192,7 +3231,10 @@ impl Ship {
         // Second see if we can accommodate assist gunner
         if let Some(assist) = assist {
           if assist && self.max_acceleration() < 1 {
-            warn!("(Ship.set_agility_thrust) No thrust available to reserve for assisting gunners.");
+            warn!(
+              "(Ship.set_agility_thrust) {}: no thrust available to reserve for assisting gunners (dodge {thrust:?}).",
+              self.name
+            );
             self.dodge_thrust = old_agility;
             Err(InvalidThrustError(
               "No thrust available to reserve for assisting gunners".to_string(),
@@ -3212,7 +3254,10 @@ impl Ship {
   /// Spend one point of the pilot's dodge on an attack.
   pub fn decrement_dodge_thrust(&mut self) {
     if self.get_dodge_thrust() == 0 {
-      warn!("(Ship.decrement_dodge_thrust) Attempting to decrement a 0 dodge thrust; should never happen.");
+      warn!(
+        "(Ship.decrement_dodge_thrust) {}: attempting to decrement a 0 dodge thrust; should never happen.",
+        self.name
+      );
     }
     self.dodge_spent = self.dodge_spent.saturating_add(1);
   }

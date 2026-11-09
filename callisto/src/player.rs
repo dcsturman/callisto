@@ -14,15 +14,16 @@ use crate::entity::{Entities, Entity, G};
 use crate::flight;
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, RenameSquadron, Role, SetAiReport,
-  SetOrders, SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning,
-  SetSquadron, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, RenameSquadron, Role, RoundSummary,
+  SetAiReport, SetOrders, SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam,
+  SetSoftwareRunning, SetSquadron, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::reload::{self, Reload};
 use crate::server::Server;
 use crate::ship::{
   get_ship_templates_snapshot, spinal_problems, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount,
 };
+use crate::summary;
 use crate::{debug, info, warn};
 
 /// Most weapons we will accept on a single ship.  It exists only so a client
@@ -1033,8 +1034,23 @@ impl PlayerManager {
   /// Panics if the lock cannot be obtained to read the entities or if the server
   /// has not yet been initialized.
   #[must_use]
-  #[allow(clippy::too_many_lines)]
   pub fn update(&self) -> Vec<EffectMsg> {
+    self.run_round(false).0
+  }
+
+  /// [`Self::update`], returning the round added up as well as its results.
+  ///
+  /// # Panics
+  /// As for [`Self::update`].
+  #[must_use]
+  pub fn play_round(&self) -> (Vec<EffectMsg>, RoundSummary) {
+    self.run_round(true)
+  }
+
+  /// The round, added up only when `summarise`: training plays millions of
+  /// rounds nobody reads a summary of.
+  #[allow(clippy::too_many_lines)]
+  fn run_round(&self, summarise: bool) -> (Vec<EffectMsg>, RoundSummary) {
     // Grab the lock on entities
     let mut entities = self
       .server
@@ -1282,6 +1298,17 @@ impl PlayerManager {
       }
     }
 
+    // What was done to each ship is noted on her as it happens, for the
+    // round summary; last round's notes go first. Craft aboard too, so one
+    // that launches does not bring in what happened before she landed.
+    for ship in entities.ships.values() {
+      let mut ship = ship.write().unwrap();
+      ship.taken.clear();
+      for craft in &mut ship.embarked {
+        craft.taken.clear();
+      }
+    }
+
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
     // or destroyed they still get to take their actions.
@@ -1413,8 +1440,13 @@ impl PlayerManager {
       effect.colour_from(&teams);
     }
 
+    let summary = if summarise {
+      summary::round_summary(&ship_snapshot, &entities)
+    } else {
+      RoundSummary::default()
+    };
     entities.round += 1;
-    effects
+    (effects, summary)
   }
 
   /// Computes a flight path for a ship.

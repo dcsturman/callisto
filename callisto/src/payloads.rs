@@ -435,6 +435,81 @@ pub struct EffectsMsg {
   /// The round these results resolved.
   pub round: u32,
   pub effects: Vec<EffectMsg>,
+  /// The same round, added up: who was lost and to whom, who was hurt, and
+  /// how each side's fire went. Omitted for a round where nothing was.
+  #[serde(default, skip_serializing_if = "RoundSummary::is_empty")]
+  pub summary: RoundSummary,
+}
+
+/// A round's results added up, for a fight too big to read line by line.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoundSummary {
+  /// Ships destroyed this round, and craft lost in their carriers' berths.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub losses: Vec<Loss>,
+  /// Ships that lost hull or took criticals this round and are still in it.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub damaged: Vec<Damaged>,
+  /// Each side's fire this round.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub fire: Vec<SideFire>,
+}
+
+impl RoundSummary {
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.losses.is_empty() && self.damaged.is_empty() && self.fire.is_empty()
+  }
+}
+
+/// A ship lost this round.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Loss {
+  pub ship: ShipRef,
+  /// Who destroyed her: whoever took the most hull off her this round. For
+  /// a craft lost aboard, whoever destroyed her carrier.
+  pub by: Option<ShipRef>,
+  /// The carrier she was lost in, for a craft lost in her berth.
+  pub aboard: Option<String>,
+  pub squadron: Option<String>,
+  /// Her displacement, so the client can roll small craft up by squadron.
+  pub tons: u32,
+}
+
+/// A ship that lost hull or took criticals this round and is still in it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Damaged {
+  pub ship: ShipRef,
+  /// Hull lost this round.
+  pub hull_lost: u32,
+  /// Hull left, and her whole hull.
+  pub hull: u32,
+  pub max_hull: u32,
+  pub criticals: u32,
+  /// Who hit her, most hull first.
+  pub by: Vec<ShipRef>,
+  pub squadron: Option<String>,
+  pub tons: u32,
+}
+
+/// One side's fire in a round.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct SideFire {
+  /// `None` for ships on no side.
+  pub team: Option<Team>,
+  /// Attacks that got as far as a roll, missiles each counting as one.
+  pub attacks: u32,
+  pub hits: u32,
+  /// Hull the side's hits took off the enemy.
+  pub hull: u32,
+  pub criticals: u32,
+  /// The side's missiles stopped by point defence.
+  pub intercepted: u32,
+  /// Ships the side destroyed.
+  pub kills: u32,
 }
 
 /// A ship named in a result: who it was, and whose side it was on.

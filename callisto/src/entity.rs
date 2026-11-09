@@ -98,6 +98,11 @@ pub struct Entities {
   /// as if destroyed, and an Escape side's whole goal is the difference. On
   /// the wire for the victory screen; never in a scenario file.
   pub departed: Vec<Departure>,
+
+  /// The ships destroyed in the last `update_all`, as they were when they
+  /// went: what was done to them (`Ship::taken`) is the round summary's, and
+  /// the live list no longer has them. Never on the wire.
+  pub wrecks: Vec<Ship>,
 }
 
 /// A ship that jumped out of the scenario.
@@ -429,6 +434,7 @@ impl Entities {
       filename: String::new(),
       round: 1,
       departed: Vec::new(),
+      wrecks: Vec::new(),
     }
   }
 
@@ -1426,6 +1432,7 @@ impl Entities {
                 );
                 let what = String::from(&launcher.primary_kind());
                 *intercepted.entry((target_name.clone(), what)).or_default() += u32::from(stopped);
+                target.note_intercepted(missile_source.get_name(), u32::from(stopped));
                 effects.push(EffectMsg::ExhaustedMissile { position: target.get_position() });
               }
               if through > 0 {
@@ -1546,10 +1553,13 @@ impl Entities {
       self.missiles.remove(name);
     }
 
-    for name in &cleanup_ships_list {
-      debug!("(Entity.update_all) Removing ship {}", name);
-      self.ships.remove(name);
-    }
+    self.wrecks = cleanup_ships_list
+      .iter()
+      .filter_map(|name| {
+        debug!("(Entity.update_all) Removing ship {}", name);
+        self.ships.remove(name).map(|ship| ship.read().unwrap().clone())
+      })
+      .collect();
     if !cleanup_ships_list.is_empty() {
       self.prune_ship_references();
       // Anything still flying at a ship that just died has nothing to hit.
@@ -4240,6 +4250,7 @@ impl<'de> Deserialize<'de> for Entities {
       filename: String::new(),
       round: guts.round,
       departed: guts.departed,
+      wrecks: Vec::new(),
     })
   }
 }

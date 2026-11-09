@@ -150,7 +150,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       let kind = kind["kind"].as_str().unwrap_or_default().to_string();
       *kinds.entry(kind).or_default() += 1;
     }
-    let results = serde_json::to_vec(&ResponseMsg::Effects(EffectsMsg { round, effects }))?;
+    let results = serde_json::to_vec(&ResponseMsg::Effects(EffectsMsg {
+      round,
+      effects,
+      summary: callisto::payloads::RoundSummary::default(),
+    }))?;
     if let Ok(dir) = std::env::var("SCALE_DUMP") {
       std::fs::write(format!("{dir}/results-{round}.json"), &results)?;
       std::fs::write(format!("{dir}/update-{round}.json"), &update)?;

@@ -126,7 +126,7 @@ describe("FlightDeck", () => {
   it("caps a launch at the tubes' rate and says the rest wait", () => {
     show(sirocco(wing("Gale", 12, "Wind Wing 1")));
     click("Pick wing");
-    expect(container.textContent).toContain("12 picked: 10 launch this round, 2 wait for next round's order.");
+    expect(container.textContent).toContain("12 picked: 10 launch this round, the other 2 in the rounds after.");
     click("Launch");
     const last = sent.states[sent.states.length - 1];
     expect(last.Sirocco.launch).toHaveLength(12);
@@ -149,7 +149,7 @@ describe("FlightDeck", () => {
     act(() => {
       store.dispatch(setLaunch({ shipName: "Sirocco", craft: ["Gale 01"] }));
     });
-    expect(container.textContent).toContain("Launch queued: 1 craft");
+    expect(container.textContent).toContain("Launching 1 craft this round. The order stands until every one is out.");
     click("Withdraw");
     const last = sent.states[sent.states.length - 1];
     expect(last.Sirocco.launch).toBeNull();
