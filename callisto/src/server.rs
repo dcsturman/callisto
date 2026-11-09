@@ -679,6 +679,25 @@ mod membership_tests {
     assert!(members.everyone_ready("s"), "the commander's one Ready covers the side");
   }
 
+  /// A squadron commander aboard her flagship is a captain who answers for
+  /// the whole squadron: not the referee, and one Ready covers every ship.
+  #[test]
+  fn a_squadron_commander_holds_the_squadron_from_the_flagship() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update(
+      "s",
+      "key-sc",
+      "sc@example.com",
+      vec![Role::Captain, Role::SquadronCommand],
+      Some("Lance 1".to_string()),
+    );
+    members.set_ships("s", "key-sc", vec!["Lance 1".to_string(), "Lance 2".to_string()]);
+    assert!(!members.has_referee("s"));
+    members.set_ready("s", "key-sc", true);
+    assert!(members.everyone_ready("s"));
+  }
+
   #[test]
   fn setting_ready_for_a_stranger_says_so() {
     let mut members = table_with_two();

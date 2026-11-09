@@ -31,7 +31,7 @@ use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
   with_ship_templates_for_deserialization, BridgeStation, Controller, FlightPlan, Post, PowerSystem, Range, Ship,
-  ShipDesignTemplate, ShipSystem,
+  ShipDesignTemplate, ShipSystem, Team, MAX_SQUADRON,
 };
 use crate::software::SoftwareKind;
 
@@ -182,6 +182,22 @@ impl PartialEq for Entities {
 }
 
 /// What a ship is giving off this round, for anyone looking for it.
+/// The longest a squadron's name may be.
+const MAX_SQUADRON_NAME: usize = 40;
+
+/// A squadron name as given, trimmed, if it is one: not empty and not too
+/// long.
+fn squadron_name(name: &str) -> Result<&str, String> {
+  let name = name.trim();
+  if name.is_empty() {
+    return Err("A squadron needs a name.".to_string());
+  }
+  if name.chars().count() > MAX_SQUADRON_NAME {
+    return Err(format!("A squadron's name is at most {MAX_SQUADRON_NAME} characters."));
+  }
+  Ok(name)
+}
+
 pub(crate) fn emissions_of(ship: &Ship, fired: bool) -> Emissions {
   Emissions {
     active_sensors: ship.active_sensors,
@@ -1945,6 +1961,88 @@ impl Entities {
     }
 
     Ok(())
+  }
+
+  /// Put `ships` in the squadron `squadron` of their team, or take them out of
+  /// theirs (`None`). The ships must all be on one team, the name must be
+  /// usable, and the squadron may hold at most [`MAX_SQUADRON`] ships
+  /// afterwards. Nothing changes if any of that fails.
+  ///
+  /// # Errors
+  /// Returns an error naming what is wrong.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn set_squadron(&self, ships: &[String], squadron: Option<&str>) -> Result<String, String> {
+    let found = ships
+      .iter()
+      .map(|name| self.ships.get(name).ok_or_else(|| format!("There is no ship named {name}.")))
+      .collect::<Result<Vec<_>, _>>()?;
+    let Some(name) = squadron else {
+      for ship in &found {
+        ship.write().unwrap().squadron = None;
+      }
+      return Ok(format!("{} ship(s) left their squadron.", found.len()));
+    };
+    let name = squadron_name(name)?;
+    let teams: Vec<Option<Team>> = found.iter().map(|ship| ship.read().unwrap().team).collect();
+    let Some(team) = teams.first().copied() else {
+      return Ok("No ships to move.".to_string());
+    };
+    if teams.iter().any(|other| *other != team) {
+      return Err("A squadron's ships must all be on one team.".to_string());
+    }
+    let size = self
+      .ships
+      .iter()
+      .filter(|(ship_name, ship)| {
+        let ship = ship.read().unwrap();
+        ships.contains(ship_name) || (ship.team == team && ship.squadron.as_deref() == Some(name))
+      })
+      .count();
+    if size > MAX_SQUADRON {
+      return Err(format!(
+        "A squadron holds at most {MAX_SQUADRON} ships; {name} would have {size}."
+      ));
+    }
+    for ship in &found {
+      ship.write().unwrap().squadron = Some(name.to_string());
+    }
+    Ok(format!("{} ship(s) joined {name}.", found.len()))
+  }
+
+  /// Rename `team`'s squadron `from` to `to`.
+  ///
+  /// # Errors
+  /// Returns an error if the team has no squadron `from`, `to` is unusable,
+  /// or the team already has a squadron `to`.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn rename_squadron(&self, team: Option<Team>, from: &str, to: &str) -> Result<String, String> {
+    let to = squadron_name(to)?;
+    let in_squadron = |name: &str| {
+      self
+        .ships
+        .values()
+        .filter(|ship| {
+          let ship = ship.read().unwrap();
+          ship.team == team && ship.squadron.as_deref() == Some(name)
+        })
+        .cloned()
+        .collect::<Vec<_>>()
+    };
+    let members = in_squadron(from);
+    if members.is_empty() {
+      return Err(format!("There is no squadron named {from}."));
+    }
+    if to != from && !in_squadron(to).is_empty() {
+      return Err(format!("There is already a squadron named {to}."));
+    }
+    for ship in &members {
+      ship.write().unwrap().squadron = Some(to.to_string());
+    }
+    Ok(format!("{from} is now {to}."))
   }
 
   /// Give every ship a contact on every other ship that is not stealthed and is
@@ -5196,6 +5294,78 @@ mod tests {
   }
 
   /// Build a picket with a contact nobody else has, plus a quiet team-mate.
+  /// `blue` ships on Blue and `red` on Red, named `Blue 1`, `Red 1` and so on.
+  fn two_fleets(blue: usize, red: usize) -> Entities {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for (team, count) in [(Team::Blue, blue), (Team::Red, red)] {
+      for i in 1..=count {
+        let name = format!("{team:?} {i}");
+        entities.add_ship(name.clone(), Vec3::zero(), Vec3::zero(), &design, None, None);
+        entities.ships.get(&name).unwrap().write().unwrap().team = Some(team);
+      }
+    }
+    entities
+  }
+
+  fn squadron_of(entities: &Entities, ship: &str) -> Option<String> {
+    entities.ships.get(ship).unwrap().read().unwrap().squadron.clone()
+  }
+
+  fn names(prefix: &str, range: std::ops::RangeInclusive<usize>) -> Vec<String> {
+    range.map(|i| format!("{prefix} {i}")).collect()
+  }
+
+  #[test]
+  fn ships_join_and_leave_a_squadron() {
+    let entities = two_fleets(3, 0);
+    entities.set_squadron(&names("Blue", 1..=2), Some("  Lance ")).unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 1").as_deref(), Some("Lance"));
+    assert_eq!(squadron_of(&entities, "Blue 3"), None);
+    entities.set_squadron(&names("Blue", 1..=1), None).unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 1"), None);
+    assert_eq!(squadron_of(&entities, "Blue 2").as_deref(), Some("Lance"));
+  }
+
+  #[test]
+  fn a_squadron_holds_at_most_twenty() {
+    let entities = two_fleets(22, 0);
+    entities.set_squadron(&names("Blue", 1..=20), Some("Lance")).unwrap();
+    let err = entities.set_squadron(&names("Blue", 21..=21), Some("Lance")).unwrap_err();
+    assert!(err.contains("at most 20"), "{err}");
+    assert_eq!(squadron_of(&entities, "Blue 21"), None);
+    // Moving ships already in it does not count them twice.
+    entities.set_squadron(&names("Blue", 1..=20), Some("Lance")).unwrap();
+  }
+
+  #[test]
+  fn a_squadron_is_within_one_team() {
+    let entities = two_fleets(1, 1);
+    let both = vec!["Blue 1".to_string(), "Red 1".to_string()];
+    assert!(entities.set_squadron(&both, Some("Mixed")).is_err());
+    assert_eq!(squadron_of(&entities, "Blue 1"), None);
+    // Each team may have a squadron of the same name, and they are separate.
+    entities.set_squadron(&both[..1], Some("Alpha")).unwrap();
+    entities.set_squadron(&both[1..], Some("Alpha")).unwrap();
+    entities.rename_squadron(Some(Team::Blue), "Alpha", "Beta").unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 1").as_deref(), Some("Beta"));
+    assert_eq!(squadron_of(&entities, "Red 1").as_deref(), Some("Alpha"));
+  }
+
+  #[test]
+  fn squadron_names_and_renames_are_checked() {
+    let entities = two_fleets(2, 0);
+    assert!(entities.set_squadron(&names("Blue", 1..=1), Some("   ")).is_err());
+    assert!(entities.set_squadron(&names("Blue", 1..=1), Some(&"x".repeat(41))).is_err());
+    assert!(entities.set_squadron(&names("Blue", 1..=1), Some("Nobody")).is_ok());
+    assert!(entities.set_squadron(&["Ghost".to_string()], Some("Lance")).is_err());
+    entities.set_squadron(&names("Blue", 2..=2), Some("Lance")).unwrap();
+    assert!(entities.rename_squadron(Some(Team::Blue), "Lance", "Nobody").is_err());
+    assert!(entities.rename_squadron(Some(Team::Blue), "Missing", "Other").is_err());
+    entities.rename_squadron(Some(Team::Blue), "Lance", "Spear").unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 2").as_deref(), Some("Spear"));
+  }
+
   fn handoff_pair(picket_team: Option<crate::ship::Team>, mate_team: Option<crate::ship::Team>) -> Entities {
     let mut entities = Entities::default();
     let design = Arc::new(ShipDesignTemplate::default());

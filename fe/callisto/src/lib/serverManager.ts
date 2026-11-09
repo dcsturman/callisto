@@ -34,7 +34,8 @@ import {
   scenarioSaved,
   renamed,
 } from "state/uiSlice";
-import { setEmail, setRoleShip, setFleetCommand, setJoinedScenario } from "state/userSlice";
+import { setEmail, setRoleShip, setFleetCommand, setSquadronCommand, setJoinedScenario, SquadronSeat } from "state/userSlice";
+import { squadronShips } from "lib/squadrons";
 import { AppMode, setAppMode, setLesson } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
@@ -701,6 +702,7 @@ export function requestFleetCommand(team: string) {
  * sent, and a ship missing from it would never be waited for.
  */
 function reclaimFleet(entities: EntityList) {
+  reclaimSquadron(entities);
   const team = store.getState().user.fleetTeam;
   if (team == null) {
     return;
@@ -709,6 +711,53 @@ function reclaimFleet(entities: EntityList) {
   if (ships.join("\n") !== claimedShips.join("\n")) {
     requestRoleChoice([ViewMode.FleetCommand], null, ships);
   }
+}
+
+/** Take Squadron Command of a squadron, aboard `flagship` (by default its
+ *  first ship), claiming its ships. */
+export function requestSquadronCommand(squadron: SquadronSeat, flagship?: string) {
+  const ships = squadronShips(store.getState().server.entities.ships, squadron.team, squadron.name);
+  const aboard = flagship ?? ships[0];
+  if (aboard == null) {
+    return;
+  }
+  store.dispatch(setSquadronCommand({ squadron, flagship: aboard }));
+  requestRoleChoice([ViewMode.SquadronCommand], aboard, ships);
+}
+
+/**
+ * Keep a squadron commander's claim matching the squadron as ships join it,
+ * leave it, are destroyed or jump out. A flagship that is gone hands the
+ * flag to the next ship; a squadron with no ships left leaves its
+ * commander watching.
+ */
+function reclaimSquadron(entities: EntityList) {
+  const { squadron, shipName } = store.getState().user;
+  if (squadron == null) {
+    return;
+  }
+  const ships = squadronShips(entities.ships, squadron.team, squadron.name);
+  if (ships.length === 0) {
+    store.dispatch(setRoleShip([[ViewMode.Observer], null]));
+    requestRoleChoice([ViewMode.Observer], null);
+    return;
+  }
+  const flagship = shipName != null && ships.includes(shipName) ? shipName : ships[0];
+  if (flagship !== shipName || ships.join("\n") !== claimedShips.join("\n")) {
+    requestSquadronCommand(squadron, flagship);
+  }
+}
+
+/** Put `ships` in `squadron` of their team, or (`null`) take them out. */
+export function setSquadron(ships: string[], squadron: string | null) {
+  const payload = { SetSquadron: { ships, ...(squadron == null ? {} : { squadron }) } };
+  socket.send(JSON.stringify(payload));
+}
+
+/** Rename `team`'s squadron `from` to `to`. */
+export function renameSquadron(team: string | null, from: string, to: string) {
+  const payload = { RenameSquadron: { ...(team == null ? {} : { team }), from, to } };
+  socket.send(JSON.stringify(payload));
 }
 
 export function joinScenario(scenario_name: string) {
@@ -1039,11 +1088,14 @@ function handleAuthenticated(json: {
     }
     if (json.roles != null || json.role != null) {
       const roles = parseRoles(json.roles ?? json.role);
-      // The server keeps the role but not which team it commands; this
-      // browser remembers that.
+      // The server keeps the role but not which team or squadron it
+      // commands; this browser remembers that.
       const team = store.getState().user.fleetTeam;
+      const squadron = store.getState().user.squadron;
       if (roles.includes(ViewMode.FleetCommand) && team != null) {
         store.dispatch(setFleetCommand(team));
+      } else if (roles.includes(ViewMode.SquadronCommand) && squadron != null && json.ship != null) {
+        store.dispatch(setSquadronCommand({ squadron, flagship: json.ship }));
       } else {
         store.dispatch(setRoleShip([roles, json.ship]));
       }

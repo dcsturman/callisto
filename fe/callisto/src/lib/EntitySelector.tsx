@@ -58,6 +58,10 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
    * List only the ships on this team: what a fleet commander may pick from.
    */
   onlyTeam?: string | null;
+  /**
+   * List only these ships: what a squadron commander may pick from.
+   */
+  onlyShips?: string[] | null;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
@@ -72,6 +76,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   excludeSameTeam,
   noneLabel,
   onlyTeam,
+  onlyShips,
   ...props
 }) => {
   const entities = useAppSelector(entitiesSelector);
@@ -183,6 +188,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
           entities.ships
             .filter((candidate) => candidate.name !== exclude)
             .filter((candidate) => onlyTeam == null || candidate.team === onlyTeam)
+            .filter((candidate) => onlyShips == null || onlyShips.includes(candidate.name))
             .map((notMeShip) => {
               const undetected = isUndetected(observer, notMeShip);
               const sameTeam =

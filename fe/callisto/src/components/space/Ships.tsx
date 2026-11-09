@@ -73,6 +73,7 @@ function Ship(args: {
   const viewer = useViewer();
   const entities = useAppSelector(entitiesSelector);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadron = useAppSelector((state) => state.user.squadron);
 
   const isOwnShip = isViewersOwn(viewer, args.ship);
   const undetected = isUndetectedBy(viewer, args.ship, entities.ships);
@@ -104,8 +105,12 @@ function Ship(args: {
     textRef.current?.lookAt(camera.position);
   });
   function handleShipClick() {
-    // A fleet commander takes the helm of their own team's ships only.
+    // A fleet commander takes the helm of their own team's ships only, a
+    // squadron commander of their squadron's.
     if (fleetTeam != null && args.ship.team !== fleetTeam) {
+      return;
+    }
+    if (squadron != null && !(args.ship.team === squadron.team && args.ship.squadron === squadron.name)) {
       return;
     }
     dispatch(setComputerShipName(args.ship.name));

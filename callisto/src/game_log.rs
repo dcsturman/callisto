@@ -186,6 +186,7 @@ pub fn ships_ordered(request: &RequestMsg) -> Option<Vec<String>> {
     RequestMsg::SetOrders(orders) => one(&orders.ship_name),
     RequestMsg::SetAiReport(report) => one(&report.ship_name),
     RequestMsg::SetShipTeam(team) => one(&team.ship_name),
+    RequestMsg::SetSquadron(squadron) => Some(squadron.ships.clone()),
     RequestMsg::AddShip(ship) => one(&ship.name),
     RequestMsg::Remove(name) => one(name),
     RequestMsg::RenameEntity(rename) => Some(vec![rename.current.clone(), rename.new_name.clone()]),

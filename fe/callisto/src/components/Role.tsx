@@ -1,7 +1,9 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
 import { CUSTOMISABLE_ROLES, ViewMode, rolesToString } from "lib/view";
-import { requestRoleChoice, requestFleetCommand } from "lib/serverManager";
+import { requestRoleChoice, requestFleetCommand, requestSquadronCommand } from "lib/serverManager";
+import { squadronShips, teamSquadrons } from "lib/squadrons";
+import { SquadronSeat } from "state/userSlice";
 import { TEAMS } from "lib/teams";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
@@ -11,11 +13,16 @@ import { entitiesSelector } from "state/serverSlice";
 const CUSTOM = "custom";
 /** The seat chooser's value for Fleet Command of a team: `fleet:Blue`. */
 const FLEET = "fleet:";
+/** The seat chooser's value for Squadron Command: `squadron:` and the
+ *  squadron as JSON, since a name may hold any character. */
+const SQUADRON = "squadron:";
+const squadronSeat = (squadron: SquadronSeat) => SQUADRON + JSON.stringify([squadron.team, squadron.name]);
 
 export const RoleChooser = () => {
   const shipName = useAppSelector((state) => state.user.shipName);
   const roles = useAppSelector((state) => state.user.roles);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadron = useAppSelector((state) => state.user.squadron);
   const entities = useAppSelector(entitiesSelector);
   const [picking, setPicking] = useState(false);
   const dispatch = useAppDispatch();
@@ -26,6 +33,15 @@ export const RoleChooser = () => {
     () => TEAMS.filter((team) => entities.ships.some((ship) => ship.team === team)),
     [entities.ships],
   );
+  // A Squadron Command seat for every squadron, team by team.
+  const squadrons = useMemo(
+    () =>
+      [...TEAMS, null].flatMap((team) =>
+        teamSquadrons(entities.ships, team).map((found) => ({ team, name: found.name }) as SquadronSeat),
+      ),
+    [entities.ships],
+  );
+  const commanding = fleetTeam != null || squadron != null;
 
   const choose = useMemo(
     () => (next: ViewMode[], ship: string | null) => {
@@ -35,17 +51,21 @@ export const RoleChooser = () => {
     [dispatch],
   );
 
-  // Leaving Fleet Command for a ship or the GM's seat takes General: the
-  // commander's role means nothing at one console.
-  const seatRoles = roles.includes(ViewMode.FleetCommand) ? [ViewMode.General] : roles;
+  // Leaving Fleet or Squadron Command for a ship or the GM's seat takes
+  // General: the commander's role means nothing at one console.
+  const seatRoles = commanding ? [ViewMode.General] : roles;
   const chooseSeat = (value: string) => {
     if (value.startsWith(FLEET)) {
       requestFleetCommand(value.slice(FLEET.length));
+    } else if (value.startsWith(SQUADRON)) {
+      const [team, name] = JSON.parse(value.slice(SQUADRON.length)) as [string | null, string];
+      requestSquadronCommand({ team, name });
     } else {
       choose(seatRoles, value === "" ? null : value);
     }
   };
-  const seat = fleetTeam != null ? FLEET + fleetTeam : shipName ?? "";
+  const seat = fleetTeam != null ? FLEET + fleetTeam : squadron != null ? squadronSeat(squadron) : shipName ?? "";
+  const flagships = squadron == null ? [] : squadronShips(entities.ships, squadron.team, squadron.name);
 
   // A single role shows as itself. More than one shows as Custom, since no
   // single option describes it -- the dialog is where the detail lives.
@@ -68,19 +88,47 @@ export const RoleChooser = () => {
             Fleet Command ({team})
           </option>
         ))}
+        {squadrons.map((found) => (
+          <option key={squadronSeat(found)} value={squadronSeat(found)}>
+            Squadron Command ({found.team == null ? found.name : `${found.team} ${found.name}`})
+          </option>
+        ))}
         {entities.ships.map((ship) => (
           <option key={ship.name} value={ship.name}>
             {ship.name}
           </option>
         ))}
       </select>
+      {/* The commander's own ship: where they sit, as the admiral aboard her
+          flagship. */}
+      {squadron != null && (
+        <select
+          className="select-dropdown control-name-input control-input role-input"
+          aria-label="Flagship"
+          title="Your flagship: the squadron ship you are aboard."
+          value={shipName ?? ""}
+          onChange={(e) => requestSquadronCommand(squadron, e.target.value)}
+        >
+          {flagships.map((name) => (
+            <option key={name} value={name}>
+              Flagship: {name}
+            </option>
+          ))}
+        </select>
+      )}
       <select
         className="select-dropdown control-name-input control-input role-input"
         data-tutorial="role-menu"
-        // A fleet commander works every station of whichever team ship they
-        // have open; there is no single station to pick.
-        disabled={fleetTeam != null}
-        value={fleetTeam != null ? String(ViewMode.FleetCommand) : selectValue}
+        // A fleet or squadron commander works every station of whichever of
+        // their ships they have open; there is no single station to pick.
+        disabled={commanding}
+        value={
+          fleetTeam != null
+            ? String(ViewMode.FleetCommand)
+            : squadron != null
+              ? String(ViewMode.SquadronCommand)
+              : selectValue
+        }
         title={roles.length > 1 ? rolesToString(roles) : undefined}
         onChange={(e) => {
           if (e.target.value === CUSTOM) {
@@ -98,6 +146,7 @@ export const RoleChooser = () => {
         <option value={ViewMode.Observer}>Observer</option>
         <option value={ViewMode.Captain}>Captain</option>
         {fleetTeam != null && <option value={ViewMode.FleetCommand}>Fleet Command</option>}
+        {squadron != null && <option value={ViewMode.SquadronCommand}>Squadron Command</option>}
         {/* Several stations at once, for a small crew. Shown as the chosen
             names once picked, since no single option describes it. */}
         <option value={CUSTOM}>

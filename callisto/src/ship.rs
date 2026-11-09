@@ -276,6 +276,13 @@ pub struct Ship {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub team: Option<Team>,
 
+  /// The squadron this ship flies in, by name, within her team: the unit
+  /// orders are given to. At most [`MAX_SQUADRON`] ships share one. Omitted
+  /// from the wire when unset, and cleared when she changes team.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub squadron: Option<String>,
+
   /// The crew aboard, or `None` when the scenario did not say.
   ///
   /// `None` means "take the design's", resolved by `fixup_current_values` on
@@ -1353,6 +1360,10 @@ pub enum Stealth {
   Advanced,
 }
 
+/// The most ships a squadron may hold: what one pass of the per-side
+/// network commands.
+pub const MAX_SQUADRON: usize = 20;
+
 /// Which side a ship is on.
 ///
 /// Capped at four, and named for colours rather than numbers because the whole
@@ -1741,6 +1752,7 @@ impl Ship {
       handoff_sensors: false,
       comms_jammed: false,
       team: None,
+      squadron: None,
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
       damage_log: vec![],
