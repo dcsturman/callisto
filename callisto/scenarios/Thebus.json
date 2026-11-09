@@ -76,7 +76,7 @@
       "current_jump": 0,
       "transmitting": true,
       "crew": {
-        "pilot": 1,
+        "pilot": 4,
         "engineering_jump": 0,
         "engineering_power": 1,
         "engineering_maneuver": 1,
@@ -178,15 +178,15 @@
       "design": "Star Ray Interceptor",
       "weapons": [
         {
-          "kind": "Beam",
+          "kind": "Pulse",
           "mount": {
-            "Turret": 2
+            "Turret": 3
           }
         },
         {
-          "kind": "Beam",
+          "kind": "Pulse",
           "mount": {
-            "Turret": 2
+            "Turret": 3
           }
         }
       ],
@@ -242,17 +242,16 @@
           }
         },
         {
+          "kind": "Pulse",
           "mount": {
             "Turret": 2
-          },
-          "guns": [
-            {
-              "kind": "Sand"
-            },
-            {
-              "kind": "Missile"
-            }
-          ]
+          }
+        },
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 2
+          }
         }
       ],
       "team": "Blue",
@@ -267,6 +266,7 @@
         "sensors": 1,
         "gunnery": [
           1,
+          1,
           1
         ],
         "leadership": 0
@@ -274,7 +274,40 @@
       "contacts": [
         "Lyonesse II"
       ],
-      "orders": "Slow and unarmoured. Stay out of the Executor's reach; launch missiles at her once the interceptors engage."
+      "orders": "Slow and unarmoured. Stay out of the Executor's reach; launch missiles at her once the interceptors engage.",
+      "current_computer": 10,
+      "software": [
+        {
+          "kind": "JumpControl",
+          "level": 2
+        },
+        {
+          "kind": "Library",
+          "level": 0
+        },
+        {
+          "kind": "Manoeuvre",
+          "level": 0
+        },
+        {
+          "kind": "Evade",
+          "level": 1
+        }
+      ],
+      "software_running": [
+        {
+          "kind": "Library",
+          "level": 0
+        },
+        {
+          "kind": "Manoeuvre",
+          "level": 0
+        },
+        {
+          "kind": "Evade",
+          "level": 1
+        }
+      ]
     },
     {
       "name": "HMS Executor",
