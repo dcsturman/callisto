@@ -132,6 +132,14 @@ describe("incoming salvoes", () => {
     expect(salvoes[1].roundsOut).toBe(12);
   });
 
+  test("a salvo counts as the missiles in it", () => {
+    const salvoes = incomingSalvoes(us, [
+      missile({name: "m1", source: "Thrasher", count: 12, position: [4_000_000, 0, 0], velocity: [-1000, 0, 0]}),
+      missile({name: "m2", source: "Thrasher", position: [6_000_000, 0, 0], velocity: [-1000, 0, 0]}),
+    ]);
+    expect(salvoes.map((s) => s.count)).toEqual([13]);
+  });
+
   test("nothing inbound is no salvoes", () => {
     expect(incomingSalvoes(us, [])).toEqual([]);
   });

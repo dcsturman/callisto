@@ -1,7 +1,7 @@
 #![allow(clippy::elidable_lifetime_names)]
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::BuildHasher;
@@ -136,6 +136,20 @@ fn get_ship_template_for_deserialization(name: &str) -> Option<Arc<ShipDesignTem
   DESERIALIZING_SHIP_TEMPLATES
     .with(|templates| templates.borrow().as_ref().and_then(|snapshot| snapshot.get(name).cloned()))
     .or_else(|| get_ship_template(name))
+}
+
+/// What one ship did to another in a round, kept on the ship it was done
+/// to (`Ship::taken`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Taken {
+  /// Attacks that got as far as a roll.
+  pub attacks: u32,
+  pub hits: u32,
+  /// Hull lost to those hits, criticals' own hull damage included.
+  pub hull: u32,
+  pub criticals: u32,
+  /// Missiles of the attacker's that point defence stopped short.
+  pub intercepted: u32,
 }
 
 #[skip_serializing_none]
@@ -276,6 +290,13 @@ pub struct Ship {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub team: Option<Team>,
 
+  /// The squadron this ship flies in, by name, within her team: the unit
+  /// orders are given to. At most [`MAX_SQUADRON`] ships share one. Omitted
+  /// from the wire when unset, and cleared when she changes team.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub squadron: Option<String>,
+
   /// The crew aboard, or `None` when the scenario did not say.
   ///
   /// `None` means "take the design's", resolved by `fixup_current_values` on
@@ -302,6 +323,14 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(skip)]
   dodge_spent: u8,
+
+  /// She spent no Thrust and took no evasive action in the last round flown,
+  /// which opens a ship under 2,000 tons to spinal fire (High Guard p. 34).
+  /// Set as each round's movement is flown, so a ship fresh from a scenario
+  /// has not yet held still. Written only when true.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub held_still: bool,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -447,11 +476,14 @@ pub struct Ship {
   /// Per-round scratch like `point_defense_list`, so it is not persisted.
   #[serde(skip)]
   pub point_defense_pool: u32,
-  /// Damage each of this ship's screens will absorb this round, index-aligned
-  /// with the design's `screens`.  Rolled once at the start of resolution and
-  /// spent as attacks arrive; per-round scratch, so not persisted.
+  /// What each of this ship's screens will take off the one attack it is
+  /// angled at this round, index-aligned with the design's `screens`.  Rolled
+  /// once at the start of resolution.  `None` is a screen nobody angles, or one
+  /// already angled this round; `Some(0)` is one whose Gunner (screen) check
+  /// failed, which is still angled at an attack and does nothing to it.
+  /// Per-round scratch, so not persisted.
   #[serde(skip)]
-  pub screen_pool: Vec<u32>,
+  pub screen_pool: Vec<Option<u32>>,
   /// Power currently suppressed by ion hits.
   ///
   /// Ion weapons deal no lasting harm -- the Power comes back when the effect
@@ -475,13 +507,46 @@ pub struct Ship {
   /// Rounds of ion suppression still to run.  Zero means none.
   #[serde(default, skip_serializing_if = "is_zero_u8")]
   pub ion_rounds: u8,
-  /// Missiles, torpedoes and sandcaster barrels still aboard.
+  /// Missiles, torpedoes and sandcaster barrels in stores: what is aboard
+  /// beyond what the mounts hold.
   ///
-  /// Spent as they are fired and thrown, and restored when the scenario is
-  /// reset. A ship that runs out cannot launch or disperse, which is what
-  /// makes a long missile duel a question of stores as well as nerve.
+  /// A mount fires from its own load ([`Ship::loaded`]), and a Reload refills
+  /// it from here. Restored when the scenario is reset. A ship whose stores
+  /// run out fires what is in its mounts and then nothing, which is what makes
+  /// a long missile duel a question of stores as well as nerve.
+  ///
+  /// A ship read without `loaded` -- every scenario written before mounts held
+  /// loads -- takes this as its whole stock and fills the mounts from it.
   #[serde(default)]
   pub magazine: Magazine,
+  /// What each mount holds ready to fire, index-aligned with
+  /// [`Ship::weapons`]. A battery's entry holds all its mounts' loads.
+  #[serde(default)]
+  pub loaded: Vec<Magazine>,
+  /// Mounts of each weapon entry knocked out by a large-ship Weapons
+  /// critical (High Guard p. 27), index-aligned with [`Ship::weapons`]: a
+  /// battery of twelve with three down fires, defends and draws Power for
+  /// nine. Disabled mounts come back with a repair of the Weapon system;
+  /// destroyed ones do not. Omitted from the wire while every mount is up.
+  #[serde(default, skip_serializing_if = "no_mounts_down")]
+  pub mounts_down: Vec<u16>,
+  /// Spare crew still in low berths, from the design's frozen watch, less
+  /// those revived or lost to a Cargo critical. Omitted when none.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub frozen_watch: u32,
+  /// Hull lost to Radiation weapons that shielding protects against, and
+  /// to meson weapons, which it does not (High Guard p. 31). Each 10% of
+  /// the hull (40% with shielding) is a DM-1 on everything the crew does.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub radiation_hull_lost: u32,
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub meson_hull_lost: u32,
+  /// What each ship did to this one this round, by the attacker's name: the
+  /// round summary's raw material. Cleared as each round starts; never on
+  /// the wire or in a scenario.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  pub taken: BTreeMap<String, Taken>,
   /// Who is giving this ship its orders: the people at its consoles, or the
   /// AI service.
   ///
@@ -498,6 +563,17 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub orders: Option<String>,
+  /// The orders her team's fleet commander gave every ship of the team.
+  /// Each ship carries a copy, so they save and travel with the ships; a
+  /// ship joining the team takes them up.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub fleet_orders: Option<String>,
+  /// The orders her squadron was given, carried by each of its ships in the
+  /// same way.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub squadron_orders: Option<String>,
   /// What the ship's side is trying to do, from a small menu: what a trained
   /// commander is scored on, where a model reads `orders`. A side's goal is
   /// the one its ships share. `None` is [`Goal::Destroy`].
@@ -522,6 +598,48 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub ai_report: Option<AiReport>,
+  /// The craft aboard this ship, whole: hull, criticals, crew, loads, orders
+  /// and squadron, exactly as they will be when launched. Not entities on
+  /// the plot: nothing detects, targets or orders a craft in a berth. On the
+  /// wire inside the carrier, which is what a flight-deck console shows.
+  /// Omitted when none.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub embarked: Vec<Ship>,
+  /// Launches and recoveries this carrier has under way through her
+  /// berths, or through a tube this round. Omitted when none.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub flight_ops: Vec<FlightOp>,
+  /// The carrier a craft belongs to: set when she is embarked and kept when
+  /// she launches, so a pilot or an AI knows where home is. Omitted when
+  /// the ship is nobody's craft.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub carrier: Option<String>,
+  /// Whole rounds a craft has spent aboard since she last came in. One is
+  /// enough to rearm from the carrier's stores. Omitted at zero.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub rounds_aboard: u32,
+  /// Scenario files only: the carrier this ship starts aboard. A ship read
+  /// with this set is moved into that carrier's `embarked` as the file is
+  /// read, and written back out this way, so a file lists every ship at the
+  /// top level. Never set on a ship in play.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub aboard: Option<String>,
+  /// Held still by a flight operation this round: a carrier with a craft
+  /// going out or coming in through a berth, or the craft coming in. No
+  /// Thrust, no dodge, no attacks (HG p. 61). Set as the round's orders are
+  /// read and cleared as it ends; on the wire while set.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub pinned: bool,
+  /// What the flight deck can do, filled in as the world is sent (see
+  /// [`Ship::flight_deck`]) and never read back.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
+  pub flight_deck: Option<FlightDeck>,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -560,6 +678,11 @@ fn is_true(value: &bool) -> bool {
 
 /// A helper function to avoid serializing when zero.  It makes
 /// the use of a reference a bit funny, but necessary.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn no_mounts_down(mounts_down: &[u16]) -> bool {
+  mounts_down.iter().all(|down| *down == 0)
+}
+
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u32(value: &u32) -> bool {
   *value == 0
@@ -640,6 +763,15 @@ pub struct ShipDesignTemplate {
   /// Hardened against electromagnetic attack: immune to ion weapons.
   #[serde(default, skip_serializing_if = "std::ops::Not::not")]
   pub computer_fib: bool,
+  /// Radiation shielding (High Guard p. 31): the crew's radiation DM grows
+  /// a step for every 40% of hull lost to Radiation weapons rather than
+  /// every 10%. Meson weapons ignore it.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub radiation_shielding: bool,
+  /// The frozen watch: spare crew held in low berths, who can be revived to
+  /// replace crew lost to criticals (High Guard p. 27).
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub frozen_watch: u32,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -761,6 +893,12 @@ pub struct Firing<'a> {
 pub struct Weapon {
   pub mount: WeaponMount,
   pub guns: Vec<Gun>,
+  /// How many identical mounts this entry is: 1 for a single mount, more for
+  /// a battery (Imperial Navy p. 113). A battery is one weapon to the rest of
+  /// Callisto -- one index, one gunner, one target a round -- and each of its
+  /// mounts rolls its own attack. Written to the wire only when above 1, so
+  /// every design without batteries is unchanged. See [`form_batteries`].
+  pub count: u16,
 }
 
 impl Weapon {
@@ -770,6 +908,7 @@ impl Weapon {
     Weapon {
       mount,
       guns: (0..count.max(1)).map(|_| Gun::new(kind)).collect(),
+      count: 1,
     }
   }
 
@@ -779,7 +918,33 @@ impl Weapon {
     Weapon {
       mount,
       guns: vec![Gun::new(kind)],
+      count: 1,
     }
+  }
+
+  /// This mount `count` times over, as a battery.
+  #[must_use]
+  pub fn times(self, count: u16) -> Self {
+    Weapon {
+      count: count.max(1),
+      ..self
+    }
+  }
+
+  /// The mounts in this entry: one for a single mount, more for a battery.
+  #[must_use]
+  pub fn mounts(&self) -> u16 {
+    self.count.max(1)
+  }
+
+  /// Whether this kind of mount can be grouped into a battery: turrets and
+  /// barbettes (Imperial Navy p. 113) and bays (p. 99). A fixed mount and a
+  /// spinal mount are single weapons, and a point-defence battery is already
+  /// a battery of its own; an entry of several of those is that many separate
+  /// weapons.
+  #[must_use]
+  pub fn can_be_battery(&self) -> bool {
+    matches!(self.mount, WeaponMount::Turret | WeaponMount::Barbette | WeaponMount::Bay(_))
   }
 
   /// True when every gun in this mount is the same type.
@@ -878,6 +1043,18 @@ pub enum WeaponMount {
   /// of batteries (the book also sells gauss ones) is a single new `WeaponType`
   /// reusing these same mounts.
   Battery(u8),
+  /// A spinal mount (High Guard pp. 34-36): one weapon the length of the
+  /// ship, built as a whole `multiple` of its type's Base Size. Damage, Power
+  /// and cost scale with the multiple; range and traits are the type's.
+  ///
+  /// `tl` is the weapon's own Tech Level when it is not the design's: the
+  /// Azhanti High Lightning is a TL14 hull with a TL12 particle spinal
+  /// (High Guard p. 257). It only decides the tonnage (see
+  /// [`crate::rules_tables::spinal_tons`]), never how the weapon fires.
+  Spinal {
+    multiple: u8,
+    tl: Option<u8>,
+  },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -932,6 +1109,9 @@ pub enum MountClass {
   /// all batteries are 20 tons -- but it has to be distinct so the profile
   /// table can refuse to put a gun in one.
   Battery,
+  /// A spinal mount at a multiple of one. [`crate::rules_tables::profile_for`]
+  /// scales the dice for the real multiple.
+  Spinal,
 }
 
 impl From<&WeaponMount> for MountClass {
@@ -944,6 +1124,18 @@ impl From<&WeaponMount> for MountClass {
       WeaponMount::Bay(BaySize::Medium) => MountClass::MediumBay,
       WeaponMount::Bay(BaySize::Large) => MountClass::LargeBay,
       WeaponMount::Battery(_) => MountClass::Battery,
+      WeaponMount::Spinal { .. } => MountClass::Spinal,
+    }
+  }
+}
+
+impl WeaponMount {
+  /// The multiple of a spinal mount, or `None` for any other mount.
+  #[must_use]
+  pub fn spinal_multiple(&self) -> Option<u8> {
+    match self {
+      WeaponMount::Spinal { multiple, .. } => Some((*multiple).max(1)),
+      _ => None,
     }
   }
 }
@@ -990,6 +1182,13 @@ pub struct WeaponProfile {
   /// Damage suppresses the target's Power instead of harming its hull
   /// (High Guard p. 30).  Nothing is permanently destroyed.
   pub ion: bool,
+  /// Armour takes this percentage off the damage per point, rather than
+  /// being subtracted from it: 3 for a particle spinal and 2 for a railgun
+  /// spinal (High Guard p. 36). Zero for every other weapon, which subtracts.
+  pub armour_percent: u8,
+  /// The Orbital Bombardment trait: DM-12 against anything that can
+  /// manoeuvre (High Guard p. 30).
+  pub bombardment: bool,
 }
 
 // --- Weapon wire format ---------------------------------------------------
@@ -1010,6 +1209,21 @@ enum MountWire {
   Bay(BaySize),
   FixedMount,
   Battery(u8),
+  Spinal(SpinalWire),
+}
+
+/// A spinal mount on the wire: `{"Spinal": 3}` for a 3× mount at the design's
+/// Tech Level, `{"Spinal": {"multiple": 2, "tl": 12}}` when the weapon's own
+/// TL differs.
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum SpinalWire {
+  Multiple(u8),
+  Stated {
+    multiple: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tl: Option<u8>,
+  },
 }
 
 impl MountWire {
@@ -1020,6 +1234,14 @@ impl MountWire {
       MountWire::Bay(size) => WeaponMount::Bay(*size),
       MountWire::FixedMount => WeaponMount::FixedMount,
       MountWire::Battery(grade) => WeaponMount::Battery(*grade),
+      MountWire::Spinal(SpinalWire::Multiple(multiple)) => WeaponMount::Spinal {
+        multiple: *multiple,
+        tl: None,
+      },
+      MountWire::Spinal(SpinalWire::Stated { multiple, tl }) => WeaponMount::Spinal {
+        multiple: *multiple,
+        tl: *tl,
+      },
     }
   }
 
@@ -1030,6 +1252,11 @@ impl MountWire {
       WeaponMount::Bay(size) => MountWire::Bay(*size),
       WeaponMount::FixedMount => MountWire::FixedMount,
       WeaponMount::Battery(grade) => MountWire::Battery(*grade),
+      WeaponMount::Spinal { multiple, tl: None } => MountWire::Spinal(SpinalWire::Multiple(*multiple)),
+      WeaponMount::Spinal { multiple, tl } => MountWire::Spinal(SpinalWire::Stated {
+        multiple: *multiple,
+        tl: *tl,
+      }),
     }
   }
 }
@@ -1043,15 +1270,37 @@ enum WeaponWire {
     mount: MountWire,
     #[serde(default)]
     modifiers: Vec<WeaponModifier>,
+    /// Mounts in a battery; absent for a single mount.
+    #[serde(default = "one_mount")]
+    count: u16,
   },
   /// A mount listing its guns, needed only when they differ.
-  Guns { mount: MountWire, guns: Vec<Gun> },
+  Guns {
+    mount: MountWire,
+    guns: Vec<Gun>,
+    #[serde(default = "one_mount")]
+    count: u16,
+  },
+}
+
+fn one_mount() -> u16 {
+  1
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one_mount(count: &u16) -> bool {
+  *count <= 1
 }
 
 impl<'de> Deserialize<'de> for Weapon {
   fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     Ok(match WeaponWire::deserialize(deserializer)? {
-      WeaponWire::Uniform { kind, mount, modifiers } => {
+      WeaponWire::Uniform {
+        kind,
+        mount,
+        modifiers,
+        count: mounts,
+      } => {
         // A turret's size becomes that many identical guns; everything else
         // holds exactly one.
         let count = match mount {
@@ -1066,11 +1315,13 @@ impl<'de> Deserialize<'de> for Weapon {
               modifiers: modifiers.clone(),
             })
             .collect(),
+          count: mounts.max(1),
         }
       }
-      WeaponWire::Guns { mount, guns } => Weapon {
+      WeaponWire::Guns { mount, guns, count } => Weapon {
         mount: mount.to_mount(),
         guns,
+        count: count.max(1),
       },
     })
   }
@@ -1086,12 +1337,14 @@ impl Serialize for Weapon {
         kind: first.map_or(WeaponType::Beam, |gun| gun.kind),
         mount,
         modifiers: first.map(|gun| gun.modifiers.clone()).unwrap_or_default(),
+        count: self.count,
       }
       .serialize(serializer)
     } else {
       WeaponGunsOut {
         mount,
         guns: &self.guns,
+        count: self.count,
       }
       .serialize(serializer)
     }
@@ -1104,12 +1357,57 @@ struct WeaponUniformOut {
   mount: MountWire,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   modifiers: Vec<WeaponModifier>,
+  #[serde(skip_serializing_if = "is_one_mount")]
+  count: u16,
 }
 
 #[derive(Serialize)]
 struct WeaponGunsOut<'a> {
   mount: MountWire,
   guns: &'a Vec<Gun>,
+  #[serde(skip_serializing_if = "is_one_mount")]
+  count: u16,
+}
+
+/// The most mounts a battery may hold on a hull of this size (Imperial Navy
+/// p. 113): 4 up to 999 tons, 8 to 9,999, 16 to 99,999, and 32 above. The
+/// table starts at 100 tons; anything smaller takes the first row.
+#[must_use]
+pub fn battery_limit(displacement: u32) -> u16 {
+  match displacement {
+    0..1_000 => 4,
+    1_000..10_000 => 8,
+    10_000..100_000 => 16,
+    _ => 32,
+  }
+}
+
+/// Split each entry of more than one mount into batteries no bigger than the
+/// hull allows: full batteries first, then what is left. An entry that cannot
+/// be a battery (see [`Weapon::can_be_battery`]) becomes that many single
+/// weapons. Entries of one mount are left exactly as they are, so a design
+/// without batteries comes out identical.
+///
+/// This is what the rest of Callisto addresses by index: gunners, targets,
+/// power and criticals are all by battery.
+#[must_use]
+pub fn form_batteries(weapons: &[Weapon], displacement: u32) -> Vec<Weapon> {
+  let limit = battery_limit(displacement);
+  weapons
+    .iter()
+    .flat_map(|weapon| {
+      let mounts = weapon.mounts();
+      let size = if weapon.can_be_battery() { limit } else { 1 };
+      let batteries = mounts.div_ceil(size);
+      (0..batteries).map(move |i| {
+        let in_this = size.min(mounts - i * size);
+        Weapon {
+          count: in_this,
+          ..weapon.clone()
+        }
+      })
+    })
+    .collect()
 }
 
 /// A directed defensive system that reduces the damage of a specific kind of
@@ -1154,6 +1452,16 @@ impl ScreenType {
   }
 }
 
+/// The screens angled at one hit, and what they take off it between them.
+///
+/// `reduction` is their whole roll, which may be more than the hit had; the
+/// excess is lost, since a screen is angled at one attack only.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Screening {
+  pub reduction: u32,
+  pub screens: u32,
+}
+
 impl From<ScreenType> for String {
   fn from(s: ScreenType) -> Self {
     match s {
@@ -1181,6 +1489,8 @@ impl WeaponProfile {
       use_multiple: true,
       salvo: None,
       ion: false,
+      armour_percent: 0,
+      bombardment: false,
     }
   }
 
@@ -1200,6 +1510,8 @@ impl WeaponProfile {
       use_multiple: false,
       salvo: Some(salvo),
       ion: false,
+      armour_percent: 0,
+      bombardment: false,
     }
   }
 
@@ -1229,6 +1541,47 @@ impl WeaponProfile {
   pub const fn rad(mut self) -> Self {
     self.radiation = true;
     self
+  }
+
+  /// Armour costs this weapon `percent` of its damage per point instead of
+  /// being subtracted (High Guard p. 36).
+  #[must_use]
+  pub const fn armour_percent(mut self, percent: u8) -> Self {
+    self.armour_percent = percent;
+    self
+  }
+
+  /// The Orbital Bombardment trait (High Guard p. 30).
+  #[must_use]
+  pub const fn bombardment(mut self) -> Self {
+    self.bombardment = true;
+    self
+  }
+
+  /// The share of the damage, in percent, that armour of `armour` lets
+  /// through, after AP. 100 for a weapon that subtracts armour instead, which
+  /// [`Self::armour_subtracted`] then handles.
+  ///
+  /// "Reduced by 3% per point of armour possessed by the target before
+  /// applying the Damage Multiple" (High Guard p. 36). A railgun spinal also
+  /// has AP 20, which Callisto takes off the armour first: against armour 20
+  /// or less it loses nothing, as AP means anywhere else, and past that each
+  /// point costs 2%. Never below nothing.
+  #[must_use]
+  pub fn armour_through(&self, armour: u32) -> u32 {
+    let armour = armour.saturating_sub(u32::from(self.ap));
+    100_u32.saturating_sub(armour.saturating_mul(u32::from(self.armour_percent)))
+  }
+
+  /// The armour this weapon subtracts from its damage, after AP: none for a
+  /// weapon that loses a percentage instead.
+  #[must_use]
+  pub fn armour_subtracted(&self, armour: u32) -> u32 {
+    if self.armour_percent > 0 {
+      0
+    } else {
+      armour.saturating_sub(u32::from(self.ap))
+    }
   }
 
   /// Mark this as an ion weapon: it drains Power rather than damaging the hull,
@@ -1352,6 +1705,10 @@ pub enum Stealth {
   Enhanced,
   Advanced,
 }
+
+/// The most ships a squadron may hold: what one pass of the per-side
+/// network commands.
+pub const MAX_SQUADRON: usize = 20;
 
 /// Which side a ship is on.
 ///
@@ -1589,6 +1946,13 @@ pub struct Magazine {
   /// Sandcaster barrels, one spent per cloud dispersed.
   #[serde(default)]
   pub sand: u32,
+  /// Rounds for railgun and mass driver spinal mounts, one spent per attack.
+  /// A railgun spinal comes with five and a stated magazine adds to them
+  /// (High Guard p. 36); a mass driver's are 50 tons each and come only as
+  /// stated (p. 35). They feed the spinal straight from stores, so no mount
+  /// holds any. Omitted from the wire at zero.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub rounds: u32,
 }
 
 impl Magazine {
@@ -1598,23 +1962,191 @@ impl Magazine {
     *self == Magazine::default()
   }
 
-  /// What a design carries when its write-up does not say.
+  /// Everything a design carries: its mounts' loads and its stores together.
   ///
-  /// Twelve missiles per rack and twenty barrels per sandcaster, which is
-  /// what the small ships that do state a magazine carry; three torpedoes
-  /// per launcher, matching the barbette we already assume holds three.
+  /// A design that states a magazine carries that; one that does not carries
+  /// what [`Magazine::for_weapons`] gives its armament.
   #[must_use]
   pub fn for_design(design: &ShipDesignTemplate) -> Magazine {
-    if !design.magazine.is_empty() {
-      return design.magazine;
+    Magazine::stated_or_usual(design.magazine, &design.weapons, design.displacement)
+  }
+
+  /// `stated` with the rounds every railgun spinal comes with, or the usual
+  /// load for `weapons` when nothing is stated.
+  fn stated_or_usual(stated: Magazine, weapons: &[Weapon], displacement: u32) -> Magazine {
+    if stated.is_empty() {
+      return Magazine::for_weapons(weapons, displacement);
     }
-    let mut magazine = Magazine::default();
-    for weapon in &design.weapons {
-      magazine.missiles += 12 * u32::from(weapon.count_of(WeaponType::Missile));
-      magazine.torpedoes += 3 * u32::from(weapon.count_of(WeaponType::Torpedo));
-      magazine.sand += 20 * u32::from(weapon.count_of(WeaponType::Sand));
+    Magazine {
+      rounds: stated.rounds + weapons.iter().map(built_in_rounds).sum::<u32>(),
+      ..stated
     }
-    magazine
+  }
+
+  /// What an armament carries when its design's write-up does not say.
+  ///
+  /// Twelve missiles per rack, twenty barrels per sandcaster and three
+  /// torpedoes per launcher, which is what the small ships that do state a
+  /// magazine carry -- or the mount's own load, where the book gives it more
+  /// (a barbette's 25 missiles, a bay's twelve salvos). What the mounts cannot
+  /// hold is stores.
+  #[must_use]
+  pub fn for_weapons(weapons: &[Weapon], displacement: u32) -> Magazine {
+    weapons.iter().fold(Magazine::default(), |total, weapon| {
+      let mounts = u32::from(weapon.mounts());
+      let capacity = mount_capacity(weapon, displacement);
+      total.plus(Magazine {
+        missiles: capacity
+          .missiles
+          .max(12 * u32::from(weapon.count_of(WeaponType::Missile)) * mounts),
+        torpedoes: capacity
+          .torpedoes
+          .max(3 * u32::from(weapon.count_of(WeaponType::Torpedo)) * mounts),
+        sand: capacity.sand.max(20 * u32::from(weapon.count_of(WeaponType::Sand)) * mounts),
+        rounds: built_in_rounds(weapon),
+      })
+    })
+  }
+
+  /// How many of the munition a gun of `kind` uses. Zero for a gun that uses
+  /// none.
+  #[must_use]
+  pub fn of(&self, kind: WeaponType) -> u32 {
+    match kind {
+      WeaponType::Missile => self.missiles,
+      WeaponType::Torpedo => self.torpedoes,
+      WeaponType::Sand => self.sand,
+      _ => 0,
+    }
+  }
+
+  /// The count for `kind`, for spending or filling. `None` for a gun that
+  /// uses no munition.
+  pub fn of_mut(&mut self, kind: WeaponType) -> Option<&mut u32> {
+    match kind {
+      WeaponType::Missile => Some(&mut self.missiles),
+      WeaponType::Torpedo => Some(&mut self.torpedoes),
+      WeaponType::Sand => Some(&mut self.sand),
+      _ => None,
+    }
+  }
+
+  #[must_use]
+  pub fn plus(self, other: Magazine) -> Magazine {
+    Magazine {
+      missiles: self.missiles + other.missiles,
+      torpedoes: self.torpedoes + other.torpedoes,
+      sand: self.sand + other.sand,
+      rounds: self.rounds + other.rounds,
+    }
+  }
+
+  /// Each count the smaller of the two.
+  #[must_use]
+  pub fn min(self, other: Magazine) -> Magazine {
+    Magazine {
+      missiles: self.missiles.min(other.missiles),
+      torpedoes: self.torpedoes.min(other.torpedoes),
+      sand: self.sand.min(other.sand),
+      rounds: self.rounds.min(other.rounds),
+    }
+  }
+
+  #[must_use]
+  pub fn saturating_sub(self, other: Magazine) -> Magazine {
+    Magazine {
+      missiles: self.missiles.saturating_sub(other.missiles),
+      torpedoes: self.torpedoes.saturating_sub(other.torpedoes),
+      sand: self.sand.saturating_sub(other.sand),
+      rounds: self.rounds.saturating_sub(other.rounds),
+    }
+  }
+}
+
+/// The rounds a mount comes with: five for a railgun spinal ("Railgun spinal
+/// mounts come equipped with five rounds", High Guard p. 36), none for
+/// anything else.
+fn built_in_rounds(weapon: &Weapon) -> u32 {
+  if weapon.mount.spinal_multiple().is_some() && weapon.has_kind(WeaponType::Railgun) {
+    5
+  } else {
+    0
+  }
+}
+
+/// Whether a spinal mount of this kind fires rounds from the magazine: the
+/// railgun and the mass driver. Energy spinals need only Power.
+#[must_use]
+pub fn spinal_uses_rounds(kind: WeaponType) -> bool {
+  matches!(kind, WeaponType::Railgun | WeaponType::MassDriver)
+}
+
+/// The munitions a gun of this kind fires: missiles, torpedoes or sand.
+#[must_use]
+pub fn uses_munitions(kind: WeaponType) -> bool {
+  matches!(kind, WeaponType::Missile | WeaponType::Torpedo | WeaponType::Sand)
+}
+
+/// What a mount holds ready to fire, for every mount in the entry.
+///
+/// "Each turret with one or more missile racks holds 12 missiles (missile
+/// racks on Firmpoints hold four missiles)" (High Guard p. 28; Core Rulebook
+/// p. 168), so the load is the turret's, however many racks share it. The same
+/// for sandcasters: twenty canisters a turret, four on a Firmpoint (High Guard
+/// p. 29; Core Rulebook p. 168). A barbette holds five salvos, 25 missiles
+/// (p. 31), a torpedo barbette three torpedoes (p. 31), and a bay twelve full
+/// salvos (pp. 33-34). A hull under 100 tons mounts on Firmpoints. A fixed
+/// mount loads as a turret does.
+#[must_use]
+pub fn mount_capacity(weapon: &Weapon, displacement: u32) -> Magazine {
+  let firmpoint = displacement < 100;
+  let turret_load = |kind: WeaponType, hardpoint: u32| {
+    if weapon.has_kind(kind) {
+      if firmpoint {
+        4
+      } else {
+        hardpoint
+      }
+    } else {
+      0
+    }
+  };
+  let salvos = |kind: WeaponType| {
+    weapon.firing(kind).map_or(0, |firing| {
+      match crate::rules_tables::profile_for(kind, firing.mount).and_then(|profile| profile.salvo) {
+        Some(Salvo::Fixed(missiles)) => 12 * u32::from(missiles),
+        _ => 0,
+      }
+    })
+  };
+  let one = match weapon.mount {
+    WeaponMount::Turret | WeaponMount::FixedMount => Magazine {
+      missiles: turret_load(WeaponType::Missile, 12),
+      torpedoes: 3 * u32::from(weapon.count_of(WeaponType::Torpedo)),
+      sand: turret_load(WeaponType::Sand, 20),
+      rounds: 0,
+    },
+    WeaponMount::Barbette => Magazine {
+      missiles: if weapon.has_kind(WeaponType::Missile) { 25 } else { 0 },
+      torpedoes: if weapon.has_kind(WeaponType::Torpedo) { 3 } else { 0 },
+      sand: 0,
+      rounds: 0,
+    },
+    WeaponMount::Bay(_) => Magazine {
+      missiles: salvos(WeaponType::Missile),
+      torpedoes: salvos(WeaponType::Torpedo),
+      sand: 0,
+      rounds: 0,
+    },
+    // A spinal's rounds feed it from stores.
+    WeaponMount::Battery(_) | WeaponMount::Spinal { .. } => Magazine::default(),
+  };
+  let mounts = u32::from(weapon.mounts());
+  Magazine {
+    missiles: one.missiles * mounts,
+    torpedoes: one.torpedoes * mounts,
+    sand: one.sand * mounts,
+    rounds: 0,
   }
 }
 
@@ -1626,6 +2158,107 @@ pub enum FeatureKind {
   RepairDrones,
   /// A projected false image of another ship.
   HolographicHull,
+  /// Internal bays that each hold one craft of up to `craft_tons` (High
+  /// Guard p. 61). A craft aboard lives in one of these or a hangar.
+  DockingSpace {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// As a docking space, with room to work on the craft (HG p. 61).
+  FullHangar {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// Launches up to ten craft of up to `craft_tons` a round (HG pp. 61-62,
+  /// and the HG FAQ for the rate). Draws Power: an unpowered tube launches
+  /// nothing, and the carrier falls back to her docking spaces.
+  LaunchTube {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// Recovers up to ten craft of up to `craft_tons` a round (HG pp. 62-63,
+  /// rate from the FAQ), on a Pilot check (p. 104). Draws Power.
+  RecoveryDeck {
+    craft_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+  /// An external clamp for a ship of up to `max_tons` (HG p. 57). Read
+  /// from designs and shown, but not yet a berth: nothing docks to one.
+  DockingClamp {
+    max_tons: u32,
+    #[serde(default = "one_facility")]
+    count: u32,
+  },
+}
+
+fn one_facility() -> u32 {
+  1
+}
+
+/// How many craft a launch tube or a recovery deck handles in a round (HG
+/// 2022 FAQ p. 3, which raised the deck's one a round to ten).
+pub const CRAFT_PER_FACILITY_ROUND: u32 = 10;
+
+/// What a craft of `tons` needs of a berth, tube or deck: one sized at
+/// least for it.
+fn facility_fits(craft_tons: u32, tons: u32) -> bool {
+  craft_tons >= tons
+}
+
+/// A flight operation a carrier has under way: a craft on its way out of
+/// a berth or into one. While any is under way the carrier is pinned: no
+/// Thrust and no attacks (HG p. 61), and so is a craft being recovered.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct FlightOp {
+  pub craft: String,
+  pub kind: FlightOpKind,
+  /// Rounds to go, counting this one. The craft is out, or aboard, as the
+  /// round in which this reaches zero ends.
+  pub rounds_left: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum FlightOpKind {
+  /// Out through a launch tube: one round, and nothing is pinned.
+  TubeLaunch,
+  /// Out through her berth, the carrier having no working tube for her:
+  /// D3 rounds (1D at 2,000 tons and up), the carrier pinned (HG p. 61).
+  BerthLaunch,
+  /// In through a berth, the carrier having no working deck for her: the
+  /// same rounds, both ships pinned, and no Pilot check.
+  BerthRecovery,
+}
+
+impl FlightOpKind {
+  /// Whether this operation holds the carrier still.
+  #[must_use]
+  pub fn pins_carrier(self) -> bool {
+    !matches!(self, FlightOpKind::TubeLaunch)
+  }
+}
+
+/// What a carrier's flight deck can do this round, worked out from her
+/// facilities and her Power as the world is sent, so a console or an AI need
+/// not re-derive it. `None` on a ship with no berths at all.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+pub struct FlightDeck {
+  /// Berths of every size: docking spaces and full hangars.
+  pub berths: u32,
+  /// Berths with nothing in them.
+  pub berths_free: u32,
+  /// Craft the powered launch tubes release a round, at the largest size
+  /// they take. Zero means launching goes through the berths and pins her.
+  pub launch_per_round: u32,
+  /// Craft the powered recovery decks take a round. Zero means recovery
+  /// goes through the berths, pinning both ships, with no Pilot check.
+  pub recover_per_round: u32,
+  /// The largest craft a powered tube takes, and a powered deck.
+  pub tube_tons: u32,
+  pub deck_tons: u32,
 }
 
 /// One line of a ship's power budget.
@@ -1697,6 +2330,8 @@ pub enum SystemDamage {
   AttackDm(i32),
   /// Weapon mounts switched off, by index.
   WeaponsOff(Vec<usize>),
+  /// Mounts of one battery disabled by a large-ship Weapons critical.
+  MountsOff { weapon: usize, mounts: u16 },
   /// A bridge station knocked out for a round or two.
   Disabled(BridgeStation),
   /// A bridge station destroyed, and what it was before, so undoing it cannot
@@ -1716,8 +2351,9 @@ impl Ship {
     name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
     weapons: Option<Vec<Weapon>>,
   ) -> Self {
+    let weapons = weapons.map(|weapons| form_batteries(&weapons, design.displacement));
     let num_weapons = weapons.as_ref().map_or(design.weapons.len(), Vec::len);
-    Ship {
+    let mut ship = Ship {
       name,
       position,
       velocity,
@@ -1741,6 +2377,9 @@ impl Ship {
       handoff_sensors: false,
       comms_jammed: false,
       team: None,
+      squadron: None,
+      fleet_orders: None,
+      squadron_orders: None,
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
       damage_log: vec![],
@@ -1767,6 +2406,7 @@ impl Ship {
       crew: Some(crewed_or_default(crew, design, num_weapons)),
       dodge_thrust: 0,
       dodge_spent: 0,
+      held_still: false,
       assist_gunners: false,
       can_jump: false,
       temporary_maneuver: 0,
@@ -1785,14 +2425,94 @@ impl Ship {
       ion_power_loss: 0,
       ion_bandwidth_loss: 0,
       ion_rounds: 0,
-      magazine: Magazine::for_design(design),
+      magazine: Magazine::default(),
+      loaded: vec![],
+      mounts_down: vec![0; num_weapons],
+      frozen_watch: design.frozen_watch,
+      radiation_hull_lost: 0,
+      meson_hull_lost: 0,
+      taken: BTreeMap::new(),
       controller: Controller::Human,
       ai_report: None,
       orders: None,
       goal: None,
       post: None,
       post_radius: None,
-    }
+      embarked: vec![],
+      flight_ops: vec![],
+      carrier: None,
+      rounds_aboard: 0,
+      aboard: None,
+      pinned: false,
+      flight_deck: None,
+    };
+    ship.stock(ship.full_stock());
+    ship
+  }
+
+  /// Everything this ship carries fresh from the yard: the design's stated
+  /// magazine, or what its armament carries when the design says nothing.
+  #[must_use]
+  pub fn full_stock(&self) -> Magazine {
+    Magazine::stated_or_usual(self.design.magazine, self.weapons(), self.design.displacement)
+  }
+
+  /// Put `total` aboard: each mount filled in order, as far as it goes, and
+  /// the rest to stores. A stated magazine is the ship's whole stock, so no
+  /// design carries more or less than it says.
+  pub fn stock(&mut self, total: Magazine) {
+    let displacement = self.design.displacement;
+    let mut left = total;
+    let loaded: Vec<Magazine> = self
+      .weapons()
+      .iter()
+      .map(|weapon| {
+        let load = mount_capacity(weapon, displacement).min(left);
+        left = left.saturating_sub(load);
+        load
+      })
+      .collect();
+    self.loaded = loaded;
+    self.magazine = left;
+  }
+
+  /// What mount `weapon_id` holds ready to fire.
+  #[must_use]
+  pub fn loaded(&self, weapon_id: usize) -> Magazine {
+    self.loaded.get(weapon_id).copied().unwrap_or_default()
+  }
+
+  /// What mount `weapon_id` holds when full.
+  #[must_use]
+  pub fn capacity(&self, weapon_id: usize) -> Magazine {
+    self
+      .weapons()
+      .get(weapon_id)
+      .map(|weapon| mount_capacity(weapon, self.design.displacement))
+      .unwrap_or_default()
+  }
+
+  /// Everything aboard: every mount's load and the stores.
+  #[must_use]
+  pub fn aboard(&self) -> Magazine {
+    self.loaded.iter().fold(self.magazine, |total, load| total.plus(*load))
+  }
+
+  /// Whether a Reload on mount `weapon_id` would put anything in it: it has a
+  /// launcher or sandcaster below its load, and stores hold some of what it
+  /// is missing.
+  #[must_use]
+  pub fn can_reload(&self, weapon_id: usize) -> bool {
+    let missing = self.capacity(weapon_id).saturating_sub(self.loaded(weapon_id));
+    !missing.min(self.magazine).is_empty()
+  }
+
+  /// Gunners beyond the mounts: the crew's `gunnery` list is index-aligned
+  /// with the mounts, so its entries past the last are gunners with no mount
+  /// of their own, free to reload one.
+  #[must_use]
+  pub fn spare_gunners(&self) -> usize {
+    self.get_crew().gunners().saturating_sub(self.weapons().len())
   }
 
   /// Reset every current value to what the design says, discarding damage.
@@ -1812,18 +2532,61 @@ impl Ship {
     self.current_crew = self.design.crew;
     self.current_sensors = self.design.sensors;
     self.current_computer = self.design.computer;
-    self.magazine = Magazine::for_design(&self.design);
+    self.stock(self.full_stock());
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
+    self.mounts_down = vec![0; self.weapons().len()];
+    self.frozen_watch = self.design.frozen_watch;
+    self.radiation_hull_lost = 0;
+    self.meson_hull_lost = 0;
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
     self.damage_log.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
     self.dodge_spent = 0;
+    self.held_still = false;
+    self.flight_ops.clear();
+    self.pinned = false;
+    for craft in &mut self.embarked {
+      craft.reset_current_values_to_design();
+    }
+    self.stow_embarked();
   }
 
   pub fn fixup_current_values(&mut self) {
+    self.fixup_own_values();
+    // The craft aboard arrive whole too, and in their berths.
+    for craft in &mut self.embarked {
+      craft.fixup_own_values();
+    }
+    self.stow_embarked();
+  }
+
+  /// Settle every craft aboard into her berth: at the carrier's position
+  /// and velocity, on her team if she had none, with no plan, no contacts
+  /// and nothing pending. The scenario-file `aboard` marker is spent.
+  pub fn stow_embarked(&mut self) {
+    let (name, position, velocity, team) = (self.name.clone(), self.position, self.velocity, self.team);
+    for craft in &mut self.embarked {
+      craft.position = position;
+      craft.velocity = velocity;
+      craft.plan = FlightPlan::default();
+      craft.contacts.clear();
+      craft.sensor_locks.clear();
+      craft.reset_pilot_actions();
+      craft.carrier = Some(name.clone());
+      craft.aboard = None;
+      craft.pinned = false;
+      craft.flight_ops.clear();
+      craft.embarked.clear();
+      if craft.team.is_none() {
+        craft.team = team;
+      }
+    }
+  }
+
+  fn fixup_own_values(&mut self) {
     self.current_hull = u32::max(self.current_hull, self.design.hull);
     self.current_armor = u32::max(self.current_armor, self.design.armor);
     self.current_power = u32::max(self.current_power, self.design.power);
@@ -1833,13 +2596,6 @@ impl Ship {
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
     self.current_computer = u32::max(self.current_computer, self.design.computer);
-    // A ship read from a scenario has no magazine on the wire, and serde
-    // fills zeros -- which would put every scenario ship to sea with empty
-    // racks. An empty magazine here means "not stated", so it is loaded from
-    // the design the same way a new ship's is.
-    if self.magazine.is_empty() {
-      self.magazine = Magazine::for_design(&self.design);
-    }
     // The same for software: a scenario states none, and a ship with an
     // empty list has nothing to run and refuses every order to run it --
     // while the console, which falls back to the design's list, shows a
@@ -1848,8 +2604,34 @@ impl Ship {
       self.software.clone_from(&self.design.software);
       self.software_running = initial_running(&self.design);
     }
+    // A scenario's own armament is split into batteries as a design's is.
+    if let Some(weapons) = self.weapons.take() {
+      self.weapons = Some(form_batteries(&weapons, self.design.displacement));
+    }
+    // A ship read from a scenario has no magazine on the wire, and serde
+    // fills zeros -- which would put every scenario ship to sea with empty
+    // racks. An empty magazine here means "not stated", so it is loaded from
+    // the design the same way a new ship's is.
+    //
+    // A ship written before mounts held loads states no `loaded`, and its
+    // magazine is then its whole stock, filled into the mounts first. One
+    // whose mounts no longer line up with its armament was re-armed, and goes
+    // to sea fully stocked.
+    if self.loaded.len() != self.weapons().len() {
+      let total = if self.loaded.is_empty() && !self.magazine.is_empty() {
+        self.magazine
+      } else {
+        self.full_stock()
+      };
+      self.stock(total);
+    }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
+    // Damage is not carried in: a ship arrives whole, as its criticals do.
+    self.mounts_down = vec![0; self.weapons().len()];
+    self.frozen_watch = u32::max(self.frozen_watch, self.design.frozen_watch);
+    self.radiation_hull_lost = 0;
+    self.meson_hull_lost = 0;
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
     self.damage_log.clear();
@@ -2130,6 +2912,21 @@ impl Ship {
           }
           restored.push("weapons back online".to_string());
         }
+        // A battery whose last mounts were disabled was switched off with
+        // them, so bringing any back brings it back.
+        SystemDamage::MountsOff { weapon, mounts } => {
+          if let Some(down) = self.mounts_down.get_mut(weapon) {
+            *down = down.saturating_sub(mounts);
+            if let Some(active) = self.active_weapons.get_mut(weapon) {
+              *active = true;
+            }
+          }
+          restored.push(format!(
+            "{mounts} mount{} of {} back online",
+            if mounts == 1 { "" } else { "s" },
+            self.weapons().get(weapon).map_or_else(|| "a weapon".to_string(), String::from)
+          ));
+        }
         SystemDamage::Disabled(station) => {
           if matches!(self.station_status(station), StationStatus::Disabled(_)) {
             self.bridge_stations[station as usize] = StationStatus::Working;
@@ -2209,6 +3006,126 @@ impl Ship {
   #[must_use]
   pub fn total_crit_severity(&self) -> u16 {
     self.crit_level.iter().map(|level| u16::from(*level)).sum()
+  }
+
+  /// The mounts of weapon `weapon_id` still able to fire, defend and draw
+  /// Power: its count, less any a large-ship Weapons critical took, and none
+  /// while the weapon is switched off.
+  #[must_use]
+  pub fn live_mounts(&self, weapon_id: usize) -> u16 {
+    if !self.active_weapons.get(weapon_id).copied().unwrap_or(false) {
+      return 0;
+    }
+    let mounts = self.weapons().get(weapon_id).map_or(0, Weapon::mounts);
+    mounts.saturating_sub(self.mounts_down.get(weapon_id).copied().unwrap_or(0))
+  }
+
+  /// Knock `mounts` of weapon `weapon_id` out: disabled ones are recorded
+  /// against the Weapon system at `level` so a repair brings them back,
+  /// destroyed ones are gone. A weapon with no mount left is switched off.
+  /// Returns how many were taken.
+  pub fn lose_mounts(&mut self, weapon_id: usize, mounts: u16, level: u8, destroyed: bool) -> u16 {
+    let lost = mounts.min(self.live_mounts(weapon_id));
+    if lost == 0 {
+      return 0;
+    }
+    if self.mounts_down.len() < self.weapons().len() {
+      self.mounts_down.resize(self.weapons().len(), 0);
+    }
+    self.mounts_down[weapon_id] += lost;
+    if !destroyed {
+      self.record_damage(
+        ShipSystem::Weapon,
+        level,
+        SystemDamage::MountsOff {
+          weapon: weapon_id,
+          mounts: lost,
+        },
+      );
+    }
+    if self.live_mounts(weapon_id) == 0 {
+      self.active_weapons[weapon_id] = false;
+    }
+    lost
+  }
+
+  /// The ship's crew as hundredths of its complement, 100 when whole. A
+  /// design with no crew counts as whole.
+  #[must_use]
+  pub fn crew_percent(&self) -> u32 {
+    if self.design.crew == 0 {
+      100
+    } else {
+      u32::try_from(u64::from(self.current_crew) * 100 / u64::from(self.design.crew)).unwrap_or(u32::MAX)
+    }
+  }
+
+  /// The DM every check this crew makes carries, with its reasons: crew
+  /// lost to criticals (High Guard p. 27) and radiation (p. 31). Zero
+  /// entries are kept so a log can name both terms.
+  #[must_use]
+  pub fn crew_dm_terms(&self) -> [(&'static str, i16); 2] {
+    [
+      (
+        "crew losses",
+        crate::rules_tables::crew_loss_dm(self.current_crew, self.design.crew),
+      ),
+      (
+        "radiation",
+        crate::rules_tables::radiation_dm(
+          self.design.hull,
+          self.radiation_hull_lost,
+          self.meson_hull_lost,
+          self.design.radiation_shielding,
+        ),
+      ),
+    ]
+  }
+
+  /// The DM every check this crew makes carries: the sum of
+  /// [`crew_dm_terms`](Self::crew_dm_terms).
+  #[must_use]
+  pub fn crew_dm(&self) -> i16 {
+    self.crew_dm_terms().iter().map(|(_, dm)| dm).sum()
+  }
+
+  /// Hull lost to a Radiation weapon: `damage` of it, from a meson or not,
+  /// which decides whether shielding counts (High Guard p. 31).
+  pub fn take_radiation(&mut self, damage: u32, meson: bool) {
+    if meson {
+      self.meson_hull_lost = self.meson_hull_lost.saturating_add(damage);
+    } else {
+      self.radiation_hull_lost = self.radiation_hull_lost.saturating_add(damage);
+    }
+  }
+
+  /// An attack by `attacker` that got as far as its roll.
+  pub fn note_attack(&mut self, attacker: &str) {
+    self.taken.entry(attacker.to_string()).or_default().attacks += 1;
+  }
+
+  /// A hit by `attacker`: the hull it took, and the criticals it caused.
+  pub fn note_hit(&mut self, attacker: &str, hull: u32, criticals: u32) {
+    let taken = self.taken.entry(attacker.to_string()).or_default();
+    taken.hits += 1;
+    taken.hull = taken.hull.saturating_add(hull);
+    taken.criticals = taken.criticals.saturating_add(criticals);
+  }
+
+  /// `count` of `attacker`'s missiles stopped by this ship's point defence.
+  pub fn note_intercepted(&mut self, attacker: &str, count: u32) {
+    self.taken.entry(attacker.to_string()).or_default().intercepted += count;
+  }
+
+  /// Revive up to `count` of the frozen watch, who replace crew lost to
+  /// criticals (High Guard p. 27). Returns how many came out of the berths:
+  /// no more than are in them, and no more than the complement is short.
+  pub fn revive_watch(&mut self, count: u32) -> u32 {
+    let short = self.design.crew.saturating_sub(self.current_crew);
+    let revived = count.min(self.frozen_watch).min(short);
+    self.frozen_watch -= revived;
+    self.current_crew += revived;
+    revived
   }
 
   /// Turn sensor hand-off on or off.
@@ -2394,7 +3311,8 @@ impl Ship {
       },
     ];
     for (index, weapon) in self.weapons().iter().enumerate() {
-      let draw = weapon_mount_power(weapon);
+      // A battery draws for the mounts it has left, not the ones it lost.
+      let draw = weapon_mount_power(weapon) / u32::from(weapon.mounts()) * u32::from(self.live_mounts(index).max(1));
       if draw == 0 {
         continue;
       }
@@ -2407,6 +3325,33 @@ impl Ship {
         on_demand: false,
       });
     }
+    // Flight facilities are fed ahead of the drive, like the weapons: a
+    // launch tube is operational kit in the printed Power budget. Other
+    // features (a hologram projector) are luxuries that come after it.
+    let feature_line = |index: usize, feature: &ShipFeature| PowerLine {
+      system: PowerSystem::Feature(index),
+      label: feature.name.clone(),
+      draw: feature.power,
+      received: 0,
+      online: self.is_online(PowerSystem::Feature(index)),
+      on_demand: false,
+    };
+    let is_flight = |feature: &ShipFeature| {
+      matches!(
+        feature.kind,
+        Some(FeatureKind::LaunchTube { .. } | FeatureKind::RecoveryDeck { .. })
+      )
+    };
+    // A fitting with no draw is not a line on the power board.
+    let powered = |flight: bool| {
+      self
+        .design
+        .features
+        .iter()
+        .enumerate()
+        .filter(move |(_, feature)| feature.power > 0 && is_flight(feature) == flight)
+    };
+    lines.extend(powered(true).map(|(index, feature)| feature_line(index, feature)));
     lines.push(PowerLine {
       system: PowerSystem::Maneuver,
       label: format!("M-drive (thrust {})", self.design.maneuver),
@@ -2415,20 +3360,7 @@ impl Ship {
       online: self.is_online(PowerSystem::Maneuver),
       on_demand: false,
     });
-    for (index, feature) in self.design.features.iter().enumerate() {
-      // A fitting with no draw is not a line on the power board.
-      if feature.power == 0 {
-        continue;
-      }
-      lines.push(PowerLine {
-        system: PowerSystem::Feature(index),
-        label: feature.name.clone(),
-        draw: feature.power,
-        received: 0,
-        online: self.is_online(PowerSystem::Feature(index)),
-        on_demand: false,
-      });
-    }
+    lines.extend(powered(false).map(|(index, feature)| feature_line(index, feature)));
     if self.design.jump > 0 {
       lines.push(PowerLine {
         system: PowerSystem::Jump,
@@ -2751,7 +3683,8 @@ impl Ship {
   /// has already been dodged. None without a pilot at their station.
   #[must_use]
   pub fn get_dodge_thrust(&self) -> u8 {
-    if self.station_working(BridgeStation::Pilot) {
+    // A pinned ship expends no Thrust, and a dodge is Thrust (HG p. 61).
+    if self.station_working(BridgeStation::Pilot) && !self.pinned {
       self.dodge_thrust.saturating_sub(self.dodge_spent)
     } else {
       0
@@ -2788,45 +3721,58 @@ impl Ship {
     self.screen_pool.clear();
   }
 
-  pub fn set_screen_pool(&mut self, pool: Vec<u32>) {
+  pub fn set_screen_pool(&mut self, pool: Vec<Option<u32>>) {
     self.screen_pool = pool;
   }
 
-  /// Spend screens against `damage` from a weapon of `kind`, returning what is
-  /// left of it.
-  ///
-  /// Screens are spent whole and greedily: each one that defends against this
-  /// weapon is applied in turn until the damage reaches zero, and whatever it
-  /// does not need is lost with it.  The next attack starts from the next
-  /// unspent screen.  The book instead lets a gunner pick their moment and
-  /// concentrate every screen on one attack; we resolve attacks in sequence
-  /// with nobody to ask, so this is the closest approximation available.
-  pub fn apply_screens(&mut self, kind: WeaponType, damage: u32) -> u32 {
-    if damage == 0 || self.screen_pool.is_empty() {
-      return damage;
-    }
+  /// Whether any screen not yet angled this round defends against `kind`.
+  #[must_use]
+  pub fn has_screens_for(&self, kind: WeaponType) -> bool {
+    self
+      .design
+      .screens
+      .iter()
+      .zip(&self.screen_pool)
+      .any(|(screen, pool)| pool.is_some() && screen.defends_against(kind))
+  }
 
-    let screens = self.design.screens.clone();
-    let mut remaining = damage;
-    for (index, screen) in screens.iter().enumerate() {
-      if remaining == 0 {
-        break;
-      }
-      if !screen.defends_against(kind) {
-        continue;
-      }
-      let Some(absorbed) = self.screen_pool.get_mut(index) else {
+  /// Angle this round's unangled screens at `hits`, each hit a weapon and its
+  /// damage after armour and the Damage Multiple, and say what each hit loses.
+  ///
+  /// "A gunner may only angle screens against one attack per round" (High
+  /// Guard 2022 FAQ, p. 2), and every screen has its own gunner, so each
+  /// screen goes on exactly one hit and its whole reduction applies to that
+  /// hit alone; what the hit did not need is lost.  Screens are taken in
+  /// order, and each goes on the largest hit it defends against that no
+  /// screen is on yet; once every such hit has one, on whichever has the most
+  /// damage left.  So several screens can be on one hit, each its own
+  /// gunner's one attack.  A screen whose check failed is angled all the
+  /// same and takes nothing off.  A screen with nothing it defends against
+  /// stays unangled, for a later attack this round.
+  pub fn angle_screens(&mut self, hits: &[(WeaponType, u32)]) -> Vec<Screening> {
+    let mut screenings = vec![Screening::default(); hits.len()];
+    for (screen, pool) in self.design.screens.iter().zip(self.screen_pool.iter_mut()) {
+      let Some(reduction) = *pool else {
         continue;
       };
-      if *absorbed == 0 {
+      let target = hits
+        .iter()
+        .zip(&screenings)
+        .enumerate()
+        .filter(|(_, ((kind, damage), screening))| screen.defends_against(*kind) && *damage > screening.reduction)
+        .max_by_key(|(index, ((_, damage), screening))| {
+          // The earlier hit wins a tie, so the order is the resolution order.
+          (screening.screens == 0, damage - screening.reduction, std::cmp::Reverse(*index))
+        })
+        .map(|(index, _)| index);
+      let Some(target) = target else {
         continue;
-      }
-      remaining = remaining.saturating_sub(*absorbed);
-      // Spent whole: any excess beyond what this attack needed is wasted, as it
-      // would be in the book where a screen is used against one attack.
-      *absorbed = 0;
+      };
+      screenings[target].reduction += reduction;
+      screenings[target].screens += 1;
+      *pool = None;
     }
-    remaining
+    screenings
   }
 
   // Engineer action getters and setters
@@ -2996,6 +3942,204 @@ impl Ship {
   }
 }
 
+/// Flight operations: the berths, tubes and decks of a carrier and the craft
+/// in them. See `docs/capital_ships_plan.md` §4 and the FAQ.
+impl Ship {
+  /// Every berth aboard -- docking spaces and full hangars -- by the tonnage
+  /// it takes, one entry a berth, smallest first.
+  #[must_use]
+  pub fn berths(&self) -> Vec<u32> {
+    let mut berths: Vec<u32> = self
+      .design
+      .features
+      .iter()
+      .filter_map(|feature| match feature.kind {
+        Some(FeatureKind::DockingSpace { craft_tons, count } | FeatureKind::FullHangar { craft_tons, count }) => {
+          Some(std::iter::repeat_n(craft_tons, count as usize))
+        }
+        _ => None,
+      })
+      .flatten()
+      .collect();
+    berths.sort_unstable();
+    berths
+  }
+
+  /// Whether this ship has anywhere to put a craft.
+  #[must_use]
+  pub fn is_carrier(&self) -> bool {
+    self.design.features.iter().any(|feature| {
+      matches!(
+        feature.kind,
+        Some(FeatureKind::DockingSpace { .. } | FeatureKind::FullHangar { .. })
+      )
+    })
+  }
+
+  /// The berths nothing is in, by tonnage, smallest first, with each craft
+  /// aboard in the smallest berth that takes her, largest craft first.
+  #[must_use]
+  pub fn berths_free(&self) -> Vec<u32> {
+    let mut free = self.berths();
+    let mut aboard: Vec<u32> = self.embarked.iter().map(|craft| craft.design.displacement).collect();
+    aboard.sort_unstable_by(|a, b| b.cmp(a));
+    for tons in aboard {
+      if let Some(slot) = free.iter().position(|berth| facility_fits(*berth, tons)) {
+        free.remove(slot);
+      }
+    }
+    free
+  }
+
+  /// Whether a craft of `tons` has a free berth to come in to.
+  #[must_use]
+  pub fn has_berth_for(&self, tons: u32) -> bool {
+    self.berths_free().iter().any(|berth| facility_fits(*berth, tons))
+  }
+
+  /// The powered facilities of one kind that take a craft of `tons`, as
+  /// (how many, the largest craft they take).
+  fn facilities_for(&self, tons: u32, pick: impl Fn(FeatureKind) -> Option<(u32, u32)>) -> (u32, u32) {
+    self
+      .design
+      .features
+      .iter()
+      .enumerate()
+      .filter(|(index, _)| self.is_powered(PowerSystem::Feature(*index)))
+      .filter_map(|(_, feature)| feature.kind.and_then(&pick))
+      .filter(|(craft_tons, _)| facility_fits(*craft_tons, tons))
+      .fold((0, 0), |(count, largest), (craft_tons, n)| (count + n, largest.max(craft_tons)))
+  }
+
+  /// Craft of `tons` the powered launch tubes release in a round (HG FAQ:
+  /// ten a tube). Zero means they go out through the berths instead.
+  #[must_use]
+  pub fn launch_per_round(&self, tons: u32) -> u32 {
+    let (tubes, _) = self.facilities_for(tons, |kind| match kind {
+      FeatureKind::LaunchTube { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    tubes * CRAFT_PER_FACILITY_ROUND
+  }
+
+  /// Craft of `tons` the powered recovery decks take in a round (HG FAQ:
+  /// ten a deck). Zero means they come in through the berths instead.
+  #[must_use]
+  pub fn recover_per_round(&self, tons: u32) -> u32 {
+    let (decks, _) = self.facilities_for(tons, |kind| match kind {
+      FeatureKind::RecoveryDeck { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    decks * CRAFT_PER_FACILITY_ROUND
+  }
+
+  /// What the flight deck can do this round, or `None` on a ship with no
+  /// berths. The rates are for the smallest craft, which is every craft a
+  /// tube or deck of that size takes; `tube_tons` and `deck_tons` say how
+  /// big a craft they go up to.
+  #[must_use]
+  pub fn flight_deck(&self) -> Option<FlightDeck> {
+    if !self.is_carrier() {
+      return None;
+    }
+    let (tubes, tube_tons) = self.facilities_for(0, |kind| match kind {
+      FeatureKind::LaunchTube { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    let (decks, deck_tons) = self.facilities_for(0, |kind| match kind {
+      FeatureKind::RecoveryDeck { craft_tons, count } => Some((craft_tons, count)),
+      _ => None,
+    });
+    Some(FlightDeck {
+      berths: u32::try_from(self.berths().len()).unwrap_or(u32::MAX),
+      berths_free: u32::try_from(self.berths_free().len()).unwrap_or(u32::MAX),
+      launch_per_round: tubes * CRAFT_PER_FACILITY_ROUND,
+      recover_per_round: decks * CRAFT_PER_FACILITY_ROUND,
+      tube_tons,
+      deck_tons,
+    })
+  }
+
+  /// The craft aboard named `name`.
+  #[must_use]
+  pub fn craft_aboard(&self, name: &str) -> Option<&Ship> {
+    self.embarked.iter().find(|craft| craft.name == name)
+  }
+
+  /// Whether `name` is in a flight operation already.
+  #[must_use]
+  pub fn in_flight_op(&self, name: &str) -> bool {
+    self.flight_ops.iter().any(|op| op.craft == name)
+  }
+
+  /// Take `craft` aboard: into a berth, at rest relative to the carrier,
+  /// with her plan, contacts and locks gone. Fresh aboard, so not yet
+  /// rearmed.
+  pub fn embark(&mut self, mut craft: Ship) {
+    craft.rounds_aboard = 0;
+    self.embarked.push(craft);
+    self.stow_embarked();
+  }
+
+  /// Put the craft named `name` out of her berth: at `position` with the
+  /// carrier's velocity and sensor picture, on the plot from the round's
+  /// end. `None` if no such craft is aboard.
+  pub fn release(&mut self, name: &str, position: Vec3) -> Option<Ship> {
+    let index = self.embarked.iter().position(|craft| craft.name == name)?;
+    let mut craft = self.embarked.remove(index);
+    craft.position = position;
+    craft.velocity = self.velocity;
+    craft.plan = FlightPlan::default();
+    // The air group launches with the carrier's picture: a contact she holds
+    // is passed to the craft the way a hand-off would, locks are not.
+    craft.contacts.clone_from(&self.contacts);
+    craft.sensor_locks.clear();
+    craft.held_still = false;
+    craft.rounds_aboard = 0;
+    craft.carrier = Some(self.name.clone());
+    self.flight_ops.retain(|op| op.craft != name);
+    Some(craft)
+  }
+
+  /// Refill the mounts of the craft at `index` from this ship's stores, as
+  /// far as they go, each mount in order. What each mount came to, with the
+  /// stores left, for the log; `None` when the craft wanted nothing or the
+  /// stores had none of it.
+  pub fn rearm_craft(&mut self, index: usize) -> Option<Magazine> {
+    let craft = self.embarked.get_mut(index)?;
+    let mut taken = Magazine::default();
+    for weapon_id in 0..craft.weapons().len() {
+      let want = craft.capacity(weapon_id).saturating_sub(craft.loaded(weapon_id));
+      let got = want.min(self.magazine);
+      if got.is_empty() {
+        continue;
+      }
+      self.magazine = self.magazine.saturating_sub(got);
+      taken = taken.plus(got);
+      let after = craft.loaded(weapon_id).plus(got);
+      if let Some(load) = craft.loaded.get_mut(weapon_id) {
+        *load = after;
+      }
+    }
+    (!taken.is_empty()).then_some(taken)
+  }
+
+  /// Whether the craft at `index` has a mount below its load that the
+  /// stores could fill.
+  #[must_use]
+  pub fn craft_wants_rearming(&self, index: usize) -> bool {
+    self.embarked.get(index).is_some_and(|craft| {
+      (0..craft.weapons().len()).any(|weapon_id| {
+        !craft
+          .capacity(weapon_id)
+          .saturating_sub(craft.loaded(weapon_id))
+          .min(self.magazine)
+          .is_empty()
+      })
+    })
+  }
+}
+
 impl PartialOrd for Ship {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     self.name.partial_cmp(&other.name)
@@ -3051,9 +4195,15 @@ impl Entity for Ship {
       return Some(UpdateAction::ShipDestroyed);
     }
 
-    if self.plan.empty() || !self.can_accelerate() {
+    // Evasive action is thrust held back to dodge with (CRB p. 171), so a
+    // ship dodging is not holding still even if she burns nothing.
+    let evading = self.dodge_thrust > 0;
+    // A ship pinned by a flight operation spends no Thrust (HG p. 61): she
+    // coasts, keeping her plan for when the deck is clear.
+    if self.pinned || self.plan.empty() || !self.can_accelerate() {
       // Just move at current velocity. A ship that cannot fly its plan this
       // round keeps it, and picks it up again once the station is back.
+      self.held_still = !evading;
       self.position += self.velocity * DELTA_TIME_F64;
       debug!(
         "(Ship.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}",
@@ -3065,6 +4215,7 @@ impl Entity for Ship {
       let max_thrust = f64::from(self.max_acceleration());
       self.plan.ensure_thrust_limit(max_thrust * G);
       let moves = self.plan.advance_time(DELTA_TIME);
+      let mut thrust_spent = false;
 
       // left_over will be any time left after the last acceleration.  We apply last velocity only after the
       // last acceleration as otherwise the accelerations are applied back to back. i.e. when you take
@@ -3073,6 +4224,7 @@ impl Entity for Ship {
       for ap in moves.iter() {
         let old_velocity: Vec3 = self.velocity;
         let (accel, duration) = ap.into();
+        thrust_spent |= duration > 0 && accel.magnitude() > 0.0;
         #[allow(clippy::cast_precision_loss)]
         let duration: f64 = duration as f64;
         self.velocity += accel * duration;
@@ -3088,6 +4240,8 @@ impl Entity for Ship {
           self.name, self.velocity, self.position
         );
       }
+
+      self.held_still = !thrust_spent && !evading;
 
       // Don't compare just to zero as there will be round-off error.
       if left_over > 0.01 {
@@ -3168,7 +4322,21 @@ pub async fn load_ship_templates_from_dir(
       async move {
         match read_local_or_cloud_file(&path).await {
           Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
-            Ok(template) => ShipTemplateFileOutcome::Loaded(Box::new(template)),
+            Ok(mut template) => {
+              template.weapons = form_batteries(&template.weapons, template.displacement);
+              // A hull the formula does not give is loaded as stated -- a
+              // published figure is the design's -- but said, so a typo in a
+              // new design is seen.
+              if let Some(note) = crate::rules_tables::hull_points_note(template.displacement, template.hull) {
+                warn!("(load_ship_templates_from_dir) {path}: {note}");
+              }
+              // A spinal the book would not build is refused with the design,
+              // rather than fired at a size it cannot be.
+              match template.spinal_problems().first() {
+                Some(problem) => ShipTemplateFileOutcome::ParseError(path, problem.clone()),
+                None => ShipTemplateFileOutcome::Loaded(Box::new(template)),
+              }
+            }
             Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
           },
           Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
@@ -3328,6 +4496,28 @@ pub fn sensor_power(sensors: Sensors) -> u32 {
   }
 }
 
+/// What is wrong with the spinal mounts in `weapons` on a hull of
+/// `displacement` tons at `tl`, one line each.
+#[must_use]
+pub fn spinal_problems(weapons: &[Weapon], displacement: u32, tl: u8) -> Vec<String> {
+  weapons
+    .iter()
+    .filter_map(|weapon| crate::rules_tables::spinal_problem(weapon, displacement, tl))
+    .collect()
+}
+
+/// The tons and Hardpoints of a spinal mount on a design at `design_tl`
+/// (High Guard pp. 34-35), or `None` for any other mount or a spinal that
+/// cannot be built.
+#[must_use]
+pub fn spinal_size(weapon: &Weapon, design_tl: u8) -> Option<(u32, u32)> {
+  let WeaponMount::Spinal { multiple, tl } = weapon.mount else {
+    return None;
+  };
+  let tons = crate::rules_tables::spinal_tons(weapon.primary_kind(), multiple, tl.unwrap_or(design_tl))?;
+  Some((tons, crate::rules_tables::spinal_hardpoints(tons)))
+}
+
 /// What one mount draws with everything in it running: the mount itself, plus
 /// each gun bolted into it.
 #[must_use]
@@ -3338,10 +4528,20 @@ pub fn weapon_mount_power(weapon: &Weapon) -> u32 {
     .iter()
     .map(|gun| crate::rules_tables::weapon_power(gun.kind, class).unwrap_or(0))
     .sum();
-  guns + crate::rules_tables::mount_power(class)
+  // A spinal draws for every multiple of its Base Size (High Guard p. 35).
+  let guns = guns * u32::from(weapon.mount.spinal_multiple().unwrap_or(1));
+  // A battery draws for every mount in it.
+  (guns + crate::rules_tables::mount_power(class)) * u32::from(weapon.mounts())
 }
 
 impl ShipDesignTemplate {
+  /// What is wrong with this design's spinal mounts, one line each: see
+  /// [`crate::rules_tables::spinal_problem`]. Empty for a design without any.
+  #[must_use]
+  pub fn spinal_problems(&self) -> Vec<String> {
+    spinal_problems(&self.weapons, self.displacement, self.tl)
+  }
+
   /// The Thrust a given amount of Power will drive, capped by what the drive
   /// is rated for: 10% of the hull's tonnage per point of Thrust (High Guard
   /// p. 16).
@@ -3350,7 +4550,8 @@ impl ShipDesignTemplate {
     if self.displacement == 0 {
       return self.maneuver;
     }
-    (power_for_drive * 10 / self.displacement)
+    // In u64: a big station's Power times ten passes u32.
+    (u64::from(power_for_drive) * 10 / u64::from(self.displacement))
       .try_into()
       .unwrap_or(u8::MAX)
       .min(self.maneuver)
@@ -3376,9 +4577,9 @@ impl ShipDesignTemplate {
     }
 
     // Power left for thrust is one thrust per 10% of ship displacement in power units.
-    // Displacement cannot be over 1M tons ever.
+    // In u64, since a large station's Power times ten passes u32.
     // If somehow power is enough we are above u8::MAX then just use that as really thrust cannot be that high.
-    (power * 10 / self.displacement)
+    (u64::from(power) * 10 / u64::from(self.displacement))
       .try_into()
       .unwrap_or(u8::MAX)
       .min(self.maneuver)
@@ -3397,6 +4598,10 @@ impl Ord for Weapon {
     // but seems more readable when expanded.
     #[allow(clippy::match_same_arms)]
     match (&self.mount, &other.mount) {
+      // A spinal mount is the ship's main armament, so it leads.
+      (WeaponMount::Spinal { .. }, WeaponMount::Spinal { .. }) => self.kinds().cmp(&other.kinds()),
+      (WeaponMount::Spinal { .. }, _) => std::cmp::Ordering::Less,
+      (_, WeaponMount::Spinal { .. }) => std::cmp::Ordering::Greater,
       (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Large), _) => std::cmp::Ordering::Less,
       (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => std::cmp::Ordering::Greater,
@@ -3523,6 +4728,17 @@ impl From<&WeaponType> for String {
   }
 }
 
+/// What a spinal mount of this kind is called: "meson spinal mount".
+#[must_use]
+pub fn spinal_name(kind: WeaponType) -> String {
+  let kind = match kind {
+    WeaponType::Meson => "meson".to_string(),
+    WeaponType::Particle => "particle".to_string(),
+    other => String::from(&other),
+  };
+  format!("{kind} spinal mount")
+}
+
 impl From<&Weapon> for String {
   fn from(w: &Weapon) -> Self {
     // A mixed turret is named by its contents rather than by a single kind:
@@ -3544,7 +4760,7 @@ impl From<&Weapon> for String {
         .join(", ")
     };
 
-    match &w.mount {
+    let name = match &w.mount {
       WeaponMount::Turret => match w.guns.len() {
         1 => format!("{contents} single turret"),
         2 => format!("{contents} double turret"),
@@ -3567,6 +4783,16 @@ impl From<&Weapon> for String {
         };
         format!("point defence battery (Type {numeral})")
       }
+      // "Spinal – meson (TL15) – 5x" on a record sheet (High Guard p. 35); the
+      // TL is the design's unless stated, which a weapon alone cannot know.
+      WeaponMount::Spinal { multiple, .. } => format!("{} ({multiple}×)", spinal_name(w.primary_kind())),
+    };
+    // "Particle barbette ×12 (battery)": the mount, how many of it, and
+    // that they fire as one.
+    if w.mounts() > 1 {
+      format!("{name} ×{} (battery)", w.mounts())
+    } else {
+      name
     }
   }
 }
@@ -3819,6 +5045,8 @@ impl Default for ShipDesignTemplate {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 15,
       role: None,
       source: None,
@@ -3899,6 +5127,7 @@ mod tests {
       weapons: vec![
         Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
         Weapon {
+          count: 1,
           mount: WeaponMount::Turret,
           guns: vec![
             Gun::new(WeaponType::Missile),
@@ -4037,6 +5266,8 @@ mod tests {
       power: 260,
       computer: 20,
       computer_fib: true,
+      radiation_shielding: false,
+      frozen_watch: 0,
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Bastion".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
@@ -4085,26 +5316,171 @@ mod tests {
   fn a_loaded_ship_is_given_the_magazine_its_design_carries() {
     let design = Arc::new(ShipDesignTemplate {
       name: "Harrier".to_string(),
+      displacement: 200,
       weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)],
       magazine: Magazine {
-        missiles: 12,
+        missiles: 30,
         torpedoes: 0,
         sand: 0,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.loaded(0).missiles, 12, "the rack is full");
+    assert_eq!(ship.magazine.missiles, 18, "and the rest is in stores");
 
     // What deserialization leaves behind.
     ship.magazine = Magazine::default();
+    ship.loaded = vec![];
     ship.fixup_current_values();
-    assert_eq!(ship.magazine.missiles, 12, "the racks are full again");
+    assert_eq!(ship.loaded(0).missiles, 12, "the rack is full again");
+    assert_eq!(ship.magazine.missiles, 18);
 
-    // A magazine that was spent down is left alone: only an empty one means
-    // "the file did not say".
-    ship.magazine.missiles = 4;
+    // A ship whose mounts say what they hold is left alone, even with its
+    // stores spent: only a missing load means "the file did not say".
+    ship.loaded[0].missiles = 4;
+    ship.magazine.missiles = 0;
     ship.fixup_current_values();
-    assert_eq!(ship.magazine.missiles, 4, "a part-spent magazine is not refilled");
+    assert_eq!(ship.loaded(0).missiles, 4, "a part-spent rack is not refilled");
+    assert_eq!(ship.magazine.missiles, 0, "nor are spent stores");
+  }
+
+  /// A ship written before mounts held loads states its whole magazine and
+  /// no loads. The mounts are filled from it, so it carries what it did.
+  #[test]
+  fn an_old_ship_fills_its_mounts_from_its_magazine() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Corvette".to_string(),
+      displacement: 400,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Old".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    // As the old wire had it: 33 missiles left in the one shared pool.
+    ship.loaded = vec![];
+    ship.magazine = Magazine {
+      missiles: 33,
+      torpedoes: 0,
+      sand: 0,
+      rounds: 0,
+    };
+    ship.fixup_current_values();
+    assert_eq!(
+      ship.loaded,
+      vec![
+        Magazine {
+          missiles: 12,
+          ..Magazine::default()
+        };
+        2
+      ]
+    );
+    assert_eq!(ship.magazine.missiles, 9);
+    assert_eq!(ship.aboard().missiles, 33, "nothing made or lost");
+
+    // The same ship serialized and read back keeps its split.
+    let json = serde_json::to_value(&ship).unwrap();
+    assert_eq!(json["loaded"][0]["missiles"], 12);
+    assert_eq!(json["magazine"]["missiles"], 9);
+  }
+
+  /// What each mount holds, from the books.
+  #[test]
+  fn a_mount_holds_the_books_load() {
+    let rack = |racks| Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, racks);
+    let caster = |casters| Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, casters);
+    // A turret's load, however many racks share it (HG p. 28, CRB p. 168).
+    assert_eq!(mount_capacity(&rack(1), 200).missiles, 12);
+    assert_eq!(mount_capacity(&rack(3), 200).missiles, 12);
+    // Firmpoints hold four (HG pp. 28-29).
+    assert_eq!(mount_capacity(&rack(1), 50).missiles, 4);
+    assert_eq!(mount_capacity(&caster(1), 50).sand, 4);
+    assert_eq!(mount_capacity(&caster(3), 400).sand, 20);
+    let fixed = Weapon::single(WeaponType::Missile, WeaponMount::FixedMount);
+    assert_eq!(mount_capacity(&fixed, 50).missiles, 4, "the heavy fighter's rack");
+    // Barbettes and bays (HG pp. 31, 33-34).
+    let barbette = |kind| Weapon::single(kind, WeaponMount::Barbette);
+    assert_eq!(mount_capacity(&barbette(WeaponType::Missile), 1000).missiles, 25);
+    assert_eq!(mount_capacity(&barbette(WeaponType::Torpedo), 70).torpedoes, 3);
+    let bay = |size| Weapon::single(WeaponType::Missile, WeaponMount::Bay(size));
+    assert_eq!(mount_capacity(&bay(BaySize::Small), 400).missiles, 144);
+    assert_eq!(mount_capacity(&bay(BaySize::Medium), 400).missiles, 288);
+    assert_eq!(mount_capacity(&bay(BaySize::Large), 400).missiles, 1440);
+    let torpedo_bay = Weapon::single(WeaponType::Torpedo, WeaponMount::Bay(BaySize::Small));
+    assert_eq!(mount_capacity(&torpedo_bay, 400).torpedoes, 36);
+    // A mixed turret holds each kind's load; a battery all its mounts'.
+    let mixed = Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![
+        Gun::new(WeaponType::Missile),
+        Gun::new(WeaponType::Sand),
+        Gun::new(WeaponType::Beam),
+      ],
+      count: 1,
+    };
+    assert_eq!(
+      mount_capacity(&mixed, 400),
+      Magazine {
+        missiles: 12,
+        torpedoes: 0,
+        sand: 20,
+        rounds: 0
+      }
+    );
+    assert_eq!(mount_capacity(&rack(3).times(4), 3000).missiles, 48);
+    // Lasers hold nothing.
+    assert!(mount_capacity(&Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3), 400).is_empty());
+  }
+
+  /// A design that says nothing carries what it did before mounts held
+  /// loads -- twelve a rack -- with the mounts filled first, so a triple
+  /// rack's turret holds its twelve and two dozen wait in stores. A bay is
+  /// given its twelve salvos.
+  #[test]
+  fn a_silent_design_keeps_its_total_and_fills_its_mounts() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Silent".to_string(),
+      displacement: 400,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let ship = Ship::new("Silent".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.loaded(0).missiles, 12);
+    assert_eq!(ship.loaded(1).missiles, 144);
+    assert_eq!(ship.magazine.missiles, 24);
+    assert_eq!(ship.aboard().missiles, 36 + 144);
+  }
+
+  /// A stated magazine smaller than the mounts hold fills them in order and
+  /// leaves nothing in stores.
+  #[test]
+  fn a_short_magazine_fills_the_first_mounts() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Short".to_string(),
+      displacement: 200,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+      ],
+      magazine: Magazine {
+        missiles: 16,
+        torpedoes: 0,
+        sand: 0,
+        rounds: 0,
+      },
+      ..ShipDesignTemplate::default()
+    });
+    let ship = Ship::new("Short".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!((ship.loaded(0).missiles, ship.loaded(1).missiles), (12, 4));
+    assert!(ship.magazine.is_empty());
+    assert!(!ship.can_reload(1), "nothing in stores to reload with");
   }
 
   /// A design that states its magazine keeps it; one that does not gets a
@@ -4118,6 +5494,7 @@ mod tests {
         missiles: 240,
         torpedoes: 0,
         sand: 0,
+        rounds: 0,
       },
       ..ShipDesignTemplate::default()
     };
@@ -4136,6 +5513,13 @@ mod tests {
     assert_eq!(magazine.missiles, 36, "twelve a rack");
     assert_eq!(magazine.sand, 40, "twenty a caster");
     assert_eq!(magazine.torpedoes, 3, "three a launcher");
+    // A battery carries for every mount.
+    let battery = ShipDesignTemplate {
+      name: "Battery".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3).times(4)],
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(Magazine::for_design(&battery).missiles, 144);
   }
 
   /// Jump Control is what plots a jump: no software, no jump, whatever the
@@ -4551,6 +5935,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 10,
       role: None,
       source: None,
@@ -5110,6 +6496,61 @@ mod tests {
     assert!(Sensors::Improved < Sensors::Advanced);
   }
 
+  /// Every shipped design carries what it did before mounts held loads --
+  /// its stated magazine, or twelve a rack, twenty a caster and three a
+  /// torpedo launcher -- except where the book gives a mount more: a bay's
+  /// twelve salvos, a barbette's 25 missiles. Each fresh ship has it all
+  /// aboard, its mounts full where the stock allows.
+  #[tokio::test]
+  async fn shipped_designs_carry_what_they_did() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    for design in templates.values() {
+      let ship = Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+      assert_eq!(ship.aboard(), Magazine::for_design(design), "{}", design.name);
+      let book_load = design.weapons.iter().any(|weapon| {
+        matches!(weapon.mount, WeaponMount::Barbette | WeaponMount::Bay(_)) && weapon.has_kind(WeaponType::Missile)
+      });
+      if design.magazine.is_empty() && !book_load {
+        let before = design.weapons.iter().fold(Magazine::default(), |total, weapon| {
+          total.plus(Magazine {
+            missiles: 12 * u32::from(weapon.count_of(WeaponType::Missile)),
+            torpedoes: 3 * u32::from(weapon.count_of(WeaponType::Torpedo)),
+            sand: 20 * u32::from(weapon.count_of(WeaponType::Sand)),
+            rounds: 0,
+          })
+        });
+        assert_eq!(ship.aboard(), before, "{}", design.name);
+      }
+      for (mount, weapon) in design.weapons.iter().enumerate() {
+        assert!(
+          ship.loaded(mount).missiles <= ship.capacity(mount).missiles,
+          "{} mount {mount} ({})",
+          design.name,
+          String::from(weapon)
+        );
+      }
+    }
+  }
+
+  /// The book's missile storage is in addition to what the bays hold: the
+  /// Dragon's 480 (HG) and the Sloan's 240 (HG) sit in stores behind full bays.
+  #[tokio::test]
+  async fn book_missile_storage_is_beyond_the_bays() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    for (name, bays, storage) in [
+      ("System Defence Boat - Dragon", 1, 480),
+      ("Fleet Escort - P.F. Sloan", 2, 240),
+    ] {
+      let design = templates.get(name).unwrap_or_else(|| panic!("{name} should be shipped"));
+      let ship = Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+      let loaded: u32 = (0..design.weapons.len()).map(|mount| ship.loaded(mount).missiles).sum();
+      assert_eq!(loaded, bays * 144, "{name}");
+      assert_eq!(ship.aboard().missiles, bays * 144 + storage, "{name}");
+    }
+  }
+
   /// A client reading the world sees each ship's criticals: they survive the
   /// trip to the wire and back.
   #[tokio::test]
@@ -5152,6 +6593,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 12,
       role: None,
       source: None,
@@ -5295,6 +6738,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 12,
       role: None,
       source: None,
@@ -5315,6 +6760,31 @@ mod tests {
     assert_eq!(design.best_thrust(122), 1);
     assert_eq!(design.best_thrust(121), 0);
     assert_eq!(design.best_thrust(0), 0);
+  }
+
+  /// Power times ten passed u32 for a station-sized hull (High Guard p. 64 runs
+  /// to a billion tons) and wrapped, or panicked in a debug build.
+  #[test]
+  fn thrust_from_power_at_station_scale() {
+    let station = ShipDesignTemplate {
+      displacement: 1_000_000_000,
+      hull: 666_666_667,
+      maneuver: 6,
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(station.thrust_from_power(u32::MAX), 6);
+    assert_eq!(station.thrust_from_power(300_000_000), 3);
+    // Basic systems take 200,000,000; the rest drives Thrust 6 at most.
+    assert_eq!(station.best_thrust(u32::MAX), 6);
+    assert_eq!(station.best_thrust(500_000_010), 3);
+
+    let dreadnought = ShipDesignTemplate {
+      displacement: 1_000_000,
+      maneuver: 6,
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(dreadnought.thrust_from_power(600_000), 6);
+    assert_eq!(dreadnought.best_thrust(500_010), 3);
   }
 
   #[test]
@@ -5416,5 +6886,350 @@ mod tests {
     ship.crit_level[0] = 2;
     ship.crit_level[5] = 3;
     assert_eq!(ship.total_crit_severity(), 5);
+  }
+}
+
+/// Spinal mounts in the design format, the magazine and the "held still"
+/// record.
+#[cfg(test)]
+mod spinal_tests {
+  use super::*;
+  use cgmath::Zero;
+
+  /// `{"Spinal": 3}` at the design's TL, or with the weapon's own TL, and
+  /// both written back as they were read.
+  #[test]
+  fn spinal_mounts_round_trip() {
+    for json in [
+      serde_json::json!({"kind": "Meson", "mount": {"Spinal": 3}}),
+      serde_json::json!({"kind": "Particle", "mount": {"Spinal": {"multiple": 2, "tl": 12}}}),
+    ] {
+      let weapon: Weapon = serde_json::from_value(json.clone()).unwrap();
+      assert!(weapon.mount.spinal_multiple().is_some());
+      assert_eq!(serde_json::to_value(&weapon).unwrap(), json);
+    }
+    let weapon: Weapon = serde_json::from_value(serde_json::json!({"kind": "Meson", "mount": {"Spinal": 3}})).unwrap();
+    assert_eq!(weapon.mount, WeaponMount::Spinal { multiple: 3, tl: None });
+    assert_eq!(String::from(&weapon), "meson spinal mount (3×)");
+    // A spinal is a single weapon: an entry of two is two spinals.
+    let two = form_batteries(&[weapon.clone().times(2)], 100_000);
+    assert_eq!(two.len(), 2);
+    assert!(two.iter().all(|weapon| weapon.mounts() == 1));
+  }
+
+  /// The tonnage and Hardpoints a design's spinal takes.
+  #[test]
+  fn spinal_size_uses_the_stated_tl_or_the_designs() {
+    let wind = Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 3, tl: None });
+    assert_eq!(spinal_size(&wind, 15), Some((18_000, 180)));
+    let azhanti = Weapon::single(
+      WeaponType::Particle,
+      WeaponMount::Spinal {
+        multiple: 2,
+        tl: Some(12),
+      },
+    );
+    assert_eq!(spinal_size(&azhanti, 14), Some((6_300, 63)));
+    assert_eq!(spinal_size(&Weapon::single(WeaponType::Meson, WeaponMount::Barbette), 15), None);
+  }
+
+  /// A spinal leads the armament.
+  #[test]
+  fn a_spinal_sorts_first() {
+    let mut weapons = [
+      Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
+      Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 1, tl: None }),
+    ];
+    weapons.sort();
+    assert!(weapons[0].mount.spinal_multiple().is_some());
+  }
+
+  /// Railgun spinals come with five rounds, and a stated magazine adds its
+  /// own; a mass driver has only what is stated (High Guard pp. 35-36).
+  #[test]
+  fn spinal_rounds_are_stores() {
+    let design = |weapons, magazine| ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      tl: 12,
+      weapons,
+      magazine,
+      ..ShipDesignTemplate::default()
+    };
+    let railgun = Weapon::single(WeaponType::Railgun, WeaponMount::Spinal { multiple: 1, tl: None });
+    let driver = Weapon::single(WeaponType::MassDriver, WeaponMount::Spinal { multiple: 1, tl: None });
+    assert_eq!(
+      Magazine::for_design(&design(vec![railgun.clone()], Magazine::default())).rounds,
+      5
+    );
+    let stated = Magazine {
+      rounds: 3,
+      ..Magazine::default()
+    };
+    assert_eq!(Magazine::for_design(&design(vec![railgun.clone()], stated)).rounds, 8);
+    assert_eq!(
+      Magazine::for_design(&design(vec![driver.clone()], Magazine::default())).rounds,
+      0
+    );
+    assert_eq!(Magazine::for_design(&design(vec![driver], stated)).rounds, 3);
+    let ship = Ship::new(
+      "Monitor".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &Arc::new(design(vec![railgun], stated)),
+      None,
+      None,
+    );
+    assert_eq!(ship.magazine.rounds, 8, "all of them in stores");
+    assert_eq!(ship.loaded(0), Magazine::default());
+    assert!(!ship.can_reload(0), "nothing to reload: they feed it from stores");
+    // No rounds on the wire for a ship that has none.
+    assert!(serde_json::to_value(Magazine::default()).unwrap().get("rounds").is_none());
+  }
+
+  /// A ship holds still for a round when she spends no Thrust and takes no
+  /// evasive action in it.
+  #[test]
+  fn held_still_is_last_rounds_burn_and_dodge() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      displacement: 10,
+      hull: 4,
+      maneuver: 6,
+      power: 100,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Fighter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert!(!ship.held_still, "nothing is known before a round is flown");
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    ship.update();
+    assert!(ship.held_still, "drifting");
+    ship.plan = FlightPlan::acceleration(Vec3::new(G, 0.0, 0.0));
+    ship.update();
+    assert!(!ship.held_still, "under thrust");
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    ship.update();
+    assert!(ship.held_still);
+    ship.set_pilot_actions(Some(2), None).unwrap();
+    ship.update();
+    assert!(!ship.held_still, "dodging is evasive action");
+  }
+
+  /// A design with a spinal it cannot carry is refused on load.
+  #[test]
+  fn an_impossible_spinal_is_a_design_problem() {
+    let design = ShipDesignTemplate {
+      name: "Overgunned".to_string(),
+      displacement: 20_000,
+      tl: 15,
+      weapons: vec![Weapon::single(
+        WeaponType::Meson,
+        WeaponMount::Spinal { multiple: 3, tl: None },
+      )],
+      ..ShipDesignTemplate::default()
+    };
+    let problems = design.spinal_problems();
+    assert_eq!(problems.len(), 1);
+    assert!(problems[0].contains("half"), "{problems:?}");
+    let fine = ShipDesignTemplate {
+      displacement: 75_000,
+      ..design
+    };
+    assert_eq!(fine.spinal_problems(), Vec::<String>::new());
+  }
+}
+
+/// The capitals step 7 adds for Keelhaven (High Guard 2022, with the HG FAQ's
+/// spinal multiples): each loads, with a legal spinal of the printed tonnage,
+/// the printed hull, its turrets and bays formed into batteries the hull
+/// allows, and its magazine split between the mounts and the stores.
+#[cfg(test)]
+mod capital_design_tests {
+  use super::*;
+
+  struct Printed {
+    name: &'static str,
+    tons: u32,
+    hull: u32,
+    armor: u32,
+    spinal_multiple: u8,
+    spinal_tons: u32,
+    /// Weapon entries once formed into batteries, the spinal first.
+    entries: usize,
+    /// Every mount, the spinal and each point-defence battery counting one.
+    mounts: u32,
+    /// Missiles and sand stored beyond what the mounts hold.
+    stores: (u32, u32),
+  }
+
+  const PRINTED: [Printed; 4] = [
+    // HG pp. 255-256. 50 medium missile bays hold twelve salvos of 24 each.
+    Printed {
+      name: "Battle Rider - Hadrian",
+      tons: 50_000,
+      hull: 27_500,
+      armor: 30,
+      spinal_multiple: 3,
+      spinal_tons: 18_000,
+      entries: 32,
+      mounts: 1 + 2 + 6 + 50 + 25 + 100 + 100 + 9,
+      stores: (8_640, 4_500),
+    },
+    // HG pp. 247-249. No launchers: the missiles are her fighters'.
+    Printed {
+      name: "Planetoid Monitor - Jaellemo",
+      tons: 50_000,
+      hull: 31_250,
+      armor: 15,
+      spinal_multiple: 2,
+      spinal_tons: 12_000,
+      entries: 34,
+      mounts: 1 + 100 + 100 + 20 + 30 + 15,
+      stores: (2_400, 3_000),
+    },
+    // HG pp. 265-267.
+    Printed {
+      name: "Strike Carrier - Wind",
+      tons: 75_000,
+      hull: 41_250,
+      armor: 11,
+      spinal_multiple: 3,
+      spinal_tons: 18_000,
+      entries: 34,
+      mounts: 1 + 9 + 32 + 200 + 100 + 10 + 10 + 8,
+      stores: (3_840, 3_000),
+    },
+    // HG pp. 237-239.
+    Printed {
+      name: "Light Cruiser - Valiant",
+      tons: 30_000,
+      hull: 16_500,
+      armor: 15,
+      spinal_multiple: 1,
+      spinal_tons: 6_000,
+      entries: 22,
+      mounts: 1 + 1 + 160 + 50 + 25 + 4,
+      stores: (9_600, 1_320),
+    },
+  ];
+
+  /// The carriers' facilities as HG prints them (plan, Keelhaven table):
+  /// berths, and the tube and deck rates from the FAQ. A design without
+  /// any is no carrier, and loads as it always has.
+  #[test_log::test(tokio::test)]
+  async fn the_keelhaven_carriers_state_their_facilities() {
+    let templates = load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR).await.unwrap();
+    let ship = |name: &str| Ship::new(name.to_string(), Vec3::zero(), Vec3::zero(), &templates[name], None, None);
+    let jaellemo = ship("Planetoid Monitor - Jaellemo");
+    assert_eq!(jaellemo.berths().len(), 31, "28 docking spaces and 3 hangars");
+    assert!(jaellemo.berths().iter().all(|b| *b == 50));
+    assert_eq!(jaellemo.launch_per_round(50), 10);
+    assert_eq!(jaellemo.recover_per_round(50), 10);
+    assert_eq!(jaellemo.launch_per_round(500), 10, "the tube is sized for 500 tons");
+    assert_eq!(jaellemo.launch_per_round(501), 0);
+    assert!(jaellemo.has_berth_for(50) && !jaellemo.has_berth_for(51));
+    let deck = jaellemo.flight_deck().unwrap();
+    assert_eq!(
+      (deck.berths, deck.berths_free, deck.tube_tons, deck.deck_tons),
+      (31, 31, 500, 500)
+    );
+
+    let wind = ship("Strike Carrier - Wind");
+    assert_eq!(wind.berths(), vec![10; 80]);
+    assert_eq!((wind.launch_per_round(10), wind.recover_per_round(10)), (10, 10));
+    assert!(!wind.has_berth_for(50), "her berths take light fighters only");
+    // The tube and deck draw Power; switched off, they launch nothing.
+    let mut dark = ship("Strike Carrier - Wind");
+    for (index, feature) in dark.design.features.clone().iter().enumerate() {
+      if feature.power > 0 {
+        dark.set_online(PowerSystem::Feature(index), false);
+      }
+    }
+    assert_eq!((dark.launch_per_round(10), dark.recover_per_round(10)), (0, 0));
+    assert!(dark.is_carrier(), "the berths are still there");
+
+    let hadrian = ship("Battle Rider - Hadrian");
+    assert_eq!(hadrian.berths(), vec![40; 6]);
+    assert_eq!(hadrian.launch_per_round(40), 0, "no tube: launching pins her");
+    let valiant = ship("Light Cruiser - Valiant");
+    assert_eq!(valiant.berths(), vec![50; 5]);
+
+    let buccaneer = ship("Buccaneer");
+    assert!(!buccaneer.is_carrier());
+    assert_eq!(buccaneer.flight_deck(), None);
+    assert!(!serde_json::to_string(&buccaneer).unwrap().contains("embarked"));
+  }
+
+  /// A facility's `count` is one unless stated, and the kinds round-trip.
+  #[test]
+  fn facilities_round_trip_with_a_default_count() {
+    let kind: FeatureKind = serde_json::from_str(r#"{"LaunchTube": {"craft_tons": 100}}"#).unwrap();
+    assert_eq!(
+      kind,
+      FeatureKind::LaunchTube {
+        craft_tons: 100,
+        count: 1
+      }
+    );
+    let kind: FeatureKind = serde_json::from_str(r#"{"DockingClamp": {"max_tons": 300, "count": 2}}"#).unwrap();
+    assert_eq!(
+      kind,
+      FeatureKind::DockingClamp {
+        max_tons: 300,
+        count: 2
+      }
+    );
+    let written = serde_json::to_string(&FeatureKind::DockingSpace {
+      craft_tons: 50,
+      count: 28,
+    })
+    .unwrap();
+    assert_eq!(written, r#"{"DockingSpace":{"craft_tons":50,"count":28}}"#);
+    assert_eq!(serde_json::to_string(&FeatureKind::RepairDrones).unwrap(), r#""RepairDrones""#);
+  }
+
+  #[test_log::test(tokio::test)]
+  async fn the_keelhaven_capitals_are_built_as_printed() {
+    let templates = load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR).await.unwrap();
+    for printed in &PRINTED {
+      let name = printed.name;
+      // A spinal that fails its checks is skipped on load, so loading at all
+      // says it passed them.
+      let design = templates.get(name).unwrap_or_else(|| panic!("{name} did not load"));
+      assert_eq!(
+        (design.displacement, design.hull, design.armor),
+        (printed.tons, printed.hull, printed.armor),
+        "{name}"
+      );
+      assert!(design.spinal_problems().is_empty(), "{name}: {:?}", design.spinal_problems());
+      assert_eq!(
+        crate::rules_tables::hull_points_note(design.displacement, design.hull),
+        None,
+        "{name}"
+      );
+
+      let spinal = &design.weapons[0];
+      assert_eq!(spinal.mount.spinal_multiple(), Some(printed.spinal_multiple), "{name}");
+      assert_eq!(spinal.primary_kind(), WeaponType::Meson, "{name}");
+      assert_eq!(
+        spinal_size(spinal, design.tl).map(|(tons, _)| tons),
+        Some(printed.spinal_tons),
+        "{name}"
+      );
+
+      let limit = battery_limit(design.displacement);
+      assert_eq!(design.weapons.len(), printed.entries, "{name}");
+      assert!(design.weapons.iter().all(|weapon| weapon.mounts() <= limit), "{name}");
+      let mounts: u32 = design.weapons.iter().map(|weapon| u32::from(weapon.mounts())).sum();
+      assert_eq!(mounts, printed.mounts, "{name}");
+
+      // Every mount starts full; the book's storage is what is left over.
+      let ship = Ship::new(name.to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+      for (id, weapon) in design.weapons.iter().enumerate() {
+        assert_eq!(ship.loaded(id), ship.capacity(id), "{name}: {weapon:?} is not full");
+      }
+      assert_eq!((ship.magazine.missiles, ship.magazine.sand), printed.stores, "{name}");
+    }
   }
 }

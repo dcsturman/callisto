@@ -6,6 +6,7 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { KernelSize } from "postprocessing";
 import { FlyControls } from "./lib/FlyControls";
 import { FleetComms } from "components/controls/FleetComms";
+import { OrdersPanel } from "components/controls/OrdersPanel";
 
 import { Authentication } from "components/scenarios/Authentication";
 
@@ -274,8 +275,8 @@ function Simulator() {
         <div className="top-right-stack">
           {/* The tutorial's coach, first in the column, where it is read. */}
           {(tutorialMode || joinedScenario?.startsWith(TUTORIAL_BUILDER_PREFIX)) && <Coach />}
-          {/* View and Ships side by side across the top, so neither pushes
-              the other down; each folds to its header. */}
+          {/* View, then Ships, each the column's full width; each folds to
+              its header. */}
           <div className="top-right-row">
             <ViewControls />
             <ShipSummary />
@@ -289,8 +290,12 @@ function Simulator() {
             </Suspense>
           )}
           {/* What the AI captains are saying: the referee hears every AI
-              side without opening each ship. Nothing when no ship is AI. */}
+              side without opening each ship. Nothing when no ship is AI.
+              Above the orders, so what the fleet is doing stays in sight. */}
           {joinedScenario && !scenarioBuilderMode && <FleetComms />}
+          {/* Orders in words, for the referee and a fleet or squadron
+              commander to give: an AI fleet commander reads them. */}
+          {joinedScenario && !scenarioBuilderMode && <OrdersPanel />}
         </div>
         <div className="admin-button-window" ref={adminWindow} data-tutorial="session-panel">
           <h2>

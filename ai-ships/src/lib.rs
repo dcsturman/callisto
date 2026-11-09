@@ -20,6 +20,7 @@
 //! * [`observation`] -- what a side may know: fog of war, in one place.
 //! * [`auth`] -- the credentials the service presents to the backend.
 
+pub mod admiral;
 pub mod api;
 pub mod auth;
 pub mod cli;
@@ -27,6 +28,7 @@ pub mod commander;
 pub mod crew;
 pub mod crews;
 pub mod decision;
+pub mod fleet;
 pub mod harness;
 pub mod llm;
 pub mod network;

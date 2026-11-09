@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO=${REPO:-https://github.com/dcsturman/callisto.git}
-BRANCH=${BRANCH:-rl-selfplay}
+BRANCH=${BRANCH:-epic-fleet-control}
 HOME_DIR=${HOME_DIR:-$HOME}
 
 # On a RunPod pod we are root and there may be no sudo; on Lambda we are ubuntu.

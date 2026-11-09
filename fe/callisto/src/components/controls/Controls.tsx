@@ -4,7 +4,6 @@ import {
   SaveScenarioDialog,
 } from "components/scenarios/SaveScenarioDialog";
 import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
-import * as THREE from "three";
 import { CornerPanel } from "lib/CornerPanel";
 import { SideView } from "components/controls/SideView";
 import {
@@ -19,15 +18,17 @@ import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
 import { EntityList } from "./EntityList";
-import { POSITION_SCALE, SCALE } from "lib/universal";
+import { POSITION_SCALE } from "lib/universal";
 import {
   Ship,
   Entity,
   Planet,
+  Missile,
   findShip,
   availablePower,
   stationsDown,
 } from "lib/entities";
+import { missileCount } from "lib/missileCount";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { isReferee } from "lib/view";
 import { SectionTag } from "components/controls/SectionTag";
@@ -35,6 +36,12 @@ import { FaUsers, FaExclamationTriangle } from "react-icons/fa";
 import { ENGINEER_SKILLS } from "components/controls/CrewBuilder";
 import { nextRound, setReady, setShipTeam } from "lib/serverManager";
 import { Team, TEAMS, teamLabelColor } from "lib/teams";
+import { squadronShips } from "lib/squadrons";
+import { SquadronPicker } from "components/controls/SquadronPicker";
+import { SquadronsPanel } from "components/controls/SquadronsPanel";
+import { SquadronRoster } from "components/controls/SquadronRoster";
+import { aboardSummary, describeFacilities } from "lib/carriers";
+import { moveCameraTo } from "lib/camera";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
@@ -43,13 +50,12 @@ import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { AppMode } from "state/tutorialSlice";
-import { store } from "state/store";
 import {
   setComputerShipName,
   setShowRange,
-  setCameraPos,
   setGravityWells,
   setJumpDistance,
+  setSquadronMarkers,
 } from "state/uiSlice";
 
 function ShipList(args: {
@@ -60,8 +66,13 @@ function ShipList(args: {
 }) {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadron = useAppSelector((state) => state.user.squadron);
   const entities = useAppSelector(entitiesSelector);
   const dispatch = useAppDispatch();
+  const squadronOnly = useMemo(
+    () => (squadron == null ? null : squadronShips(entities.ships, squadron.team, squadron.name)),
+    [squadron, entities.ships],
+  );
 
   const computerShip = useMemo(() => {
     return findShip(entities, computerShipName);
@@ -85,8 +96,10 @@ function ShipList(args: {
         filter={filter}
         setChoice={choiceHandler}
         current={computerShip}
-        // Fleet Command picks from its own team only.
+        // Fleet Command picks from its own team only, Squadron Command from
+        // its squadron.
         onlyTeam={fleetTeam}
+        onlyShips={squadronOnly}
       />
       <GoButton moveCamera={args.moveCamera} />
     </div>
@@ -129,27 +142,7 @@ function moveCameraToShip(
   cameraQuaternion: [number, number, number, number],
   computerShip: Ship,
 ) {
-  const downCamera = new THREE.Vector3(0, 0, 40);
-  downCamera.applyQuaternion(
-    new THREE.Quaternion(
-      cameraQuaternion[0],
-      cameraQuaternion[1],
-      cameraQuaternion[2],
-      cameraQuaternion[3],
-    ),
-  );
-  const new_camera_pos = new THREE.Vector3(
-    computerShip.position[0] * SCALE,
-    computerShip.position[1] * SCALE,
-    computerShip.position[2] * SCALE,
-  ).add(downCamera);
-  store.dispatch(
-    setCameraPos({
-      x: new_camera_pos.x,
-      y: new_camera_pos.y,
-      z: new_camera_pos.z,
-    }),
-  );
+  moveCameraTo(cameraQuaternion, computerShip.position);
 }
 
 // Builder-mode panel: AddShip / AddPlanet plus a Save button at the bottom.
@@ -223,6 +216,9 @@ function ScenarioBuilderControls(args: {
       <AddPlanet />
       <hr />
       <EntityList />
+      <hr />
+      <SquadronsPanel />
+      <hr />
       <button
         type="button"
         className="control-button blue-button save-scenario-anchor"
@@ -286,14 +282,20 @@ export function Controls() {
     }
   }, [shipName, dispatch]);
 
-  // Taking Fleet Command lets go of any ship that is not the team's.
+  // Taking Fleet Command lets go of any ship that is not the team's, and
+  // Squadron Command of any that is not the squadron's.
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadron = useAppSelector((state) => state.user.squadron);
   useEffect(() => {
     const open = findShip(entities, computerShipName);
-    if (fleetTeam != null && open != null && open.team !== fleetTeam) {
+    const outside =
+      open != null &&
+      ((fleetTeam != null && open.team !== fleetTeam) ||
+        (squadron != null && !squadronShips(entities.ships, squadron.team, squadron.name).includes(open.name)));
+    if (outside) {
       dispatch(setComputerShipName(null));
     }
-  }, [fleetTeam, computerShipName, entities, dispatch]);
+  }, [fleetTeam, squadron, computerShipName, entities, dispatch]);
 
   const [computerShip, computerShipDesign] = useMemo(() => {
     const computerShip = findShip(entities, computerShipName);
@@ -322,8 +324,22 @@ export function Controls() {
           <hr />
         </>
       )}
+      {/* Organising the fleet from the top down: the referee any team, a
+          fleet commander their own. */}
+      {(isReferee(roles, shipName) || fleetTeam != null) && entities.ships.length > 0 && (
+        <>
+          {/* The fleet at a glance, a line a squadron; then the editor that
+              makes the squadrons. */}
+          <SquadronRoster onlyTeam={fleetTeam} />
+          <hr />
+          <SquadronsPanel onlyTeam={fleetTeam} />
+          <hr />
+        </>
+      )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true} tutorial="ship-dossier">
-        {shipName == null ? (
+        {/* A squadron's commander sits aboard her flagship but may open any
+            of the squadron's ships. */}
+        {shipName == null || squadron != null ? (
           <ShipList moveCamera={moveCameraToShip} />
         ) : (
           <GoButton
@@ -367,6 +383,10 @@ export function Controls() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Squadron</h2>
+                <SquadronPicker ship={computerShip} />
               </div>
               <div className="stats-bloc-entry">
                 <h2>Hull</h2>
@@ -424,6 +444,18 @@ export function Controls() {
               </div>
             )}
             <ShipCommand ship={computerShip} />
+            {/* A carrier's deck in one line: her fittings, and what she has
+                aboard, which the plot cannot show. */}
+            {computerShip.flight_deck != null && (
+              <p className="carrier-line" title={describeFacilities(computerShipDesign) || undefined}>
+                Flight deck: {describeFacilities(computerShipDesign)}.{" "}
+                {aboardSummary(computerShip) ?? "Nothing aboard"}
+                {computerShip.pinned ? " · held still this round" : ""}
+              </p>
+            )}
+            {computerShip.carrier != null && (
+              <p className="carrier-line">Carrier: {computerShip.carrier}</p>
+            )}
             <h2 className="control-form">Current Position (km)</h2>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
@@ -594,59 +626,75 @@ export function ViewControls() {
   const [columns, setColumns] = useState<ConsoleColumns>(savedColumns);
   const gravityWells = useAppSelector((state) => state.ui.gravityWells);
   const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
+  const squadronMarkers = useAppSelector((state) => state.ui.squadronMarkers);
   const dispatch = useAppDispatch();
 
   return (
     <CornerPanel id="view-panel" title="View" className="view-controls-window" tutorial="view-panel">
-      <label style={{ display: "flex" }}>
-        {" "}
-        <input
-          type="checkbox"
-          checked={gravityWells}
-          onChange={() => dispatch(setGravityWells(!gravityWells))}
-        />{" "}
-        Gravity Well
-      </label>
-      <label style={{ display: "flex" }} data-tutorial="jump-limit-toggle">
-        {" "}
-        <input
-          type="checkbox"
-          checked={jumpDistance}
-          onChange={() => dispatch(setJumpDistance(!jumpDistance))}
-        />{" "}
-        100 Diameter Limit
-      </label>
-      <label className="screen-size" title="Auto is compact on a laptop-sized screen and full on a big one">
-        Size{" "}
-        <select
-          className="control-input"
-          value={screenSize}
-          onChange={(event) => {
-            const size = event.target.value as ScreenSize;
-            applyScreenSize(size);
-            setScreenSize(size);
-          }}>
-          <option value="auto">Auto</option>
-          <option value="compact">Compact</option>
-          <option value="full">Full</option>
-        </select>
-      </label>
-      <label className="screen-size" title="How many columns the console uses; Auto fits as many as the screen has room for">
-        Columns{" "}
-        <select
-          className="control-input"
-          value={columns}
-          onChange={(event) => {
-            const chosen = event.target.value as ConsoleColumns;
-            applyColumns(chosen);
-            setColumns(chosen);
-          }}>
-          <option value="auto">Auto</option>
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-        </select>
-      </label>
+      {/* Two columns: what the view draws on the left, how the console is
+          laid out on the right. */}
+      <div className="view-options">
+        <label className="view-option">
+          {" "}
+          <input
+            type="checkbox"
+            checked={gravityWells}
+            onChange={() => dispatch(setGravityWells(!gravityWells))}
+          />{" "}
+          Gravity Well
+        </label>
+        <label className="screen-size" title="Auto is compact on a laptop-sized screen and full on a big one">
+          Size{" "}
+          <select
+            className="control-input"
+            value={screenSize}
+            onChange={(event) => {
+              const size = event.target.value as ScreenSize;
+              applyScreenSize(size);
+              setScreenSize(size);
+            }}>
+            <option value="auto">Auto</option>
+            <option value="compact">Compact</option>
+            <option value="full">Full</option>
+          </select>
+        </label>
+        <label className="view-option" data-tutorial="jump-limit-toggle">
+          {" "}
+          <input
+            type="checkbox"
+            checked={jumpDistance}
+            onChange={() => dispatch(setJumpDistance(!jumpDistance))}
+          />{" "}
+          100 Diameter Limit
+        </label>
+        <label className="screen-size" title="How many columns the console uses; Auto fits as many as the screen has room for">
+          Columns{" "}
+          <select
+            className="control-input"
+            value={columns}
+            onChange={(event) => {
+              const chosen = event.target.value as ConsoleColumns;
+              applyColumns(chosen);
+              setColumns(chosen);
+            }}>
+            <option value="auto">Auto</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <label
+          className="view-option"
+          title="A squadron far from the camera draws as one marker with its name, instead of a label on every ship">
+          {" "}
+          <input
+            type="checkbox"
+            checked={squadronMarkers}
+            onChange={() => dispatch(setSquadronMarkers(!squadronMarkers))}
+          />{" "}
+          Squadron Markers
+        </label>
+      </div>
       <SideView />
       {/* Collapsed by default: this is reference material, not a control, and
           the top-right corner has no room to spare. It exists at all because
@@ -684,6 +732,10 @@ export function ViewControls() {
           <dd>faster</dd>
           <dt>drag</dt>
           <dd>look</dd>
+          <dt>
+            <kbd>Shift</kbd> drag
+          </dt>
+          <dd>tick the ships in a box, for Squadrons (referee, fleet commander)</dd>
           <dt>
             <kbd>Tab</kbd>
           </dt>
@@ -723,7 +775,17 @@ export function EntityInfoWindow(args: { entity: Entity }) {
         {isPlanet ? (
           <p>Radius (km): {radiusKm}</p>
         ) : isShip ? (
-          <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
+          <>
+            <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
+            {aboardSummary(args.entity as Ship) != null && <p>Craft: {aboardSummary(args.entity as Ship)}</p>}
+          </>
+        ) : "source" in args.entity ? (
+          <p>
+            {missileCount(args.entity as Missile) > 1
+              ? `Salvo of ${missileCount(args.entity as Missile)}`
+              : "One missile"}{" "}
+            from {(args.entity as Missile).source} at {(args.entity as Missile).target}
+          </p>
         ) : (
           <></>
         )}

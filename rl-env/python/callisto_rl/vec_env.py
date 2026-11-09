@@ -39,10 +39,19 @@ SIDE_POOL = POOL + [
     "Picket at the Refuelling Point.json",
 ]
 
+#: Generated fights (``rl-env/src/generate.rs``): capital ships, spinals and
+#: batteries, and carriers with their craft aboard, drawn from a seed apiece.
+#: Four of each kind, so the pool is about half the scenario files and half
+#: these, and the old skills keep being trained.
+GEN_POOL = [f"gen:{kind}:{seed}" for kind in ("capital", "carrier", "fleet") for seed in range(4)]
+#: The per-side network's pool from the capital-ship retrain on.
+CAPITAL_POOL = SIDE_POOL + GEN_POOL
+
 
 def default_pool(names: Sequence[str] = POOL) -> list[str]:
-    """The pool's scenario files, as paths."""
-    return [str(SCENARIOS / name) for name in names]
+    """The pool's scenarios, as paths: a file by its path in the scenarios
+    directory, a generated fight (``gen:...``) by its name."""
+    return [name if name.startswith("gen:") else str(SCENARIOS / name) for name in names]
 
 
 class ShipVecEnv(VecEnv):

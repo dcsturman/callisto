@@ -24,8 +24,12 @@ import {
   createWeapon,
   weaponToString,
   weaponKindLabel,
+  weaponMounts,
+  spinalOf,
   WEAPON_COLORS,
 } from "lib/weapon";
+import {liveMounts} from "lib/crewStrength";
+import { spinalSizeDm } from "lib/spinal";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
   FireAction,
@@ -42,6 +46,16 @@ import { ViewMode, hasRole } from "lib/view";
 import { PowerSystem } from "lib/power";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 import { setCrewActions } from "lib/serverManager";
+import {
+  EMPTY_MAGAZINE,
+  Magazine,
+  bySpare,
+  canReload,
+  describeLoad,
+  mountCapacity,
+  reloadLabel,
+  spareGunners,
+} from "lib/magazine";
 
 // Icons for each type of weapon
 import Turret1 from "assets/icons/turret1.svg?react";
@@ -52,6 +66,7 @@ import FixedMount from "assets/icons/fixed-mount.svg?react";
 import SmallBay from "assets/icons/bay-s.svg?react";
 import MediumBay from "assets/icons/bay-m.svg?react";
 import LargeBay from "assets/icons/bay-l.svg?react";
+import Spinal from "assets/icons/spinal.svg?react";
 
 // Icons to show fire states.
 import RayIcon from "assets/icons/laser.svg?react";
@@ -67,6 +82,8 @@ import {
   pointDefenseWeapon,
   fireWeapon,
   unfireWeapon,
+  reloadWeapon,
+  unreloadWeapon,
   updateFireCalledShot,
   updateFireSalvo,
   updateFireControl,
@@ -126,18 +143,37 @@ export const WeaponButton = (props: {
   alongside?: string[];
   /** Nobody is at this mount, and no program is covering it. */
   unmanned?: boolean;
+  /**
+   * Mounts in each of these, when they are batteries: the button stands for
+   * a battery, which takes one target and fires every mount at it.
+   */
+  mounts?: number;
+  /**
+   * Mounts of these knocked out by criticals (High Guard p. 27): a battery
+   * of twelve with three down fires nine, and the badge says so.
+   */
+  down?: number;
 }) => {
   // Tooltips name the weapon for a person, so they use the readable label
   // rather than the wire identifier.  Colours are still keyed off the raw kind.
   const label = weaponKindLabel(props.weapon);
 
   const mixed = props.alongside != null && props.alongside.length > 0;
+  const down = props.down ?? 0;
   const tip = (text: string) => {
+    const battery =
+      (props.mounts ?? 1) > 1
+        ? `${text}, a battery of ${props.mounts}: one target, an attack from every mount${
+            down > 0 ? ` (${down} down to criticals)` : ""
+          }`
+        : down > 0
+          ? `${text} — knocked out by a critical`
+          : text;
     const shared = mixed
-      ? `${text} — shares the mount with ${props.alongside!
+      ? `${battery} — shares the mount with ${props.alongside!
           .map(weaponKindLabel)
           .join(", ")}`
-      : text;
+      : battery;
     return props.unmanned
       ? `${shared} — nobody is at this mount, so it cannot fire. A gunner, Fire Control or a Virtual Gunner would change that.`
       : shared;
@@ -153,6 +189,14 @@ export const WeaponButton = (props: {
   // An unmanned mount is drawn in the colour of a thing that is not working,
   // rather than in the colour of the gun it is.
   const fill = props.unmanned ? UNMANNED_COLOR : WEAPON_COLORS[props.weapon];
+
+  // "×12" for a battery, "×12 (3 down)" once criticals have taken some of it.
+  const batteryBadge = (props.mounts ?? 1) > 1 && (
+    <span className="weapon-symbol-battery">
+      ×{props.mounts}
+      {down > 0 && <span className="weapon-symbol-down"> ({down} down)</span>}
+    </span>
+  );
 
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
@@ -175,6 +219,7 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
         </button>
         <Tooltip
           id={props.weapon + props.mount}
@@ -202,11 +247,44 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
         </button>
         <Tooltip
           id={props.weapon + props.mount}
           className="console-tip"
         />
+      </>
+    );
+  }
+  const spinal = spinalOf(props.mount);
+  if (spinal != null) {
+    // A spinal is the ship's main gun: a barrel the length of the hull, with
+    // its multiple of the Base Size beside it.
+    const id = props.weapon + "spinal-" + spinal.multiple;
+    return (
+      <>
+        <button
+          id={props.weapon + "-spinal-button"}
+          className={buttonClass}
+          onClick={props.onClick}
+          data-tooltip-id={id}
+          data-tooltip-content={tip(
+            `${label} Spinal Mount (${spinal.multiple}×): fires at any bearing, but not at a ship under 2,000 tons unless she held still last round`,
+          )}
+          data-tooltip-delay-show={700}
+          disabled={props.disabled}
+        >
+          <Spinal
+            className="weapon-symbol spinal-button"
+            data-testid="spinal-icon"
+            style={{
+              fill,
+            }}
+          />
+          <span className="weapon-symbol-count">{props.count}</span>
+          <span className="weapon-symbol-battery">{spinal.multiple}×</span>
+        </button>
+        <Tooltip id={id} className="console-tip" />
       </>
     );
   }
@@ -231,6 +309,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + "small-bay"}
@@ -257,6 +336,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + "med-bay"}
@@ -283,6 +363,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + "large-bay"}
@@ -312,6 +393,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + num + "turret"}
@@ -339,6 +421,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
           </button>
           <Tooltip
             id={props.weapon + num + "turret"}
@@ -365,6 +448,7 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
+          {batteryBadge}
         </button>
         <Tooltip
           id={props.weapon + num + "turret"}
@@ -423,6 +507,104 @@ function CalledShotMenu(args: {
   );
 }
 
+/** One launcher or sandcaster mount, as the Reload choice lists it. */
+export type ReloadMount = {
+  weapon_id: number;
+  weapon: Weapon;
+  capacity: Magazine;
+  loaded: Magazine;
+};
+
+/** The ship's launcher and sandcaster mounts, with what each holds. */
+export function reloadMounts(ship: Ship | null | undefined, weapons: Weapon[], displacement: number): ReloadMount[] {
+  return weapons.flatMap((weapon, weapon_id) => {
+    const capacity = mountCapacity(weapon, displacement);
+    if (capacity.missiles + capacity.torpedoes + capacity.sand === 0) {
+      return [];
+    }
+    return [{weapon_id, weapon, capacity, loaded: ship?.loaded?.[weapon_id] ?? EMPTY_MAGAZINE}];
+  });
+}
+
+/** "Spare gunners: 2 of 3 free": the gunners beyond the mounts, less those the Reloads chosen have taken. */
+export function SpareGunners(args: {spares: number; reloads: number[]}) {
+  const free = Math.max(0, args.spares - args.reloads.length);
+  return (
+    <div className="spare-gunners" data-tutorial="spare-gunners">
+      Spare gunners: {free} of {args.spares} free
+    </div>
+  );
+}
+
+/**
+ * The Reload choice: one row per launcher and sandcaster mount. A mount below
+ * its load, on a ship with stores left, can be reloaded. While a spare gunner
+ * is free that costs the mount nothing and it keeps its target; with none
+ * free its own gunner reloads it instead of firing. A chosen Reload can be
+ * withdrawn, which gives its spare back.
+ */
+export function ReloadChoices(args: {
+  mounts: ReloadMount[];
+  stores: Magazine;
+  spares: number;
+  reloads: number[];
+  /** Mounts with a target or on point defence, by index. */
+  ordered: number[];
+  onReload: (weapon_id: number) => void;
+  onWithdraw: (weapon_id: number) => void;
+}) {
+  const free = args.spares - args.reloads.length;
+  return (
+    <div className="reload-list" data-tutorial="reload-choices">
+      {args.mounts.map((mount) => {
+        const name = `Mount ${mount.weapon_id + 1}: ${weaponToString(mount.weapon)}`;
+        const chosen = args.reloads.includes(mount.weapon_id);
+        if (chosen) {
+          const spare = bySpare(args.reloads, args.spares, mount.weapon_id);
+          const waits = !spare && args.ordered.includes(mount.weapon_id) ? "; its order waits a round" : "";
+          return (
+            <div key={mount.weapon_id} className="reload-row reload-chosen">
+              <span className="reload-mount">{name}</span>{" "}
+              <span className="reload-note">
+                reloading, {spare ? "reloaded by spare crew" : `reloads instead of firing${waits}`}
+              </span>{" "}
+              <button className="control-button" onClick={() => args.onWithdraw(mount.weapon_id)}>
+                Withdraw
+              </button>
+            </div>
+          );
+        }
+        const possible = canReload(mount.capacity, mount.loaded, args.stores);
+        return (
+          <div key={mount.weapon_id} className="reload-row">
+            <span className="reload-mount">{name}</span>{" "}
+            {possible ? (
+              <>
+                <button className="control-button" onClick={() => args.onReload(mount.weapon_id)}>
+                  {reloadLabel(mount.capacity, mount.loaded, args.stores)}
+                </button>{" "}
+                <span className="reload-note">
+                  {free > 0 ? "reloaded by spare crew" : "reloads instead of firing"}
+                </span>
+              </>
+            ) : (
+              <span className="reload-note">
+                {describeLoad(mount.capacity, mount.loaded)}
+                {isFull(mount) ? "" : "; nothing in stores"}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const isFull = (mount: ReloadMount) =>
+  mount.loaded.missiles >= mount.capacity.missiles &&
+  mount.loaded.torpedoes >= mount.capacity.torpedoes &&
+  mount.loaded.sand >= mount.capacity.sand;
+
 type FireControlProps = unknown;
 
 export const FireControl: React.FC<FireControlProps> = () => {
@@ -447,6 +629,19 @@ export const FireControl: React.FC<FireControlProps> = () => {
     () => compressedWeapons(computerShipWeapons),
     [computerShipWeapons],
   );
+
+  // Mounts of each group knocked out by criticals: a battery with mounts
+  // down, or a weapon switched off altogether, all of whose mounts count.
+  const downCounts = useMemo(() => {
+    const down = {} as {[key: string]: number};
+    computerShipWeapons.forEach((weapon, index) => {
+      const name = getWeaponName(computerShipWeapons, index);
+      const mounts = weaponMounts(weapon);
+      const lost = computerShip == null ? 0 : mounts - liveMounts(computerShip, index, mounts);
+      down[name] = (down[name] ?? 0) + lost;
+    });
+    return down;
+  }, [computerShip, computerShipWeapons]);
 
   const availableCounts = useMemo(() => {
     const counts = {} as { [key: string]: number };
@@ -515,6 +710,36 @@ export const FireControl: React.FC<FireControlProps> = () => {
         velocity: [0, 0, 0],
       }) as Entity,
     [POINT_DEFENSE_NAME],
+  );
+
+  const RELOAD_NAME = "<Reload>";
+  const PSEUDO_TARGETS = useMemo(
+    () => [
+      POINT_DEFENSE_PHANTOM,
+      {name: RELOAD_NAME, position: [0, 0, 0], velocity: [0, 0, 0]} as Entity,
+    ],
+    [POINT_DEFENSE_PHANTOM],
+  );
+
+  const displacement = computerShip?.design ? (shipTemplates[computerShip.design]?.displacement ?? 0) : 0;
+  const launchers = useMemo(
+    () => reloadMounts(computerShip, computerShipWeapons, displacement),
+    [computerShip, computerShipWeapons, displacement],
+  );
+  const spares = spareGunners(computerShip?.crew?.gunnery, computerShipWeapons.length);
+  const queuedReloads = useMemo(
+    () => (computerShipName ? (actions[computerShipName]?.reload ?? []) : []),
+    [actions, computerShipName],
+  );
+  const orderedMounts = useMemo(
+    () =>
+      computerShipName
+        ? [
+            ...(actions[computerShipName]?.fire ?? []).map((action) => action.weapon_id),
+            ...(actions[computerShipName]?.pointDefense ?? []).map((action) => action.weapon_id),
+          ]
+        : [],
+    [actions, computerShipName],
   );
 
   const handleFireCommand = useCallback(
@@ -596,6 +821,17 @@ export const FireControl: React.FC<FireControlProps> = () => {
     [handleFireCommand, computerShipName, fireTarget],
   );
 
+  // A spinal cannot attack a ship under 2,000 tons that manoeuvred last
+  // round (High Guard p. 34), so it is not offered against one.
+  const spinalCannotAttack = useMemo(() => {
+    const target = fireTarget ? findShip(entities, fireTarget.name) : null;
+    if (target == null) {
+      return false;
+    }
+    const tons = shipTemplates[target.design]?.displacement ?? 0;
+    return spinalSizeDm(tons) == null && !target.held_still;
+  }, [fireTarget, entities, shipTemplates]);
+
   const isWeaponDisabled = useCallback(
     (weapon: { kind: string; mount: WeaponMount }) => {
       return (
@@ -604,10 +840,11 @@ export const FireControl: React.FC<FireControlProps> = () => {
           !(
             isLaserKind(weapon.kind ?? "") &&
             weapon.mount !== "Turret"
-          ))
+          )) ||
+        (spinalOf(weapon.mount) != null && spinalCannotAttack)
       );
     },
-    [fireTarget, POINT_DEFENSE_NAME],
+    [fireTarget, POINT_DEFENSE_NAME, spinalCannotAttack],
   );
 
   const weaponButtons = useMemo(
@@ -634,6 +871,8 @@ export const FireControl: React.FC<FireControlProps> = () => {
               weapon={kind}
               mount={weapon.mount}
               count={availableCounts[weapon_name]}
+              mounts={weapon.mounts}
+              down={downCounts[weapon_name]}
               onClick={() =>
                 handleWeaponClick(weapon_name, mixed ? kind : undefined)
               }
@@ -661,6 +900,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
       computerShipName,
       computerShipWeapons,
       availableCounts,
+      downCounts,
       handleWeaponClick,
       isWeaponDisabled,
     ],
@@ -695,6 +935,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
 
   return (
     <>
+      {launchers.length > 0 && <SpareGunners spares={spares} reloads={queuedReloads} />}
       <div className="control-launch-div" data-tutorial="fire-target">
         target:
         <EntitySelector
@@ -703,15 +944,27 @@ export const FireControl: React.FC<FireControlProps> = () => {
           setChoice={setFireTarget}
           current={fireTarget}
           exclude={computerShipName!}
-          extra={POINT_DEFENSE_PHANTOM}
+          extra={launchers.length > 0 ? PSEUDO_TARGETS : POINT_DEFENSE_PHANTOM}
           formatter={formatter}
           observer={computerShip}
           excludeSameTeam
         />
       </div>
-      <div className="weapon-list" data-tutorial="weapon-buttons">
-        {weaponButtons}
-      </div>
+      {fireTarget?.name === RELOAD_NAME && computerShipName ? (
+        <ReloadChoices
+          mounts={launchers}
+          stores={computerShip?.magazine ?? EMPTY_MAGAZINE}
+          spares={spares}
+          reloads={queuedReloads}
+          ordered={orderedMounts}
+          onReload={(weapon_id) => dispatch(reloadWeapon({shipName: computerShipName, weapon_id}))}
+          onWithdraw={(weapon_id) => dispatch(unreloadWeapon({shipName: computerShipName, weapon_id}))}
+        />
+      ) : (
+        <div className="weapon-list" data-tutorial="weapon-buttons">
+          {weaponButtons}
+        </div>
+      )}
       {passiveDefences.length > 0 && (
         <div className="weapon-passive-list" data-tutorial="automatic-defences">
           <span className="weapon-passive-label">Automatic:</span>{" "}
@@ -755,6 +1008,10 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
         assistGunners: args.ship.assist_gunners ?? false,
       }
     : null;
+  // The flight orders: the captain's Launch and the pilot's Land. Neither
+  // can be inspired, so they are lines rather than rows with a tick.
+  const launch = shows(ViewMode.Captain) ? (queued?.launch ?? null) : null;
+  const land = shows(ViewMode.Pilot) ? (queued?.land ?? null) : null;
 
   // Ships this one could be looking for. Detection is free and needs no
   // order, so these are not queued actions -- they are here because a captain
@@ -775,6 +1032,8 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
   );
 
   const anything =
+    launch != null ||
+    land != null ||
     fireActions.length > 0 ||
     pdActions.length > 0 ||
     sensorActions.some((sensor) => sensor.action !== SensorAction.None) ||
@@ -786,16 +1045,24 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
   }
 
   return (
-    <Actions
-      fireActions={fireActions}
-      pointDefenseActions={pdActions}
-      sensorActions={sensorActions}
-      engineerActions={engineerActions}
-      pilotState={pilotState}
-      searchTargets={searchTargets}
-      weapons={shipWeapons(args.ship, templates)}
-      gunnery={args.ship.crew?.gunnery}
-    />
+    <>
+      {launch != null && (
+        <p className="plan-accel-text flight-order-line">
+          Launch {launch.length} craft{launch.length <= 4 ? `: ${launch.join(", ")}` : ""}
+        </p>
+      )}
+      {land != null && <p className="plan-accel-text flight-order-line">Land on {land}</p>}
+      <Actions
+        fireActions={fireActions}
+        pointDefenseActions={pdActions}
+        sensorActions={sensorActions}
+        engineerActions={engineerActions}
+        pilotState={pilotState}
+        searchTargets={searchTargets}
+        weapons={shipWeapons(args.ship, templates)}
+        gunnery={args.ship.crew?.gunnery}
+      />
+    </>
   );
 }
 

@@ -35,9 +35,17 @@ const newShipAction = () => {
     fire: [],
     unfire: [],
     pointDefense: [],
+    reload: [] as number[],
+    unreload: [] as number[],
     engineers: [] as EngineerState[],
     computerRepairs: [] as ShipSystem[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
+    reviveWatch: null as number | null,
+    clearRevive: false,
+    launch: null as string[] | null,
+    clearLaunch: false,
+    land: null as string | null,
+    clearLand: false,
     pendingBoosts: [] as {target: BoostTarget; on: boolean; at: number}[],
     clearSensors: [] as number[],
     clearEngineers: [] as number[],
@@ -214,6 +222,57 @@ export const actionsSlice = createSlice({
       }
       updateActions(state);
     },
+    // The captain revives `count` of the frozen watch as the round ends, or
+    // withdraws the order with 0. It is the captain's action for the round,
+    // so queuing one drops the leadership check and its boosts.
+    setReviveWatch: (state, item: PayloadAction<{shipName: string; count: number}>) => {
+      state[item.payload.shipName] ??= newShipAction();
+      const slot = state[item.payload.shipName];
+      if (item.payload.count > 0) {
+        slot.reviveWatch = item.payload.count;
+        slot.clearRevive = false;
+        slot.leadershipCheck = null;
+        slot.pendingBoosts = [];
+        slot.clearLeadership = false;
+      } else {
+        slot.clearRevive = slot.reviveWatch != null;
+        slot.reviveWatch = null;
+      }
+      updateActions(state);
+    },
+    /**
+     * The carrier's Launch: the craft to send out, by name. It stands until
+     * every one is out, the server dropping each as she goes. A new
+     * list replaces the last and an empty one withdraws it, which is what
+     * the server does with an empty Launch. The captain's leadership check
+     * is untouched: flight operations are an order, not the captain's roll.
+     */
+    setLaunch: (state, item: PayloadAction<{shipName: string; craft: string[]}>) => {
+      const slot = (state[item.payload.shipName] ??= newShipAction());
+      if (item.payload.craft.length > 0) {
+        slot.launch = [...item.payload.craft];
+        slot.clearLaunch = false;
+      } else {
+        slot.clearLaunch = slot.launch != null;
+        slot.launch = null;
+      }
+      updateActions(state);
+    },
+    /**
+     * The craft's Land on a carrier, which stands until she is aboard or it
+     * is withdrawn with `null`.
+     */
+    setLand: (state, item: PayloadAction<{shipName: string; carrier: string | null}>) => {
+      const slot = (state[item.payload.shipName] ??= newShipAction());
+      if (item.payload.carrier != null) {
+        slot.land = item.payload.carrier;
+        slot.clearLand = false;
+      } else {
+        slot.clearLand = slot.land != null;
+        slot.land = null;
+      }
+      updateActions(state);
+    },
     // Idempotently add or remove a boost target. When the list goes empty,
     // set `clearLeadership` so the server strips its queued LeadershipCheck;
     // otherwise the LeadershipCheck wire form rides along on the ModifyActions
@@ -232,6 +291,11 @@ export const actionsSlice = createSlice({
       const nextBoosts = on ? [...boosts, item.payload.target] : boosts.filter((_, i) => i !== idx);
       slot.leadershipCheck = { boosts: nextBoosts };
       slot.clearLeadership = nextBoosts.length === 0;
+      // The leadership check is the captain's action, as a revive is: one
+      // replaces the other, on the server as here.
+      if (nextBoosts.length > 0) {
+        slot.reviveWatch = null;
+      }
       // Remember the toggle until the server says it back, so a snapshot
       // already in flight cannot undo it.
       slot.pendingBoosts = [
@@ -287,6 +351,30 @@ export const actionsSlice = createSlice({
 
       state[item.payload.shipName] ??= newShipAction();
       state[item.payload.shipName].pointDefense.push(new_action);
+      updateActions(state);
+    },
+    /**
+     * Reload a mount this round. A spare gunner does it while one is free,
+     * and the mount keeps its orders; otherwise its own gunner does, instead
+     * of firing. Choosing it twice is a slip, not two reloads.
+     */
+    reloadWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
+      const slot = (state[item.payload.shipName] ??= newShipAction());
+      slot.reload ??= [];
+      if (!slot.reload.includes(item.payload.weapon_id)) {
+        slot.reload.push(item.payload.weapon_id);
+      }
+      slot.unreload = (slot.unreload ?? []).filter((id) => id !== item.payload.weapon_id);
+      updateActions(state);
+    },
+    /** Withdraw a mount's Reload, giving back the spare gunner it took. */
+    unreloadWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
+      const slot = state[item.payload.shipName];
+      if (!slot) {
+        return;
+      }
+      slot.reload = (slot.reload ?? []).filter((id) => id !== item.payload.weapon_id);
+      slot.unreload = [...(slot.unreload ?? []), item.payload.weapon_id];
       updateActions(state);
     },
     unfireWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
@@ -409,6 +497,9 @@ export const actionsSlice = createSlice({
 
 export const {
   setActions,
+  setReviveWatch,
+  setLaunch,
+  setLand,
   setSensorAction,
   setEngineerAction,
   toggleBoost,
@@ -416,6 +507,8 @@ export const {
   fireWeapon,
   pointDefenseWeapon,
   unfireWeapon,
+  reloadWeapon,
+  unreloadWeapon,
   updateFireCalledShot,
   updateFireSalvo,
   updateFireControl,

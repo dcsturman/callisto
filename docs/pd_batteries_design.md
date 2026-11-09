@@ -1,6 +1,7 @@
 # Point Defence Batteries
 
-Status: **design only, nothing implemented.**
+Status: **implemented** (`WeaponMount::Battery`, automatic intercept dice into the ship's point-defence
+pool). Kept as the design record; the FAQ has the rulings as played.
 Date: 2026-09-07.
 Rules source: *Mongoose Traveller High Guard*, April 2024 update
 (`/Users/dan/My Drive/Traveller/MGT/High Guard Apr 2024.pdf`) and

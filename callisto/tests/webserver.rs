@@ -10,7 +10,6 @@ use std::env::var;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU16;
 
 use assert_json_diff::assert_json_eq;
 use futures_util::{SinkExt, StreamExt};
@@ -53,8 +52,6 @@ type MyWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "target/debug/callisto";
 
-static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
-
 /// A design's software, and what a fresh ship of it runs, for the ship JSON
 /// these tests compare against. Read from the templates so a corrected
 /// loadout does not break tests that are about the wire protocol.
@@ -63,14 +60,25 @@ fn software_of(design: &str) -> serde_json::Value {
   serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
 }
 
-/// A default crew's gunnery: one unskilled gunner per mount, which is what a
-/// ship nobody wrote a crew for sails with.
-/// What a design's magazine holds fresh from the yard.
-fn magazine_of(design: &str) -> serde_json::Value {
+/// A design's ship fresh from the yard.
+fn fresh(design: &str) -> callisto::ship::Ship {
   let templates = callisto::ship::get_ship_templates_snapshot();
-  serde_json::to_value(callisto::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+  let template = templates.get(design).unwrap().clone();
+  callisto::ship::Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &template, None, None)
 }
 
+/// What a design's stores hold fresh from the yard: what its mounts cannot.
+fn magazine_of(design: &str) -> serde_json::Value {
+  serde_json::to_value(fresh(design).magazine).unwrap()
+}
+
+/// What each of a design's mounts holds fresh from the yard.
+fn loaded_of(design: &str) -> serde_json::Value {
+  serde_json::to_value(&fresh(design).loaded).unwrap()
+}
+
+/// A default crew's gunnery: one unskilled gunner per mount, which is what a
+/// ship nobody wrote a crew for sails with.
 fn gunnery_of(design: &str) -> serde_json::Value {
   let templates = callisto::ship::get_ship_templates_snapshot();
   let mounts = templates.get(design).unwrap().weapons.len();
@@ -92,28 +100,14 @@ fn software_running_of(design: &str) -> serde_json::Value {
 }
 
 fn get_next_port() -> u16 {
-  use std::sync::Once;
-  static INIT: Once = Once::new();
-
-  INIT.call_once(|| {
-    // Initialize with a base port that includes process ID to avoid conflicts between processes
-    #[allow(clippy::cast_possible_truncation)]
-    let base_port = 3010 + (std::process::id() as u16 % 1000);
-    NEXT_PORT.store(base_port, std::sync::atomic::Ordering::Relaxed);
-  });
-
-  // Try to find an available port, starting from our base
-  loop {
-    let port = NEXT_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-    // Quick check if port is available by trying to bind to it
-    if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
-      return port;
-    }
-
-    // If we've tried too many ports, something is wrong
-    assert!(port <= 65000, "Unable to find available port after trying many options");
-  }
+  // Ask the OS for a free port rather than guessing one. Under nextest every
+  // test is a process of its own, and a guessed port that two processes both
+  // found free would be bound by only one of their servers -- the other test
+  // then waited forever on a server that had already died. The OS hands out
+  // ephemeral ports in rotation, so a port it just gave us is not given to
+  // anyone else for a long while after we let it go.
+  let listener = std::net::TcpListener::bind((SERVER_ADDRESS, 0)).expect("a free port");
+  listener.local_addr().expect("the port we were given").port()
 }
 
 async fn spawn_server(
@@ -630,12 +624,14 @@ async fn integration_builder_save_keeps_round_limit() {
   callisto::ship::config_test_ship_templates().await;
   let port = get_next_port();
   let (_root, scenario_dir, design_dir, _added) = setup_reloadable_test_files(port);
-  // A scenario with a round limit to open in the builder.
-  fs::copy(
-    "scenarios/tutorial-9-scenario.json",
-    PathBuf::from(&scenario_dir).join("tutorial-9-scenario.json"),
-  )
-  .unwrap();
+  // A scenario with a round limit to open in the builder, under a name only
+  // this test's scenario directory has. The port is checked free and then
+  // bound by the server, and in between another test's server can take it;
+  // this test would then be talking to that server, whose scenarios are the
+  // real `scenarios/`, and its save would land there. Under a name nobody
+  // else has, opening the scenario fails first and nothing is saved.
+  let source = format!("round-limit-{port}.json");
+  fs::copy("scenarios/tutorial-9-scenario.json", PathBuf::from(&scenario_dir).join(&source)).unwrap();
   let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir), true)
     .await
     .unwrap();
@@ -646,12 +642,15 @@ async fn integration_builder_save_keeps_round_limit() {
     &mut stream,
     RequestMsg::CreateScenario(CreateScenarioMsg {
       name: "SCENARIO-amber-river-lamp".to_string(),
-      scenario: "tutorial-9-scenario.json".to_string(),
+      scenario: source,
       ai_ships: None,
     }),
   )
   .await;
-  assert!(matches!(body, ResponseMsg::JoinedScenario(_)), "Expected to join, got {body:?}");
+  assert!(
+    matches!(body, ResponseMsg::JoinedScenario(_)),
+    "Expected to join (if not, this may be another test's server), got {body:?}"
+  );
   let _ = stream.next().await.unwrap();
   drain_post_scenario_messages(&mut stream).await;
 
@@ -801,6 +800,7 @@ async fn integration_add_ship() {
     controller: None,
     orders: None,
     software: None,
+    aboard: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -839,6 +839,7 @@ async fn integration_add_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }],
@@ -883,6 +884,7 @@ async fn integration_add_planet_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -907,6 +909,7 @@ async fn integration_add_planet_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -935,6 +938,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         },
@@ -957,6 +961,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }],
@@ -1017,6 +1022,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         },
@@ -1039,6 +1045,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
          "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }]});
@@ -1098,6 +1105,7 @@ async fn integration_add_planet_ship() {
      "sensor_locks": [],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
      "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
      "software": software_of("Buccaneer"),
      "software_running": software_running_of("Buccaneer")
     },
@@ -1120,6 +1128,7 @@ async fn integration_add_planet_ship() {
      "sensor_locks": [],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
      "magazine": magazine_of("Buccaneer"),
+         "loaded": loaded_of("Buccaneer"),
      "software": software_of("Buccaneer"),
      "software_running": software_running_of("Buccaneer")
     }]});
@@ -1163,6 +1172,7 @@ async fn integration_update_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1224,6 +1234,7 @@ async fn integration_update_missile() {
       controller: None,
       orders: None,
       software: Some(vec![]),
+      aboard: None,
     }),
   )
   .await;
@@ -1247,6 +1258,7 @@ async fn integration_update_missile() {
       controller: None,
       orders: None,
       software: Some(vec![]),
+      aboard: None,
     }),
   )
   .await;
@@ -1294,6 +1306,10 @@ async fn integration_update_missile() {
     panic!("Improper response to update request received.");
   }
 
+  // The rack fired three of what it held.
+  let mut fired_three = fresh("System Defense Boat").loaded;
+  fired_three[1].missiles -= 3;
+  let fired_three = serde_json::to_value(&fired_three).unwrap();
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
@@ -1313,11 +1329,13 @@ async fn integration_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
+             "held_still":true,
              "sensor_locks": [],
              "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             // Three missiles away this round, and the magazine shows it.
-             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0}
+             // Three missiles away this round, and the rack shows it.
+             "magazine": magazine_of("System Defense Boat"),
+             "loaded": fired_three
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -1335,10 +1353,12 @@ async fn integration_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
+             "held_still":true,
              "sensor_locks": [],
              "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             "magazine": magazine_of("System Defense Boat")
+             "magazine": magazine_of("System Defense Boat"),
+         "loaded": loaded_of("System Defense Boat")
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
@@ -1381,6 +1401,7 @@ async fn integration_remove_ship() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1520,6 +1541,7 @@ async fn integration_set_acceleration() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1587,6 +1609,7 @@ async fn integration_compute_path_basic() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1689,6 +1712,7 @@ async fn integration_compute_path_with_standoff() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -1791,6 +1815,7 @@ async fn integration_malformed_requests() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2024,6 +2049,7 @@ async fn integration_set_crew_actions() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2111,6 +2137,7 @@ async fn integration_multi_client_test() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2132,43 +2159,37 @@ async fn integration_multi_client_test() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
 
-  // Before we do our RPC, get rid of the extra two messages
-  debug!("(integration_multi_client_test) Draining extra messages (1).");
-  drain_entity_response(&mut stream3).await;
-  debug!("(integration_multi_client_test) Draining extra messages (2).");
-  drain_entity_response(&mut stream3).await;
-
-  rpc(
-    &mut stream3,
-    RequestMsg::AddShip(AddShipMsg {
-      name: "ship3".to_string(),
-      position: [0.0, 0.0, 0.0].into(),
-      velocity: [0.0, 0.0, 0.0].into(),
-      design: "Buccaneer".to_string(),
-      crew: None,
-      weapons: None,
-      active_sensors: None,
-      transmitting: None,
-      team: None,
-      contacts: None,
-      features_on: None,
-      controller: None,
-      orders: None,
-      software: None,
-    }),
-  )
-  .await;
-
-  // Should now be just the 1 entity response message (since we drained above)
-  let entities = drain_entity_response(&mut stream3).await;
-  if let ResponseMsg::EntityResponse(entities) = entities {
-    assert_eq!(entities.ships.len(), 3);
-  } else {
-    panic!("Expected EntityResponse");
+  // Each player is sent world updates as ships are added, but one queued
+  // behind a newer one is dropped, so how many stream3 sees depends on timing.
+  // Read them until one shows all three ships.
+  let request = RequestMsg::AddShip(AddShipMsg {
+    name: "ship3".to_string(),
+    position: [0.0, 0.0, 0.0].into(),
+    velocity: [0.0, 0.0, 0.0].into(),
+    design: "Buccaneer".to_string(),
+    crew: None,
+    weapons: None,
+    active_sensors: None,
+    transmitting: None,
+    team: None,
+    contacts: None,
+    features_on: None,
+    controller: None,
+    orders: None,
+    software: None,
+    aboard: None,
+  });
+  stream3.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
+  loop {
+    let reply = next_response_with_timeout(&mut stream3, Duration::from_secs(10)).await;
+    if matches!(reply, ResponseMsg::EntityResponse(ref entities) if entities.ships.len() == 3) {
+      break;
+    }
   }
 
   send_quit(&mut stream1).await;
@@ -2643,6 +2664,7 @@ async fn integration_switching_to_ai_calls_the_ai_service() {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     }),
   )
   .await;
@@ -2798,4 +2820,156 @@ async fn integration_no_ai_service_means_no_ai_crews() {
       .any(|reply| matches!(reply, ResponseMsg::Error(text) if text.contains("AI crews are not available"))),
     "the handover is refused: {replies:?}"
   );
+}
+
+/// The entities sent after a request, skipping anything else on the way.
+async fn entities_after(stream: &mut MyWebSocket) -> Box<callisto::entity::Entities> {
+  loop {
+    if let ResponseMsg::EntityResponse(entities) = next_response_with_timeout(stream, Duration::from_secs(5)).await {
+      return entities;
+    }
+  }
+}
+
+/// Ships put in a squadron carry it on the wire, a squadron is capped and
+/// stays within its team, and a ship that changes team leaves her squadron.
+#[tokio::test]
+async fn integration_squadrons() {
+  callisto::ship::config_test_ship_templates().await;
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+  for name in ["Lance 1", "Lance 2"] {
+    let _ = rpc(
+      &mut stream,
+      RequestMsg::AddShip(AddShipMsg {
+        name: name.to_string(),
+        position: [0.0, 0.0, 0.0].into(),
+        velocity: [0.0, 0.0, 0.0].into(),
+        design: "Buccaneer".to_string(),
+        crew: None,
+        weapons: None,
+        active_sensors: None,
+        transmitting: None,
+        team: Some(callisto::ship::Team::Blue),
+        contacts: None,
+        features_on: None,
+        controller: None,
+        orders: None,
+        software: None,
+        aboard: None,
+      }),
+    )
+    .await;
+    let _ = entities_after(&mut stream).await;
+  }
+
+  let reply = rpc(
+    &mut stream,
+    RequestMsg::SetSquadron(callisto::payloads::SetSquadron {
+      ships: vec!["Lance 1".to_string(), "Lance 2".to_string()],
+      squadron: Some("Lance".to_string()),
+    }),
+  )
+  .await;
+  assert!(matches!(reply, ResponseMsg::SimpleMsg(_)), "{reply:?}");
+  let entities = entities_after(&mut stream).await;
+  let squadron = |entities: &callisto::entity::Entities, ship: &str| {
+    entities.ships.get(ship).unwrap().read().unwrap().squadron.clone()
+  };
+  assert_eq!(squadron(&entities, "Lance 1").as_deref(), Some("Lance"));
+  assert_eq!(squadron(&entities, "Lance 2").as_deref(), Some("Lance"));
+
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetShipTeam(callisto::payloads::SetShipTeam {
+      ship_name: "Lance 2".to_string(),
+      team: Some(callisto::ship::Team::Red),
+    }),
+  )
+  .await;
+  let entities = entities_after(&mut stream).await;
+  assert_eq!(squadron(&entities, "Lance 2"), None, "she left her squadron with her team");
+  assert_eq!(squadron(&entities, "Lance 1").as_deref(), Some("Lance"));
+
+  // Across teams is refused.
+  let reply = rpc(
+    &mut stream,
+    RequestMsg::SetSquadron(callisto::payloads::SetSquadron {
+      ships: vec!["Lance 1".to_string(), "Lance 2".to_string()],
+      squadron: Some("Mixed".to_string()),
+    }),
+  )
+  .await;
+  assert!(matches!(reply, ResponseMsg::Error(_)), "{reply:?}");
+  send_quit(&mut stream).await;
+}
+
+/// A Reload goes over the wire like any other order, is queued beside the
+/// mount's others, and is reported when the round resolves -- here refused,
+/// since a ship fresh from the yard has nothing to reload.
+#[tokio::test]
+async fn integration_reload_action() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+  callisto::ship::config_test_ship_templates().await;
+
+  let message = rpc(
+    &mut stream,
+    RequestMsg::AddShip(AddShipMsg {
+      name: "ship1".to_string(),
+      position: [0.0, 0.0, 0.0].into(),
+      velocity: [0.0, 0.0, 0.0].into(),
+      design: "System Defense Boat".to_string(),
+      crew: None,
+      weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
+      features_on: None,
+      controller: None,
+      orders: None,
+      software: Some(vec![]),
+      aboard: None,
+    }),
+  )
+  .await;
+  assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+  drain_entity_response(&mut stream).await;
+
+  let reload = vec![("ship1".to_string(), vec![ShipAction::ReloadAction { weapon_id: 1 }])];
+  let _response = rpc(&mut stream, RequestMsg::ModifyActions(reload)).await;
+  let ResponseMsg::EntityResponse(entities) = drain_entity_response(&mut stream).await else {
+    panic!("Expected EntityResponse");
+  };
+  assert!(
+    entities
+      .actions
+      .iter()
+      .any(|(name, actions)| name == "ship1" && actions.contains(&ShipAction::ReloadAction { weapon_id: 1 })),
+    "the Reload is queued: {:?}",
+    entities.actions
+  );
+
+  let ResponseMsg::Effects(effects) = rpc(&mut stream, RequestMsg::Update).await else {
+    panic!("Improper response to update request received.");
+  };
+  let lines: Vec<String> = effects.effects.iter().map(EffectMsg::rendered).collect();
+  assert!(
+    lines
+      .iter()
+      .any(|line| line.contains("mount 2") && line.contains("already full")),
+    "{lines:#?}"
+  );
+  let ResponseMsg::EntityResponse(entities) = drain_entity_response(&mut stream).await else {
+    panic!("Expected EntityResponse");
+  };
+  assert!(entities.actions.is_empty(), "a Reload is one round's work");
 }

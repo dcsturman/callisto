@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react";
 import { Event } from "components/space/Effects";
+import { RoundSummary } from "components/space/RoundSummary";
 import { UserList, UserContext } from "components/UserList";
 import {
   ActionType,
@@ -28,13 +29,15 @@ import {
 import {
   setComputerShipName,
   setEvents,
+  setRoundSummary,
   setProposedPlan,
   setShowResults,
   setScenarioDirty,
   scenarioSaved,
   renamed,
 } from "state/uiSlice";
-import { setEmail, setRoleShip, setFleetCommand, setJoinedScenario } from "state/userSlice";
+import { setEmail, setRoleShip, setFleetCommand, setSquadronCommand, setJoinedScenario, SquadronSeat } from "state/userSlice";
+import { squadronShips } from "lib/squadrons";
 import { AppMode, setAppMode, setLesson } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
@@ -371,6 +374,9 @@ export function addShip(ship: Ship) {
       // Absent means the design's own defaults, which for every switchable
       // feature so far means off.
       ...(ship.features_on ? { features_on: ship.features_on } : {}),
+      // A craft that starts in a carrier's berth, by the carrier's name:
+      // the scenario file's own marker. Absent means in space.
+      ...(ship.aboard ? { aboard: ship.aboard } : {}),
     },
   };
 
@@ -449,14 +455,27 @@ export function setShipController(shipName: string, controller: Controller) {
   );
 }
 
-/** Give a ship standing orders. An empty string clears them. */
-export function setOrders(shipName: string, orders: string) {
+/** Hold the rounds -- they do not advance on their own -- or let them go. */
+export function holdRounds(holding: boolean) {
+  socket.send(JSON.stringify({ HoldRounds: holding }));
+}
+
+/** Whose orders: the ship's own, her squadron's, or her team's fleet's. */
+export type OrdersScope = "Ship" | "Squadron" | "Fleet";
+
+/**
+ * Give standing orders through `shipName`: hers, her squadron's (every ship
+ * in it), or her team's fleet's (every ship on the team). An empty string
+ * clears them.
+ */
+export function setOrders(shipName: string, orders: string, scope: OrdersScope = "Ship") {
   const trimmed = orders.trim();
   socket.send(
     JSON.stringify({
       SetOrders: {
         ship_name: shipName,
         ...(trimmed === "" ? {} : { orders: trimmed }),
+        ...(scope === "Ship" ? {} : { scope }),
       },
     }),
   );
@@ -701,6 +720,7 @@ export function requestFleetCommand(team: string) {
  * sent, and a ship missing from it would never be waited for.
  */
 function reclaimFleet(entities: EntityList) {
+  reclaimSquadron(entities);
   const team = store.getState().user.fleetTeam;
   if (team == null) {
     return;
@@ -709,6 +729,53 @@ function reclaimFleet(entities: EntityList) {
   if (ships.join("\n") !== claimedShips.join("\n")) {
     requestRoleChoice([ViewMode.FleetCommand], null, ships);
   }
+}
+
+/** Take Squadron Command of a squadron, aboard `flagship` (by default its
+ *  first ship), claiming its ships. */
+export function requestSquadronCommand(squadron: SquadronSeat, flagship?: string) {
+  const ships = squadronShips(store.getState().server.entities.ships, squadron.team, squadron.name);
+  const aboard = flagship ?? ships[0];
+  if (aboard == null) {
+    return;
+  }
+  store.dispatch(setSquadronCommand({ squadron, flagship: aboard }));
+  requestRoleChoice([ViewMode.SquadronCommand], aboard, ships);
+}
+
+/**
+ * Keep a squadron commander's claim matching the squadron as ships join it,
+ * leave it, are destroyed or jump out. A flagship that is gone hands the
+ * flag to the next ship; a squadron with no ships left leaves its
+ * commander watching.
+ */
+function reclaimSquadron(entities: EntityList) {
+  const { squadron, shipName } = store.getState().user;
+  if (squadron == null) {
+    return;
+  }
+  const ships = squadronShips(entities.ships, squadron.team, squadron.name);
+  if (ships.length === 0) {
+    store.dispatch(setRoleShip([[ViewMode.Observer], null]));
+    requestRoleChoice([ViewMode.Observer], null);
+    return;
+  }
+  const flagship = shipName != null && ships.includes(shipName) ? shipName : ships[0];
+  if (flagship !== shipName || ships.join("\n") !== claimedShips.join("\n")) {
+    requestSquadronCommand(squadron, flagship);
+  }
+}
+
+/** Put `ships` in `squadron` of their team, or (`null`) take them out. */
+export function setSquadron(ships: string[], squadron: string | null) {
+  const payload = { SetSquadron: { ships, ...(squadron == null ? {} : { squadron }) } };
+  socket.send(JSON.stringify(payload));
+}
+
+/** Rename `team`'s squadron `from` to `to`. */
+export function renameSquadron(team: string | null, from: string, to: string) {
+  const payload = { RenameSquadron: { ...(team == null ? {} : { team }), from, to } };
+  socket.send(JSON.stringify(payload));
 }
 
 export function joinScenario(scenario_name: string) {
@@ -849,11 +916,16 @@ function releaseDepartedShip(entities: EntityList) {
   }
 }
 
+/** The most ships and missiles, or results, written out in full to the
+ *  console: enough for any ordinary scenario. */
+const LOG_EVERYTHING_UP_TO = 40;
+
 function handleEntities(json: object) {
   const entities = json as EntityList;
 
-  // Convert all ship plans to G's from m/s^2
-  entities.ships.forEach((ship) => {
+  // Convert all ship plans to G's from m/s^2, the craft in a carrier's
+  // berths included: they come out with whatever plan they carry.
+  const toG = (ship: Ship) => {
     ship.plan[0][0] = [
       ship.plan[0][0][0] / G,
       ship.plan[0][0][1] / G,
@@ -866,24 +938,32 @@ function handleEntities(json: object) {
         ship.plan[1][0][2] / G,
       ];
     }
-  });
+    (ship.embarked ?? []).forEach(toG);
+  };
+  entities.ships.forEach(toG);
 
-  console.groupCollapsed("Received Entities: ");
-  console.groupCollapsed("Ships: ");
-  for (const v of entities.ships) {
-    console.log(` ${JSON.stringify(v)}`);
+  console.groupCollapsed(
+    `Received Entities: ${entities.ships.length} ships, ${entities.missiles.length} missiles, ${entities.planets.length} planets`,
+  );
+  // Each entity written out only for a small scenario: with two hundred ships
+  // this was most of a megabyte of text on every update, kept by the console.
+  if (entities.ships.length + entities.missiles.length <= LOG_EVERYTHING_UP_TO) {
+    console.groupCollapsed("Ships: ");
+    for (const v of entities.ships) {
+      console.log(` ${JSON.stringify(v)}`);
+    }
+    console.groupEnd();
+    console.groupCollapsed("Missiles: ");
+    for (const v of entities.missiles) {
+      console.log(` ${JSON.stringify(v)}`);
+    }
+    console.groupEnd();
+    console.groupCollapsed("Planets: ");
+    for (const v of entities.planets) {
+      console.log(` ${JSON.stringify(v)}`);
+    }
+    console.groupEnd();
   }
-  console.groupEnd();
-  console.groupCollapsed("Missiles: ");
-  for (const v of entities.missiles) {
-    console.log(` ${JSON.stringify(v)}`);
-  }
-  console.groupEnd();
-  console.groupCollapsed("Planets: ");
-  for (const v of entities.planets) {
-    console.log(` ${JSON.stringify(v)}`);
-  }
-  console.groupEnd();
   console.groupEnd();
   store.dispatch(setEntities(entities));
   releaseDepartedShip(entities);
@@ -940,12 +1020,14 @@ function handleFlightPath(json: object) {
 let nextEventId = Date.now();
 
 /** One round's results, as the server sends them. */
-type EffectsBatch = { round: number; effects: object[] };
+type EffectsBatch = { round: number; effects: object[]; summary?: RoundSummary };
 
 function handleEffect(batch: EffectsBatch) {
   const json = batch.effects;
-  console.groupCollapsed("Received Effects: ");
-  console.log("(handleEffect) Received effects: " + JSON.stringify(json));
+  console.groupCollapsed(`Received Effects: ${json.length}`);
+  if (json.length <= LOG_EVERYTHING_UP_TO) {
+    console.log("(handleEffect) Received effects: " + JSON.stringify(json));
+  }
   console.groupEnd();
 
   // Every effect arrives the same way now: the server writes the sentence,
@@ -960,6 +1042,8 @@ function handleEffect(batch: EffectsBatch) {
   }));
 
   store.dispatch(setEvents(events));
+  // Absent for a round where nothing was hit, and from an older server.
+  store.dispatch(setRoundSummary(batch.summary ?? null));
   store.dispatch(setShowResults(true));
 }
 
@@ -1039,11 +1123,14 @@ function handleAuthenticated(json: {
     }
     if (json.roles != null || json.role != null) {
       const roles = parseRoles(json.roles ?? json.role);
-      // The server keeps the role but not which team it commands; this
-      // browser remembers that.
+      // The server keeps the role but not which team or squadron it
+      // commands; this browser remembers that.
       const team = store.getState().user.fleetTeam;
+      const squadron = store.getState().user.squadron;
       if (roles.includes(ViewMode.FleetCommand) && team != null) {
         store.dispatch(setFleetCommand(team));
+      } else if (roles.includes(ViewMode.SquadronCommand) && squadron != null && json.ship != null) {
+        store.dispatch(setSquadronCommand({ squadron, flagship: json.ship }));
       } else {
         store.dispatch(setRoleShip([roles, json.ship]));
       }

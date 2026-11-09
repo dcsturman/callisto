@@ -119,6 +119,39 @@
         0
       ],
       "team": "Red"
+    },
+    {
+      "name": "Lucky Misjump",
+      "position": [
+        6419806.5,
+        0.0,
+        2655871.8
+      ],
+      "velocity": [
+        684.0,
+        0.0,
+        -1879.4
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Scout/Courier",
+      "team": "Red",
+      "weapons": [
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 3
+          }
+        }
+      ]
     }
   ],
   "planets": [

@@ -8,10 +8,7 @@ use futures::select;
 use futures::{stream::FuturesUnordered, FutureExt, SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
-use tokio_tungstenite::tungstenite::{
-  error::{Error, ProtocolError},
-  Message,
-};
+use tokio_tungstenite::tungstenite::{error::Error, Message};
 use tokio_tungstenite::WebSocketStream;
 
 #[cfg(not(feature = "no_tls_upgrade"))]
@@ -81,11 +78,82 @@ pub struct Processor {
   game_log_dir: Option<String>,
 }
 
+/// One client's socket, as the processor uses it: messages read from it
+/// directly, and messages sent to it queued for a task of its own to write.
+///
+/// The queue is the point. Sending straight to the socket made the processor
+/// wait on the slowest reader: a client not reading -- an AI crew waiting on
+/// its model, or anyone on a bad connection -- filled its socket, the next
+/// broadcast to it blocked, and every game on the server stopped until it
+/// read again. Now only that client falls behind, and when it does it is
+/// sent the latest world rather than every one it missed.
+struct Link {
+  reader: futures::stream::SplitStream<WebSocketStream<SubStream>>,
+  outbox: futures::channel::mpsc::UnboundedSender<Message>,
+}
+
+impl Link {
+  fn new(stream: WebSocketStream<SubStream>) -> Self {
+    let (mut sink, reader) = stream.split();
+    let (outbox, mut queued) = futures::channel::mpsc::unbounded::<Message>();
+    tokio::spawn(async move {
+      while let Some(first) = queued.next().await {
+        // Everything waiting, sent in order, but of the world updates among
+        // it only the last: the ones before it are already out of date.
+        let mut batch = vec![first];
+        while let Some(Some(more)) = queued.next().now_or_never() {
+          batch.push(more);
+        }
+        let last_world = batch.iter().rposition(is_world_update);
+        for (i, message) in batch.into_iter().enumerate() {
+          if is_world_update(&message) && Some(i) != last_world {
+            continue;
+          }
+          let closing = matches!(message, Message::Close(_));
+          if sink.send(message).await.is_err() || closing {
+            return;
+          }
+        }
+      }
+    });
+    Link { reader, outbox }
+  }
+
+  /// The next message from the client.
+  async fn next(&mut self) -> Option<Result<Message, Error>> {
+    self.reader.next().await
+  }
+
+  /// Queue a message for the client; an error only if its writer has gone.
+  /// Ready at once -- nothing waits on the client -- but a future, so it
+  /// reads like the socket it stands in for.
+  fn send(&mut self, message: Message) -> std::future::Ready<Result<(), LinkClosed>> {
+    std::future::ready(self.outbox.unbounded_send(message).map_err(|_| LinkClosed))
+  }
+
+  /// Queue the close, after whatever is already queued.
+  fn close(
+    &mut self, frame: Option<tokio_tungstenite::tungstenite::protocol::CloseFrame>,
+  ) -> std::future::Ready<Result<(), LinkClosed>> {
+    self.send(Message::Close(frame))
+  }
+}
+
+/// A client's writer has stopped: its socket is closed.
+#[derive(Debug)]
+struct LinkClosed;
+
+/// Whether a message to a client is a whole world update, which a newer one
+/// makes redundant.
+fn is_world_update(message: &Message) -> bool {
+  matches!(message, Message::Text(text) if text.as_str().starts_with("{\"EntityResponse\""))
+}
+
 struct Connection {
   /// player is an [`Arc`] because its [`Server`] will have a [`std::sync::Weak`] reference back to it.
   /// It is not otherwise shared.
   player: PlayerManager,
-  stream: WebSocketStream<SubStream>,
+  stream: Link,
   /// When this connection last did something that was not a keepalive.
   ///
   /// Keepalives are excluded deliberately: the client sends one every minute
@@ -605,14 +673,10 @@ impl Processor {
             email = connections[index].player.get_email().unwrap_or("(Unauthenticated users)".to_string()),
             action = format!("Connection closed ungracefully. Now {} connections.", connections.len() - 1)
           );
-          connections[index].stream.close(None).await.unwrap_or_else(|e| {
-            if let Error::Protocol(ProtocolError::SendAfterClosing) = e {
-              // This is expected when we try to close a connection that is already closed.
-              debug!("(processor) Attempted to close a connection that was already closed.  Ignoring.");
-            } else {
-              error!("(handle_connection) Failed to close connection: {e:?}");
-            }
-          });
+          if connections[index].stream.close(None).await.is_err() {
+            // Expected: its socket had already closed.
+            debug!("(processor) Attempted to close a connection that was already closed.  Ignoring.");
+          }
           // Mark this stream for deletion
           let leaving = connections.remove(index);
           self.leave_if_service(&leaving, &mut connections).await;
@@ -706,11 +770,8 @@ impl Processor {
           // Clear the session key entry then close the socket. Mirrors
           // RequestMsg::Logout.
           connections[i].player.logout(&self.session_keys);
-          if let Err(e) = connections[i].stream.close(None).await {
-            if !matches!(e, Error::Protocol(ProtocolError::SendAfterClosing)) {
-              error!("(handle_reload_notification) Failed to close blacklisted connection: {e:?}");
-            }
-          }
+          // An error only means its socket had already closed.
+          let _ = connections[i].stream.close(None).await;
           connections.remove(i);
         }
 
@@ -755,6 +816,7 @@ impl Processor {
     authenticator.set_session_key(session_key);
     authenticator.set_email(email);
 
+    let stream = Link::new(stream);
     let mut connection = Connection {
       player: PlayerManager::new(None, authenticator, self.test_mode),
       stream,
@@ -845,7 +907,7 @@ impl Processor {
   /// Whoever pressed Next Round -- or, with no referee, whoever was last to say
   /// Ready -- runs it; every ready flag is cleared for the round that follows.
   fn advance_round(&mut self, player: &PlayerManager, server_id: Option<&str>) -> Vec<ResponseMsg> {
-    let effects = player.update();
+    let (effects, summary) = player.play_round();
     if let Some(server_id) = server_id {
       self.members.clear_ready(server_id);
     }
@@ -856,6 +918,7 @@ impl Processor {
         let resolved = EffectsMsg {
           round: entities.round.saturating_sub(1),
           effects,
+          summary,
         };
         if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
           log.round(resolved.round, &resolved.effects, &entities);
@@ -998,6 +1061,8 @@ impl Processor {
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
       RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
+      RequestMsg::SetSquadron(request) => response_with_update(player, player.set_squadron(&request)),
+      RequestMsg::RenameSquadron(request) => response_with_update(player, player.rename_squadron(&request)),
       RequestMsg::SetShipController(request) => {
         if request.controller == Controller::Ai && !self.ai_crews_shown(player) {
           return vec![ResponseMsg::Error(
@@ -1072,6 +1137,23 @@ impl Processor {
           self.advance_round(player, Some(&server_id))
         } else {
           vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
+        }
+      }
+      RequestMsg::HoldRounds(holding) => {
+        let Some((server_id, session_key)) = player.server_and_session() else {
+          return error_msg("Cannot hold the rounds before joining a scenario.".to_string());
+        };
+        if !self.members.set_holding(&server_id, &session_key, holding) {
+          return error_msg("Cannot hold the rounds: you are not in this scenario.".to_string());
+        }
+        // Let go with everyone already Ready: the round they were waiting on.
+        if !holding && self.members.everyone_ready(&server_id) {
+          self.advance_round(player, Some(&server_id))
+        } else {
+          vec![ResponseMsg::SimpleMsg(format!(
+            "Rounds {}.",
+            if holding { "held" } else { "released" }
+          ))]
         }
       }
       RequestMsg::Update => {
@@ -1594,7 +1676,7 @@ fn build_scenario_load_errors_refresh(player: &PlayerManager) -> Option<Response
   Some(ResponseMsg::ScenarioLoadErrors(owned))
 }
 
-async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &ResponseMsg, context: &str) {
+async fn send_response(stream: &mut Link, message: &ResponseMsg, context: &str) {
   let encoded_message: Utf8Bytes = serde_json::to_string(message).expect("Failed to serialize response").into();
   stream.send(Message::Text(encoded_message)).await.unwrap_or_else(|e| {
     error!("(processor) Failed to send {context}: {e:?}");
@@ -1641,6 +1723,7 @@ mod idle_tests {
   #[test]
   fn effects_go_to_the_whole_scenario() {
     assert!(is_broadcast_message(&ResponseMsg::Effects(crate::payloads::EffectsMsg {
+      summary: crate::payloads::RoundSummary::default(),
       round: 1,
       effects: vec![]
     })));

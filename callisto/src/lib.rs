@@ -15,18 +15,21 @@ pub mod solver {
 }
 pub mod crew;
 pub mod entity;
+pub mod flight;
 pub mod game_log;
 pub mod missile;
 pub mod payloads;
 pub mod planet;
 pub mod player;
 pub mod processor;
+pub mod reload;
 mod rules_tables;
 pub mod server;
 pub mod service_auth;
 pub mod sessions;
 pub mod ship;
 pub mod software;
+pub mod summary;
 pub mod tactics;
 
 #[macro_use]

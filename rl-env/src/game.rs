@@ -50,12 +50,19 @@ impl Scenario {
   /// Returns an error if the file cannot be read, or the scenario does not
   /// have exactly two sides of at most [`MAX_SHIPS`] ships.
   pub async fn load(path: &str) -> Result<Self, String> {
-    let entities = Entities::load_from_file_with_ship_templates(path, callisto::ship::get_ship_templates_snapshot())
-      .await
-      .map_err(|e| format!("{path}: {e}"))?;
-    let name = std::path::Path::new(path)
-      .file_stem()
-      .map_or_else(|| path.to_string(), |stem| stem.to_string_lossy().into_owned());
+    // A generated fight is named `gen:<kind>:<seed>` (see [`crate::generate`]).
+    let (entities, name) = if let Some((kind, seed)) = crate::generate::Kind::parse_entry(path) {
+      let designs = callisto::ship::get_ship_templates_snapshot();
+      (crate::generate::generate(kind, seed, &designs), path.to_string())
+    } else {
+      let entities = Entities::load_from_file_with_ship_templates(path, callisto::ship::get_ship_templates_snapshot())
+        .await
+        .map_err(|e| format!("{path}: {e}"))?;
+      let name = std::path::Path::new(path)
+        .file_stem()
+        .map_or_else(|| path.to_string(), |stem| stem.to_string_lossy().into_owned());
+      (entities, name)
+    };
     let found: Vec<(String, Vec<String>)> = sides(&entities).into_iter().collect();
     let [a, b]: [(String, Vec<String>); 2] = found
       .try_into()
@@ -477,6 +484,15 @@ fn varied(scenario: &Scenario, amount: f64, seed: u64) -> Entities {
 
 fn entities(player: &PlayerManager) -> Entities {
   player.get_entities().expect("the game's world can be read")
+}
+
+/// Whether `name` is in a berth of one of the world's carriers: off the
+/// plot, but still the side's ship.
+fn aboard(world: &Entities, name: &str) -> bool {
+  world
+    .ships
+    .values()
+    .any(|ship| ship.read().unwrap().embarked.iter().any(|craft| craft.get_name() == name))
 }
 
 fn present(world: &Entities, ships: &[String]) -> Vec<String> {
@@ -979,7 +995,9 @@ impl Game {
         let ships = &self.sides[side].ships;
         ships
           .iter()
-          .filter(|ship| self.world.ships.contains_key(*ship) || self.departed.contains_key(*ship))
+          .filter(|ship| {
+            self.world.ships.contains_key(*ship) || self.departed.contains_key(*ship) || aboard(&self.world, ship)
+          })
           .count()
       });
       let killed = [0, 1].map(|side| {

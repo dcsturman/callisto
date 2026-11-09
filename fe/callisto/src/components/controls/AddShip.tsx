@@ -6,15 +6,17 @@ import { POSITION_SCALE } from "lib/universal";
 import {
   ShipDesignTemplate,
   ShipDesignTemplates,
-  compressedWeapons,
+  ArmamentLine,
+  armament,
   formatMcr,
   shipWeapons,
 } from "lib/shipDesignTemplates";
+import {hullPointsOptions} from "lib/crewStrength";
 import {
   Gun,
   Weapon,
-  WeaponMount,
-  createWeapon,
+  batteryLimit,
+  canBeBattery,
   weaponToString,
   mountToString,
   WEAPON_MODIFIERS,
@@ -47,6 +49,8 @@ import { CiCircleQuestion } from "react-icons/ci";
 import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
 import { Team, TEAMS, TEAM_CSS } from "lib/teams";
+import { MAX_SQUADRON, batchNames, gridPositions, sizeAfterMove } from "lib/squadrons";
+import { berthTakes, describeFacilities } from "lib/carriers";
 import { samePowerSystem } from "lib/power";
 import {
   SOFTWARE,
@@ -173,12 +177,14 @@ function SoftwareEditor(args: {
   );
 }
 
-import { addShip, setOrders, setShipController } from "lib/serverManager";
-import { shipsTakingTeamOrders, teamOrders } from "lib/teamOrders";
+import { addShip, setOrders, setShipController, setSquadron } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
 import { aiCrewsSelector, entitiesSelector } from "state/serverSlice";
 
 type AddShipProps = unknown;
+
+/** The most ships one Add makes: five squadrons' worth. */
+const MAX_BATCH = 100;
 
 export const AddShip: React.FC<AddShipProps> = () => {
   const entities = useAppSelector(entitiesSelector);
@@ -257,10 +263,28 @@ export const AddShip: React.FC<AddShipProps> = () => {
       // A Harrier's holographic hull and the like. Off unless the design says
       // otherwise -- the engineer brings them up.
       featuresOn: defaultFeaturesOn(firstDesign),
+      // The carrier she starts aboard, or null for in space.
+      aboard: null as string | null,
     };
   }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
+  // Several of the design at once, laid out in rows and put in a squadron:
+  // a fleet of a hundred is not built one form at a time.
+  const [batch, setBatch] = useState({ count: "1", squadron: "", spacing: "250" });
+  const [batchProblem, setBatchProblem] = useState<string | null>(null);
+  const batchCount = Math.min(MAX_BATCH, Math.max(1, Math.floor(Number(batch.count) || 1)));
+  // Where a new ship of this design could start aboard: a carrier with a
+  // berth free that takes her tonnage.
+  const carriers = useMemo(() => {
+    const tons = shipDesignTemplates[addShipData.design]?.displacement ?? 0;
+    return entities.ships.filter(
+      (ship) =>
+        ship.flight_deck != null &&
+        ship.flight_deck.berths_free > 0 &&
+        berthTakes(shipDesignTemplates[ship.design], tons),
+    );
+  }, [entities.ships, shipDesignTemplates, addShipData.design]);
 
   useEffect(() => {
     const current =
@@ -291,6 +315,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         orders: current.orders ?? "",
         software: current.software ?? shipDesignTemplates[current.design]?.software ?? [],
         featuresOn: featuresOnFor(current, shipDesignTemplates[current.design]),
+        // A ship on the plot is in space; one in a berth is not on the list.
+        aboard: null,
       };
       setAddShipData(template);
     }
@@ -331,6 +357,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
               orders: ship.orders ?? "",
               software: ship.software ?? shipDesignTemplates[ship.design]?.software ?? [],
               featuresOn: featuresOnFor(ship, shipDesignTemplates[ship.design]),
+              aboard: null,
             });
           }
         }
@@ -376,7 +403,12 @@ export const AddShip: React.FC<AddShipProps> = () => {
       // and `gunnery` is emitted index-aligned with it so weapon N and the
       // skill firing it always carry the same id.  Rows are a UI concept and
       // never go over the wire.
-      const { weapons, gunnery } = expandGroups(addShipData.armament);
+      // Batteries are split by the hull's limit, as the server would, so each
+      // one keeps its own gunner.
+      const { weapons, gunnery } = expandGroups(
+        addShipData.armament,
+        shipDesignTemplates[design]?.displacement ?? 0,
+      );
       const crew = { ...addShipData.crew, gunnery };
       const designWeapons = shipDesignTemplates[design]?.weapons ?? [];
       // Send nothing when the armament is just the design's, so an unmodified
@@ -402,13 +434,44 @@ export const AddShip: React.FC<AddShipProps> = () => {
           ? undefined
           : addShipData.software,
         features_on: addShipData.featuresOn,
+        // Into the carrier's berth rather than space: the scenario file's
+        // `aboard`. Only for a new ship; one on the plot stays there.
+        aboard: shipNames.includes(name) ? undefined : (addShipData.aboard ?? undefined),
       };
 
-      addShip(revision);
+      setBatchProblem(null);
+      const berthsFree = carriers.find((c) => c.name === addShipData.aboard)?.flight_deck?.berths_free;
+      if (!shipNames.includes(name) && addShipData.aboard != null && berthsFree != null && batchCount > berthsFree) {
+        setBatchProblem(`${addShipData.aboard} has ${berthsFree} berth${berthsFree === 1 ? "" : "s"} free; ${batchCount} would not fit.`);
+        return;
+      }
+      if (batchCount > 1 && !shipNames.includes(name)) {
+        const squadronName = batch.squadron.trim();
+        if (squadronName !== "") {
+          const size = sizeAfterMove(entities.ships, addShipData.team, squadronName, []) + batchCount;
+          if (size > MAX_SQUADRON) {
+            setBatchProblem(`A squadron holds at most ${MAX_SQUADRON} ships; ${squadronName} would have ${size}.`);
+            return;
+          }
+        }
+        const names = batchNames(name, batchCount, shipNames);
+        const spacing = Math.max(0, Number(batch.spacing) || 0) * POSITION_SCALE;
+        gridPositions(position, batchCount, spacing).forEach((at, i) =>
+          addShip({ ...revision, name: names[i], position: at }),
+        );
+        // After the ships exist: the server puts only ships it has in a
+        // squadron, and it takes requests in the order they were sent.
+        if (squadronName !== "") {
+          setSquadron(names, squadronName);
+        }
+      } else {
+        addShip(revision);
+      }
       setAddShipData(initialTemplate);
+      setBatch({ ...batch, count: "1" });
       shipNameRef.current!.style.color = "black";
     },
-    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates],
+    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates, batch, batchCount, shipNames, carriers],
   );
 
   // Changing the design changes the allowance, the default armament and, for a
@@ -441,10 +504,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
     [addShipData, setAddShipData],
   );
 
-  const updateOrAddLabel = useMemo(
-    () => (shipNames.includes(addShipData.name) ? "Update" : "Add"),
-    [addShipData.name, shipNames],
-  );
+  const updating = shipNames.includes(addShipData.name);
+  const updateOrAddLabel = updating ? "Update" : batchCount > 1 ? `Add ${batchCount}` : "Add";
 
   return (
     <Accordion id="add-ship-header" title="Add Ship" initialOpen={false} tutorial="builder-add-ship">
@@ -618,6 +679,76 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 ))}
               </select>
             </label>
+            {/* Start her in a carrier's berth. A new ship only, and only
+                where a carrier has room for her. */}
+            {!updating && carriers.length > 0 && (
+              <label
+                className="emissions-toggle"
+                title="Start her aboard this carrier, in a berth, rather than in space. She takes the carrier's position and, if she has none, its team.">
+                Aboard
+                <select
+                  className="team-select"
+                  aria-label="Carrier to start aboard"
+                  value={addShipData.aboard ?? ""}
+                  onChange={(event) =>
+                    setAddShipData({ ...addShipData, aboard: event.target.value || null })
+                  }
+                >
+                  <option value="">In space</option>
+                  {carriers.map((carrier) => (
+                    <option key={carrier.name} value={carrier.name}>
+                      {carrier.name} ({carrier.flight_deck?.berths_free} berth
+                      {carrier.flight_deck?.berths_free === 1 ? "" : "s"} free)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {/* How many to add. A new ship only: an existing one is updated
+                alone. */}
+            {!updating && (
+              <label
+                className="emissions-toggle"
+                title="Add this many of the design at once, named from the name above (Lance 01, Lance 02, ...) and laid out five abreast around the position.">
+                Count
+                <input
+                  className="control-input add-ship-count"
+                  type="number"
+                  min={1}
+                  max={MAX_BATCH}
+                  aria-label="How many to add"
+                  value={batch.count}
+                  onChange={(event) => setBatch({ ...batch, count: event.target.value })}
+                />
+              </label>
+            )}
+            {!updating && batchCount > 1 && (
+              <>
+                <label className="emissions-toggle" title="Put them all in this squadron of their team. Blank for none.">
+                  Squadron
+                  <input
+                    className="control-input add-ship-squadron"
+                    type="text"
+                    maxLength={40}
+                    aria-label="Squadron for the new ships"
+                    placeholder="None"
+                    value={batch.squadron}
+                    onChange={(event) => setBatch({ ...batch, squadron: event.target.value })}
+                  />
+                </label>
+                <label className="emissions-toggle" title="How far apart they start, in km. Short range is 1,250 km.">
+                  Spacing (km)
+                  <input
+                    className="control-input add-ship-count"
+                    type="number"
+                    min={0}
+                    aria-label="Spacing in km"
+                    value={batch.spacing}
+                    onChange={(event) => setBatch({ ...batch, spacing: event.target.value })}
+                  />
+                </label>
+              </>
+            )}
             {/* A game without AI crews shows nothing about them. */}
             {aiCrews && (
               <>
@@ -666,6 +797,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
           type="submit"
           value={updateOrAddLabel}
         />
+        {batchProblem != null && <p className="squadrons-problem">{batchProblem}</p>}
       </form>
       {aiCrews && <AiTeams ships={entities.ships} />}
       <SideCosts ships={entities.ships} designs={shipDesignTemplates} />
@@ -713,10 +845,9 @@ function SideCosts(args: { ships: Ship[]; designs: ShipDesignTemplates }) {
  * one of them over, unticking takes them all back. Single ships are set in the
  * ship form.
  *
- * A ticked team gets one orders box: its squadron's orders. Orders live on
- * ships, so the box shows what most of the team's ships carry and writes to
- * every ship following it; a ship given orders of her own in the ship form
- * keeps them.
+ * A ticked team gets one orders box: its fleet's orders, which every ship
+ * of the team carries. A ship's own orders, set in the ship form, are kept
+ * alongside them.
  */
 function AiTeams(args: { ships: Ship[] }) {
   const teams = TEAMS.filter((team) => args.ships.some((ship) => ship.team === team));
@@ -752,23 +883,23 @@ function AiTeams(args: { ships: Ship[] }) {
   );
 }
 
-/** One AI-crewed team's orders, given to every ship following them. */
+/** One AI-crewed team's fleet orders, which every ship of the team carries. */
 function TeamOrdersBox(args: { team: Team; ships: Ship[] }) {
-  const current = teamOrders(args.ships);
-  const [draft, setDraft] = useState(current.orders);
-  // Someone changed a ship's orders: show the team's as they now stand.
-  useEffect(() => setDraft(current.orders), [current.orders]);
+  const current = args.ships.find((ship) => ship.fleet_orders)?.fleet_orders ?? "";
+  const [draft, setDraft] = useState(current);
+  // Someone changed the orders: show them as they now stand.
+  useEffect(() => setDraft(current), [current]);
 
   const commit = () => {
-    if (draft.trim() === current.orders) {
+    if (draft.trim() === current || args.ships.length === 0) {
       return;
     }
-    shipsTakingTeamOrders(args.ships).forEach((name) => setOrders(name, draft));
+    setOrders(args.ships[0].name, draft, "Fleet");
   };
 
   return (
     <label className="add-ship-orders team-orders" style={{ color: TEAM_CSS[args.team] }}>
-      {args.team} team&apos;s orders
+      {args.team} fleet&apos;s orders
       <textarea
         className="ship-command-orders-text"
         rows={2}
@@ -777,13 +908,6 @@ function TeamOrdersBox(args: { team: Team; ships: Ship[] }) {
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
       />
-      {current.own.length > 0 && (
-        <span className="team-orders-note">
-          {current.following.length} of {args.ships.length} ships follow these;{" "}
-          {current.own.join(", ")} {current.own.length === 1 ? "has her" : "have their"} own, set in the
-          ship form, and keep{current.own.length === 1 ? "s" : ""} them.
-        </span>
-      )}
     </label>
   );
 }
@@ -808,10 +932,11 @@ function HardpointList(args: {
   setGroups: (groups: WeaponGroup[]) => void;
 }) {
   const displacement = args.design?.displacement ?? 0;
+  const designTl = args.design?.tl ?? 0;
 
   const report = useMemo(
-    () => checkAllowance(args.groups, displacement),
-    [args.groups, displacement],
+    () => checkAllowance(args.groups, displacement, designTl),
+    [args.groups, displacement, designTl],
   );
 
   const bulkGunnery = useMemo(() => commonGunnery(args.groups), [args.groups]);
@@ -979,6 +1104,11 @@ function HardpointList(args: {
               type="number"
               min={0}
               aria-label={"Number of mounts in group " + (index + 1)}
+              title={
+                group.battery
+                  ? `${group.count} mounts in batteries of up to ${batteryLimit(displacement)}`
+                  : undefined
+              }
               value={empty ? "" : group.count}
               disabled={empty}
               onChange={(event) => handleCountChange(index, event.target.value)}
@@ -1170,6 +1300,17 @@ const WeaponDetailDialog = (props: {
         <div className="weapon-detail-summary">
           {group.count} x {describeGroupGuns({ ...group, guns })}
         </div>
+        {mount != null && canBeBattery(mount) && (
+          <label className="weapon-detail-modifier weapon-detail-battery">
+            <input
+              type="checkbox"
+              checked={group.battery ?? false}
+              onChange={() => onChange({ ...group, battery: !(group.battery ?? false) })}
+            />
+            Fire as batteries: one gunner and one target per battery, each mount rolling its own
+            attack (Imperial Navy p. 113)
+          </label>
+        )}
 
         {guns.map((gun, gunIndex) => (
           <div className="weapon-detail-gun" key={"detail-gun-" + gunIndex}>
@@ -1246,21 +1387,15 @@ const ShipDesignDetails = (render: {
     }
     return designs[render.content];
   }, [designs, render.content]);
-  const compressed = useMemo(
-    () => Object.values(compressedWeapons(design?.weapons ?? null)),
-    [design],
-  );
+  // By mount, however the design splits them into batteries: "200 Triple
+  // Beam Turrets in 13 batteries".
+  const compressed = useMemo(() => armament(design?.weapons ?? null, design?.tl ?? 0), [design]);
   const describeWeapon = useMemo(
-    () => (weapon: { kind: string; mount: WeaponMount; total: number; guns?: Gun[] }) => {
-      const weapon_name = weaponToString(
-        weapon.guns != null
-          ? { mount: weapon.mount, guns: weapon.guns }
-          : createWeapon(weapon.kind, weapon.mount),
-      );
-
-      const [quant, suffix] =
-        weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
-      return `${quant} ${weapon_name}${suffix}`;
+    () => (line: ArmamentLine) => {
+      const [quant, suffix] = line.mounts === 1 ? ["a", ""] : [line.mounts, "s"];
+      const batteries =
+        line.batteries === 0 ? "" : ` in ${line.batteries} batter${line.batteries === 1 ? "y" : "ies"}`;
+      return `${quant} ${line.name}${suffix}${batteries}`;
     },
     [],
   );
@@ -1291,10 +1426,14 @@ const ShipDesignDetails = (render: {
     <>
       <h3>{design.name}</h3>
       <div className="ship-design-description-tooltip">
-        {design.displacement} tons with {design.hull} hull points and{" "}
-        {design.armor} armor.&nbsp;
+        {design.displacement} tons with {design.hull} hull points
+        {hullPointsOptions(design.displacement).includes(design.hull)
+          ? ""
+          : ` (High Guard's formula gives ${hullPointsOptions(design.displacement)[0]} plain)`}{" "}
+        and {design.armor} armor.&nbsp;
         {design.power} power back {design.maneuver}G thrust and jump{" "}
         {design.jump}. {weaponDesc}.
+        {describeFacilities(design) !== "" ? ` Carries craft: ${describeFacilities(design)}.` : ""}
         {design.cost_mcr != null ? ` Price ${formatMcr(design.cost_mcr)}.` : " Price not recorded."}
       </div>
     </>

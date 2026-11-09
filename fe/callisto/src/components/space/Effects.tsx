@@ -17,7 +17,10 @@ import {
   toggleResultShip,
   toggleResultCategory,
   clearResultFilters,
+  setResultsView,
+  showShipResults,
 } from "state/uiSlice";
+import { RoundSummaryView } from "components/space/RoundSummary";
 import { messageStyle, messageRole, roleStyle, MessageRole } from "lib/messages";
 import {entitiesSelector} from "state/serverSlice";
 
@@ -522,6 +525,13 @@ function ResultFilter(args: {events: Event[]}) {
 }
 
 /**
+ * The most result lines drawn at once. A round between two big fleets has
+ * thousands, and drawing them all held the page up for seconds; the filter
+ * is how to find the rest.
+ */
+export const MAX_RESULT_LINES = 400;
+
+/**
  * The turn's results.
  *
  * Coloured by category rather than by keyword: the server says what each line
@@ -539,6 +549,9 @@ export function ResultsWindow() {
   const messages = useMemo(() => events?.filter((event) => event.kind === MESSAGE_EVENT) ?? [], [events]);
   const shipFilter = useAppSelector((state) => state.ui.resultShips);
   const categoryFilter = useAppSelector((state) => state.ui.resultCategories);
+  const summary = useAppSelector((state) => state.ui.summary);
+  const view = useAppSelector((state) => state.ui.resultsView);
+  const onShip = useCallback((name: string) => dispatch(showShipResults(name)), [dispatch]);
 
   // Chosen ships and chosen kinds, combining with and: "sensors, on this one
   // hull" is the case the two rows exist for. Nothing chosen means everything.
@@ -608,19 +621,40 @@ export function ResultsWindow() {
     );
   }
 
+  // The round added up, or line by line: one window, since there is no room
+  // for a second, and the summary first because at fleet scale a round is
+  // hundreds of lines.
+  const switcher = (
+    <div className="results-view" role="tablist" aria-label="Results view">
+      {(["summary", "details"] as const).map((which) => (
+        <button
+          key={which}
+          type="button"
+          role="tab"
+          aria-selected={view === which}
+          className={view === which ? "results-view-tab results-view-on" : "results-view-tab"}
+          onClick={() => dispatch(setResultsView(which))}>
+          {which === "summary" ? "Summary" : "Details"}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div id="results-window" className="computer-window" data-tutorial="results">
       {heading}
-      {messages.length === 0 && <h2>No results</h2>}
-      {messages.length > 0 && <ResultFilter events={messages} />}
-      {messages.length > 0 && shown.length === 0 && (
+      {switcher}
+      {view === "summary" && <RoundSummaryView summary={summary} onShip={onShip} />}
+      {view === "details" && messages.length === 0 && <h2>No results</h2>}
+      {view === "details" && messages.length > 0 && <ResultFilter events={messages} />}
+      {view === "details" && messages.length > 0 && shown.length === 0 && (
         <p className="sensor-empty">Nothing matches the filter.</p>
       )}
       {/* A tick or a cross against everything that was a check, so a round
           can be read at a glance. Lines that merely report something are
           indented to the same text column rather than sitting under the
           marks. */}
-      {shown.map((msg, index) => (
+      {view === "details" && shown.slice(0, MAX_RESULT_LINES).map((msg, index) => (
         <p key={"msg-" + index} className="result-line" style={messageStyle(msg.category)}>
           {msg.succeeded == null ? (
             <span className="result-mark result-mark-none" aria-hidden="true" />
@@ -641,6 +675,11 @@ export function ResultsWindow() {
           </span>
         </p>
       ))}
+      {view === "details" && shown.length > MAX_RESULT_LINES && (
+        <p className="sensor-empty">
+          {shown.length - MAX_RESULT_LINES} more lines. Choose ships or kinds above to see them.
+        </p>
+      )}
       {/* The arithmetic behind a line, on the line's own hover: a round is
           read for what happened, and the numbers are what you go back for. */}
       <Tooltip id="result-roll" className="console-tip console-tip-figures" />

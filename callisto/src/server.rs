@@ -66,6 +66,9 @@ struct MemberEntry {
   ships: Vec<String>,
   /// Set by the player, cleared for everyone when the round advances.
   ready: bool,
+  /// The player has asked that rounds not advance on their own: the game is
+  /// over on their screen and they have not yet said what next.
+  holding: bool,
 }
 
 impl MemberEntry {
@@ -154,6 +157,10 @@ impl Server {
           let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
           ship.controller = Controller::Human;
           ship.ai_report = None;
+          for craft in &mut ship.embarked {
+            craft.controller = Controller::Human;
+            craft.ai_report = None;
+          }
         }
       };
       to_people(&self.initial_scenario);
@@ -167,15 +174,23 @@ impl Server {
   /// screen. A name that is no ship here is ignored.
   #[must_use]
   pub fn with_ai_ships(mut self, ships: &[String]) -> Self {
+    // The craft aboard a carrier are chosen on the same screen, by name,
+    // and launch under whoever was given them.
+    let assign_one = |ship: &mut crate::ship::Ship| {
+      ship.controller = if ships.contains(&crate::entity::Entity::get_name(ship).to_string()) {
+        Controller::Ai
+      } else {
+        ship.ai_report = None;
+        Controller::Human
+      };
+    };
     let assign = |entities: &Entities| {
-      for (name, ship) in &entities.ships {
+      for ship in entities.ships.values() {
         let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-        ship.controller = if ships.contains(name) {
-          Controller::Ai
-        } else {
-          ship.ai_report = None;
-          Controller::Human
-        };
+        assign_one(&mut ship);
+        for craft in &mut ship.embarked {
+          assign_one(craft);
+        }
       }
     };
     assign(&self.initial_scenario);
@@ -282,6 +297,7 @@ impl ServerMembersTable {
     // and then swaps seats is still done.
     let existing = server_table.table.get(session_key);
     let ready = existing.is_some_and(|entry| entry.ready);
+    let holding = existing.is_some_and(|entry| entry.holding);
     // Nor is it giving up the other ships you answer for; `set_ships` does that.
     let ships = existing.map(|entry| entry.ships.clone()).unwrap_or_default();
     server_table.table.insert(
@@ -292,6 +308,7 @@ impl ServerMembersTable {
         ship,
         ships,
         ready,
+        holding,
       },
     );
   }
@@ -375,6 +392,19 @@ impl ServerMembersTable {
       })
   }
 
+  /// Hold the rounds, or release them: while anyone in the server holds,
+  /// they do not advance on their own. Returns false for a stranger.
+  pub fn set_holding(&mut self, server_id: &str, session_key: &str, holding: bool) -> bool {
+    self
+      .server_members
+      .get_mut(server_id)
+      .and_then(|members| members.table.get_mut(session_key))
+      .is_some_and(|entry| {
+        entry.holding = holding;
+        true
+      })
+  }
+
   /// Clear everyone's ready flag, for the start of a new round.
   pub fn clear_ready(&mut self, server_id: &str) {
     if let Some(members) = self.server_members.get_mut(server_id) {
@@ -384,9 +414,9 @@ impl ServerMembersTable {
     }
   }
 
-  /// Whether the round should advance on its own: nobody is refereeing, at
-  /// least one player holds a ship, and every player holding a ship has said
-  /// Ready.
+  /// Whether the round should advance on its own: nobody is refereeing or
+  /// holding the rounds, at least one player holds a ship, and every player
+  /// holding a ship has said Ready.
   ///
   /// Observers are not asked -- they have no orders to give. With a referee
   /// this is always false: the referee presses Next Round, as before.
@@ -394,7 +424,9 @@ impl ServerMembersTable {
   pub fn everyone_ready(&self, server_id: &str) -> bool {
     self.server_members.get(server_id).is_some_and(|members| {
       let mut crews = members.table.values().filter(|entry| entry.holds_ships()).peekable();
-      !members.table.values().any(is_referee) && crews.peek().is_some() && crews.all(|entry| entry.ready)
+      !members.table.values().any(|entry| is_referee(entry) || entry.holding)
+        && crews.peek().is_some()
+        && crews.all(|entry| entry.ready)
     })
   }
 
@@ -499,6 +531,37 @@ mod ai_tests {
         .controller,
       Controller::Human
     );
+  }
+
+  /// A reset puts a launched craft back in her berth, and the new-game
+  /// screen's choice reaches the craft aboard.
+  #[tokio::test]
+  async fn a_reset_puts_the_craft_back_aboard() {
+    config_test_ship_templates().await;
+    let server = Server::new("game", "./scenarios/Keelhaven.json")
+      .await
+      .with_ai_ships(&["Sirocco".to_string(), "Gale 01".to_string()]);
+    {
+      let mut entities = server.get_unlocked_entities().unwrap();
+      let craft = entities.ships["Sirocco"]
+        .write()
+        .unwrap()
+        .release("Gale 01", Vec3::zero())
+        .unwrap();
+      assert_eq!(craft.controller, Controller::Ai, "chosen for the AI in her berth");
+      entities
+        .ships
+        .insert("Gale 01".to_string(), std::sync::Arc::new(std::sync::RwLock::new(craft)));
+      assert_eq!(entities.ships["Sirocco"].read().unwrap().embarked.len(), 79);
+    }
+    server.reset();
+    let entities = server.get_unlocked_entities().unwrap();
+    assert!(!entities.ships.contains_key("Gale 01"));
+    let sirocco = entities.ships["Sirocco"].read().unwrap();
+    assert_eq!(sirocco.embarked.len(), 80);
+    let gale = sirocco.craft_aboard("Gale 01").unwrap();
+    assert_eq!(gale.controller, Controller::Ai);
+    assert_eq!(sirocco.craft_aboard("Gale 02").unwrap().controller, Controller::Human);
   }
 
   /// The new-game screen's choice decides who crews each ship, whatever the
@@ -677,6 +740,47 @@ mod membership_tests {
     members.set_ships("s", "key-fc", vec!["Executor".to_string()]);
     members.set_ready("s", "key-fc", true);
     assert!(members.everyone_ready("s"), "the commander's one Ready covers the side");
+  }
+
+  /// A squadron commander aboard her flagship is a captain who answers for
+  /// the whole squadron: not the referee, and one Ready covers every ship.
+  #[test]
+  fn a_squadron_commander_holds_the_squadron_from_the_flagship() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update(
+      "s",
+      "key-sc",
+      "sc@example.com",
+      vec![Role::Captain, Role::SquadronCommand],
+      Some("Lance 1".to_string()),
+    );
+    members.set_ships("s", "key-sc", vec!["Lance 1".to_string(), "Lance 2".to_string()]);
+    assert!(!members.has_referee("s"));
+    members.set_ready("s", "key-sc", true);
+    assert!(members.everyone_ready("s"));
+  }
+
+  /// A player holding the rounds -- the game over on their screen -- stops
+  /// them advancing on their own until they let go.
+  #[test]
+  fn a_hold_stops_the_rounds_until_released() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update(
+      "s",
+      "key-ai",
+      "ai@example.com",
+      vec![Role::General],
+      Some("Executor".to_string()),
+    );
+    members.update("s", "key-watcher", "w@example.com", vec![Role::Observer], None);
+    members.set_ready("s", "key-ai", true);
+    assert!(members.everyone_ready("s"));
+    assert!(members.set_holding("s", "key-watcher", true));
+    assert!(!members.everyone_ready("s"), "held");
+    members.set_holding("s", "key-watcher", false);
+    assert!(members.everyone_ready("s"));
   }
 
   #[test]

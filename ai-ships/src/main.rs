@@ -46,11 +46,12 @@ struct Args {
   #[arg(long, env = "CALLISTO_AI_ALLOWED_CALLERS", value_delimiter = ',')]
   allowed_callers: Vec<String>,
 
-  /// Who decides for the ships: `network`, the trained network built into
-  /// the service; a model (`gemini`, `gemini:<model>`, `claude`,
+  /// Who decides for the ships: `admiral:gemini` (the default), Gemini
+  /// writing squadron scripts from the orders and the network fighting them;
+  /// `network`, the trained network alone, which ignores orders; a model (`gemini`, `gemini:<model>`, `claude`,
   /// `claude:<model>`, `deepseek`, `maas:<publisher>/<model>`); or a
   /// baseline (`close`, `hold`, `idle`).
-  #[arg(long, env = "CALLISTO_AI_MODEL", default_value = "network")]
+  #[arg(long, env = "CALLISTO_AI_MODEL", default_value = "admiral:gemini")]
   model: String,
 
   /// The GCP project the model calls are billed to. Defaults to the
@@ -137,7 +138,7 @@ async fn main() {
   };
   info!("(main) Backend {}, logging in with {:?}.", config.backend, config.credential);
 
-  let vertex = match ModelSpec::parse(&args.model) {
+  let vertex = match llm::model_of(&args.model) {
     Some(_) => Some(Arc::new(
       Vertex::new(args.gcp_project.as_deref(), &args.vertex_region)
         .await
@@ -164,6 +165,17 @@ async fn main() {
             .with_system(system)
             .with_call_log(game, Box::new(file)),
         );
+      }
+    }
+    // A fleet commander records its calls the same way.
+    if let (Some(spec), Some(vertex), Some(dir), true) = (
+      llm::model_of(&model),
+      vertex.as_ref(),
+      game_log_dir.as_ref(),
+      model.starts_with("admiral:"),
+    ) {
+      if let (Some(file), Some(net)) = (call_log(dir, game, side), ai_ships::network::commander::built_in()) {
+        return Box::new(ai_ships::admiral::Admiral::new(net, Arc::clone(vertex), spec).with_call_log(Box::new(file)));
       }
     }
     llm::named(&model, 0, vertex.as_ref()).expect("checked at startup")

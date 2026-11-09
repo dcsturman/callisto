@@ -12,6 +12,7 @@ import FixedMount from "assets/icons/fixed-mount.svg?react";
 import SmallBay from "assets/icons/bay-s.svg?react";
 import MediumBay from "assets/icons/bay-m.svg?react";
 import LargeBay from "assets/icons/bay-l.svg?react";
+import Spinal from "assets/icons/spinal.svg?react";
 
 /**
  * One weapon mount, drawn the way the gunner's own buttons draw it: the mount
@@ -70,6 +71,10 @@ function mountIcon(weapon: Weapon): React.FunctionComponent<React.SVGProps<SVGSV
   }
   if ("Bay" in mount) {
     return mount.Bay === "Large" ? LargeBay : mount.Bay === "Medium" ? MediumBay : SmallBay;
+  }
+  // A spinal has its own icon: a barrel the length of the hull.
+  if ("Spinal" in mount) {
+    return Spinal;
   }
   // A point-defence battery has no icon of its own; a turret is close enough.
   return Turret1;

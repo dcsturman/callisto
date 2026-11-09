@@ -7,6 +7,7 @@ import { useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { isReferee } from "lib/view";
 import { ShipNameTag, WithShipNames } from "components/controls/ShipNameTag";
+import { aboardSummary } from "lib/carriers";
 
 /** One AI side: its ships, and what their captains last said. */
 interface Side {
@@ -50,10 +51,11 @@ export function FleetComms() {
   const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  const squadronTeam = useAppSelector((state) => state.user.squadron?.team ?? null);
 
   const referee = isReferee(roles, shipName);
   // A fleet commander hears their own team, as a crew does.
-  const myTeam = fleetTeam ?? entities.ships.find((ship) => ship.name === shipName)?.team;
+  const myTeam = fleetTeam ?? squadronTeam ?? entities.ships.find((ship) => ship.name === shipName)?.team;
 
   const sides = useMemo(() => {
     const byKey = new Map<string, Side>();
@@ -97,7 +99,11 @@ export function FleetComms() {
               )}
               {side.ships.map((ship) => (
                 <p key={ship.name} className="fleet-comms-line">
-                  <ShipNameTag ship={ship} />:{" "}
+                  <ShipNameTag ship={ship} />
+                  {aboardSummary(ship) != null && (
+                    <span className="fleet-comms-aboard"> ({aboardSummary(ship)})</span>
+                  )}
+                  :{" "}
                   {ship.ai_report?.status === "Deciding" ? (
                     "\u2026"
                   ) : ship.ai_report?.rationale != null ? (

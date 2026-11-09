@@ -8,7 +8,9 @@
 //!
 //! Sides are named as the backend names them: a team (`Red`, `Blue`, `Green`,
 //! `Gold`), or `ship:<name>` for a ship on no team. Any side not named plays
-//! `--default`. Commanders: `idle`, `hold`, `close`, `random`,
+//! `--default`. Commanders: `network` (the built-in trained network),
+//! `side:<file.cside>`, `fleet:<directive.json>`, `idle`, `hold`, `close`,
+//! `squadron`, `spread`, `charger`, `kiter`, `random`,
 //! `replay:<log>:<side>`, or a model: `gemini`, `gemini:<model>`, `claude`,
 //! `claude:<model>`. A model needs Google credentials (`gcloud auth
 //! application-default login`) and a project (`--project` or

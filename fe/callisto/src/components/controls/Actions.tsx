@@ -9,6 +9,14 @@ export type ActionType = {
     fire: FireState;
     unfire: UnfireState;
     pointDefense: PointDefenseState;
+    /**
+     * Mounts to reload this round, in the order they were chosen: spare
+     * gunners take them in that order, and the rest are done by the mount's
+     * own gunner instead of firing. Absent in state written before reloads.
+     */
+    reload?: number[];
+    /** Reloads withdrawn and not yet seen gone from the server. Transient. */
+    unreload?: number[];
     /** One slot per engineer, on the same terms. */
     engineers: EngineerState[];
     /**
@@ -23,6 +31,25 @@ export type ActionType = {
     // Action" button (cached on `ship.leadership_points`); end-of-turn Phase 0
     // truncates this list to the rolled N.
     leadershipCheck: { boosts: BoostTarget[] } | null;
+    /**
+     * How many of the frozen watch the captain revives as the round ends
+     * (High Guard p. 27). The captain's action for the round, in place of the
+     * leadership check: queuing one drops the other. `null` is none.
+     */
+    reviveWatch?: number | null;
+    /** A revive withdrawn and not yet seen gone from the server. Transient. */
+    clearRevive?: boolean;
+    /**
+     * The craft the captain launches this round, by name (carrier only). A
+     * new list replaces the last; `null` is none queued.
+     */
+    launch?: string[] | null;
+    /** A launch withdrawn and not yet seen gone from the server. Transient. */
+    clearLaunch?: boolean;
+    /** The carrier the pilot is landing on (craft only). `null` is none. */
+    land?: string | null;
+    /** A landing withdrawn and not yet seen gone from the server. Transient. */
+    clearLand?: boolean;
     // Transient anti-actions. `clearSensors` and `clearEngineers` hold the
     // crew positions whose queued action the user explicitly cancelled, and
     // are emitted as `ClearSensorAction` / `ClearEngineerAction` naming that
@@ -162,6 +189,11 @@ export function actionPayload(actions: ActionType) {
     if (value.pointDefense) {
       fire_actions = [...fire_actions, ...value.pointDefense.map((pointDefenseAction) => pointDefenseActionPayload(pointDefenseAction))];
     }
+    // Reloads in the order they were chosen, which is the order the server
+    // hands out spare gunners.
+    for (const weapon_id of value.reload ?? []) {
+      fire_actions.push({ReloadAction: {weapon_id}});
+    }
     // Anti-actions go last, after everything they might cancel. The client
     // re-sends its whole action list each time, so a delete placed before the
     // point-defence orders was applied and then immediately undone by the very
@@ -170,6 +202,9 @@ export function actionPayload(actions: ActionType) {
     // this only because they happened to be listed before the delete.
     if (value.unfire) {
       fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
+    }
+    for (const weapon_id of value.unreload ?? []) {
+      fire_actions.push({DeleteReloadAction: {weapon_id}});
     }
     // One action per operator and per engineer, each naming whose it is.
     (value.sensors ?? []).forEach((sensor, operator) => {
@@ -202,6 +237,27 @@ export function actionPayload(actions: ActionType) {
           boosts: value.leadershipCheck.boosts.map(boostTargetToWire),
         },
       });
+    }
+
+    // The captain's revive, or its withdrawal: a count of 0 is how the
+    // server is told to forget one.
+    if (value.reviveWatch != null && value.reviveWatch > 0) {
+      fire_actions.push({ReviveWatch: {count: value.reviveWatch}});
+    } else if (value.clearRevive) {
+      fire_actions.push({ReviveWatch: {count: 0}});
+    }
+
+    // Flight operations: the carrier's Launch, withdrawn with an empty
+    // list, and the craft's Land, withdrawn with ClearLand.
+    if (value.launch != null && value.launch.length > 0) {
+      fire_actions.push({Launch: {craft: value.launch}});
+    } else if (value.clearLaunch) {
+      fire_actions.push({Launch: {craft: []}});
+    }
+    if (value.land != null && value.land !== "") {
+      fire_actions.push({Land: {carrier: value.land}});
+    } else if (value.clearLand) {
+      fire_actions.push("ClearLand");
     }
 
     // Anti-actions: explicit "strip queued sensor/engineer/leadership"
@@ -377,6 +433,9 @@ export function payloadToAction(payload: object[]): ActionType {
       | {JamComms: string}
       | {Repair: {system: string}}
       | {LeadershipCheck: {boosts: unknown[]}}
+      | {ReviveWatch: {count: number}}
+      | {Launch: {craft: string[]}}
+      | {Land: {carrier: string}}
     )[];
     if (!actions) {
       continue;
@@ -426,6 +485,13 @@ export function payloadToAction(payload: object[]): ActionType {
         }
       });
     result[shipName] = {...result[shipName], pointDefense: point_defense_actions};
+
+    const reload: number[] = actions.flatMap((action) =>
+      typeof action !== "string" && Object.hasOwn(action, "ReloadAction")
+        ? [(action as unknown as {ReloadAction: {weapon_id: number}}).ReloadAction.weapon_id]
+        : [],
+    );
+    result[shipName] = {...result[shipName], reload, unreload: []};
 
     // Sensor and engineer actions each name the crew member working them, so
     // they go back into that person's slot. A list with a hole in it is a
@@ -500,12 +566,37 @@ export function payloadToAction(payload: object[]): ActionType {
     }
     result[shipName] = {...result[shipName], leadershipCheck};
 
+    // The captain's revive, if one is queued.
+    const revive = actions.find(
+      (action): action is {ReviveWatch: {count: number}} =>
+        typeof action === "object" && Object.hasOwn(action, "ReviveWatch")
+    );
+    result[shipName] = {...result[shipName], reviveWatch: revive?.ReviveWatch.count ?? null};
+
+    // The flight orders, if any are queued.
+    const launch = actions.find(
+      (action): action is {Launch: {craft: string[]}} =>
+        typeof action === "object" && Object.hasOwn(action, "Launch")
+    );
+    const land = actions.find(
+      (action): action is {Land: {carrier: string}} =>
+        typeof action === "object" && Object.hasOwn(action, "Land")
+    );
+    result[shipName] = {
+      ...result[shipName],
+      launch: launch == null || launch.Launch.craft.length === 0 ? null : launch.Launch.craft,
+      land: land?.Land.carrier ?? null,
+    };
+
     // Anti-action flags are transient client-only state; server never echoes them.
     result[shipName] = {
       ...result[shipName],
       clearSensors: [],
       clearEngineers: [],
       clearLeadership: false,
+      clearRevive: false,
+      clearLaunch: false,
+      clearLand: false,
     };
   }
   return result;

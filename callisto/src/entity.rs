@@ -1,8 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, EngineerActionResult, MessageCategory};
-use rand::seq::SliceRandom;
+use crate::payloads::{EffectMsg, EngineerActionResult, MessageCategory, OrdersScope};
 use rand::RngCore;
 
 use serde_with::serde_as;
@@ -16,22 +15,22 @@ use crate::action::{
   ShipAction, ShipActionList,
 };
 use crate::combat::{
-  apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
-  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, HitMods,
-  STANDARD_ROLL_THRESHOLD,
+  aim_fire_actions, apply_crit, build_point_defense_tallies, create_sand_counts, find_range_band, interception_cost,
+  land_fire, point_defense_messages, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, volley,
+  Fire, HitMods, STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{
-  countermeasures_mod, detection_modifier_terms, detection_modifiers, Emissions, SENSOR_QUALITY_MOD,
+  countermeasures_mod, detection_modifier_terms, detection_modifiers, jam_operators, Emissions, SENSOR_QUALITY_MOD,
 };
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
   with_ship_templates_for_deserialization, BridgeStation, Controller, FlightPlan, Post, PowerSystem, Range, Ship,
-  ShipDesignTemplate, ShipSystem,
+  ShipDesignTemplate, ShipSystem, Team, MAX_SQUADRON,
 };
 use crate::software::SoftwareKind;
 
@@ -99,6 +98,11 @@ pub struct Entities {
   /// as if destroyed, and an Escape side's whole goal is the difference. On
   /// the wire for the victory screen; never in a scenario file.
   pub departed: Vec<Departure>,
+
+  /// The ships destroyed in the last `update_all`, as they were when they
+  /// went: what was done to them (`Ship::taken`) is the round summary's, and
+  /// the live list no longer has them. Never on the wire.
+  pub wrecks: Vec<Ship>,
 }
 
 /// A ship that jumped out of the scenario.
@@ -182,6 +186,22 @@ impl PartialEq for Entities {
 }
 
 /// What a ship is giving off this round, for anyone looking for it.
+/// The longest a squadron's name may be.
+const MAX_SQUADRON_NAME: usize = 40;
+
+/// A squadron name as given, trimmed, if it is one: not empty and not too
+/// long.
+fn squadron_name(name: &str) -> Result<&str, String> {
+  let name = name.trim();
+  if name.is_empty() {
+    return Err("A squadron needs a name.".to_string());
+  }
+  if name.chars().count() > MAX_SQUADRON_NAME {
+    return Err(format!("A squadron's name is at most {MAX_SQUADRON_NAME} characters."));
+  }
+  Ok(name)
+}
+
 pub(crate) fn emissions_of(ship: &Ship, fired: bool) -> Emissions {
   Emissions {
     active_sensors: ship.active_sensors,
@@ -207,6 +227,9 @@ pub(crate) fn detection_terms(observer: &Ship, target: &Ship, emissions: Emissio
     // check: the watch as a whole is looking, and the best of them is who
     // notices.
     ("sensor skill", i16::from(observer.get_crew().get_sensors())),
+    // What the watch carries into every check: crew lost to criticals and
+    // radiation (High Guard pp. 27, 31).
+    ("crew", observer.crew_dm()),
   ];
   terms.extend(detection_modifier_terms(
     observer.design.tl,
@@ -378,13 +401,17 @@ impl Entities {
   #[must_use]
   pub fn sides(&self) -> Vec<ScenarioSide> {
     let mut sides = std::collections::BTreeMap::<String, Vec<ScenarioShip>>::new();
+    // The craft aboard a carrier are the side's ships too: they are what the
+    // new-game screen hands to the AI or to people, and they launch later.
     for ship in self.ships.values() {
       let ship = ship.read().unwrap();
-      let team = ship.team.map_or_else(|| "Unaligned".to_string(), |team| format!("{team:?}"));
-      sides.entry(team).or_default().push(ScenarioShip {
-        name: ship.get_name().to_string(),
-        ai: ship.controller == Controller::Ai,
-      });
+      for ship in std::iter::once(&*ship).chain(&ship.embarked) {
+        let team = ship.team.map_or_else(|| "Unaligned".to_string(), |team| format!("{team:?}"));
+        sides.entry(team).or_default().push(ScenarioShip {
+          name: ship.get_name().to_string(),
+          ai: ship.controller == Controller::Ai,
+        });
+      }
     }
     sides
       .into_iter()
@@ -407,6 +434,7 @@ impl Entities {
       filename: String::new(),
       round: 1,
       departed: Vec::new(),
+      wrecks: Vec::new(),
     }
   }
 
@@ -618,7 +646,24 @@ impl Entities {
       missiles: Vec<Missile>,
     }
 
-    let mut ships: Vec<_> = self.ships.values().map(|s| s.read().unwrap().clone()).collect();
+    // Every ship at the top level, the craft aboard a carrier marked `aboard`
+    // rather than nested, so a file reads the same way whoever wrote it.
+    let mut ships: Vec<Ship> = self
+      .ships
+      .values()
+      .flat_map(|s| {
+        let mut carrier = s.read().unwrap().clone();
+        let name = carrier.get_name().to_string();
+        let craft: Vec<Ship> = std::mem::take(&mut carrier.embarked)
+          .into_iter()
+          .map(|mut craft| {
+            craft.aboard = Some(name.clone());
+            craft
+          })
+          .collect();
+        std::iter::once(carrier).chain(craft)
+      })
+      .collect();
     let mut planets: Vec<_> = self.planets.values().map(|p| p.read().unwrap().clone()).collect();
     let mut missiles: Vec<_> = self.missiles.values().map(|m| m.read().unwrap().clone()).collect();
     // Stable ordering matches the existing wire-level Serialize impl, so file diffs are clean.
@@ -698,18 +743,84 @@ impl Entities {
     }
   }
 
+  /// Whether a `tons`-ton craft called `name` could go aboard `carrier` now:
+  /// a carrier on the plot, not herself, with a berth her size free.
+  ///
+  /// # Errors
+  /// Returns the reason she cannot.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  pub fn berth_check(&self, name: &str, carrier: &str, tons: u32) -> Result<(), String> {
+    if name == carrier {
+      return Err(format!("{name} cannot be aboard herself."));
+    }
+    let host = self
+      .ships
+      .get(carrier)
+      .ok_or_else(|| format!("There is no ship named {carrier} to be aboard."))?
+      .read()
+      .unwrap();
+    if !host.is_carrier() {
+      return Err(format!("{carrier} has no docking space or hangar."));
+    }
+    if !host.has_berth_for(tons) {
+      return Err(format!("{carrier} has no free berth for a {tons}-ton craft."));
+    }
+    Ok(())
+  }
+
+  /// Take the ship named `name` off the plot and into a berth of `carrier`,
+  /// as a scenario's `aboard` does at load. She is refused a carrier that is
+  /// not on the plot, is herself, has no berth her size free, or is no
+  /// carrier at all, and stays where she is.
+  ///
+  /// # Errors
+  /// Returns an error if the ship or carrier is unknown or the berth is not there.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  pub fn embark_ship(&mut self, name: &str, carrier: &str) -> Result<(), String> {
+    let tons = self
+      .ships
+      .get(name)
+      .ok_or_else(|| format!("There is no ship named {name}."))?
+      .read()
+      .unwrap()
+      .design
+      .displacement;
+    self.berth_check(name, carrier, tons)?;
+    let host = self
+      .ships
+      .get(carrier)
+      .cloned()
+      .ok_or_else(|| format!("There is no ship named {carrier}."))?;
+    let craft = self
+      .ships
+      .remove(name)
+      .ok_or_else(|| format!("There is no ship named {name}."))?;
+    // Nothing else holds the ship: the Arc was only ever ours.
+    let craft =
+      Arc::try_unwrap(craft).map_or_else(|shared| shared.read().unwrap().clone(), |lock| lock.into_inner().unwrap());
+    self.actions.retain(|(owner, _)| owner != name);
+    host.write().unwrap().embark(craft);
+    Ok(())
+  }
+
   /// Drop every queued action that addresses a weapon on `ship_name`.
   ///
-  /// That is the ship's own fire and point-defense orders, plus any boost a
+  /// That is the ship's own fire, point-defense and reload orders, plus any boost a
   /// captain queued against one of its weapons — those live under the
   /// *captain's* ship, so every action list has to be swept, not just this
   /// ship's.  Non-weapon actions (pilot, sensor, engineer) are untouched.
   fn clear_weapon_actions(&mut self, ship_name: &str) {
     for (owner, actions) in &mut self.actions {
       actions.retain_mut(|action| match action {
-        ShipAction::FireAction { .. } | ShipAction::PointDefenseAction { .. } | ShipAction::DeleteFireAction { .. } => {
-          owner != ship_name
-        }
+        ShipAction::FireAction { .. }
+        | ShipAction::PointDefenseAction { .. }
+        | ShipAction::DeleteFireAction { .. }
+        | ShipAction::ReloadAction { .. }
+        | ShipAction::DeleteReloadAction { .. } => owner != ship_name,
         ShipAction::LeadershipCheck { boosts } => {
           boosts.retain(|boost| {
             !matches!(boost,
@@ -858,11 +969,15 @@ impl Entities {
     Err(format!("Entity {current} not found."))
   }
 
-  /// Launch a missile from a ship at a ship.
+  /// Launch a salvo of `count` missiles from a ship at a ship.
+  ///
+  /// The salvo is one entity: it flies one path and is resolved missile by
+  /// missile when it arrives.
   ///
   /// # Arguments
   /// * `source` - The ship that is launching the missile.
   /// * `target` - The ship that is the target of the missile.
+  /// * `count` - How many missiles fly in the salvo.
   ///
   /// # Errors
   /// Returns an error if the source ship is not found.
@@ -870,7 +985,7 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
-  pub fn launch_missile(&mut self, source: &str, target: &str, weapon: Weapon) -> Result<(), String> {
+  pub fn launch_missile(&mut self, source: &str, target: &str, weapon: Weapon, count: u16) -> Result<(), String> {
     // Could use a random number generator here for the name but that makes tests flakey (random)
     // So this counter used to distinguish missiles between the same source and target
     let id = self.next_missile_id;
@@ -908,6 +1023,7 @@ impl Entities {
       velocity,
       crate::missile::DEFAULT_BURN,
       weapon,
+      count,
     );
 
     debug!("(Entities.launch_missile) Added missile {}", &name);
@@ -953,7 +1069,8 @@ impl Entities {
   #[allow(clippy::too_many_lines)]
   pub fn fire_actions(
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
-    ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+    reloading: &HashMap<String, Vec<usize>>, ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap,
+    rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Nothing fires without fire control: not the guns, not point defence, not
     // sand. Judged on the snapshot, since everyone fires at once.
@@ -988,7 +1105,7 @@ impl Entities {
     let point_defense_actions = point_defense_actions.as_slice();
 
     // Create a snapshot of all the sand capabilities of each ship.
-    let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions);
+    let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions, reloading);
 
     // Point-defence batteries are automatic: they need no action, no gunner and
     // no decision, so every ship that has one gets a pool whether or not its
@@ -1063,7 +1180,7 @@ impl Entities {
       // missile, so there is no reason to hold any of them back.
       let checks = roll_point_defense_checks(&tallies, rng);
       let pool: u32 = checks.iter().map(|check| check.removed).sum();
-      battery_effects.extend(checks.iter().map(|check| check.message(defender, None)));
+      battery_effects.extend(point_defense_messages(&checks, defender, None));
       debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
       ship.add_point_defense_pool(pool);
       ship.set_point_defense_list(tallies);
@@ -1117,7 +1234,7 @@ impl Entities {
         drop(covering);
         let checks = roll_point_defense_checks(&tallies, rng);
         let pool: u32 = checks.iter().map(|check| check.removed).sum();
-        battery_effects.extend(checks.iter().map(|check| check.message(defender, Some(&ward))));
+        battery_effects.extend(point_defense_messages(&checks, defender, Some(&ward)));
         if pool > 0 {
           ward_ship.write().unwrap().add_point_defense_pool(pool);
           battery_effects.push(EffectMsg::about(
@@ -1129,7 +1246,9 @@ impl Entities {
       }
     }
 
-    let effects = fire_actions
+    // Every attacker fires before any hit a screen could meet lands, so each
+    // defender's screens can be angled at the round's hits (`land_fire`).
+    let fire = fire_actions
       .iter()
       .flat_map(|(attacker, actions)| {
         let Some(attack_ship) = ship_snapshot.get(attacker) else {
@@ -1137,30 +1256,33 @@ impl Entities {
           return vec![];
         };
 
-        let (missiles, effects) =
-          do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
-        // Debit the magazine for what actually left the rails. The snapshot
+        let (missiles, fire) =
+          aim_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
+        // Debit the mount for what actually left the rails. The snapshot
         // the fire actions worked from capped the salvo; this is where the
         // live ship pays for it.
         if let Some(ship) = self.ships.get(attacker) {
           let mut ship = ship.write().unwrap();
           for missile in &missiles {
-            if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
-              ship.magazine.torpedoes = ship.magazine.torpedoes.saturating_sub(1);
+            let kind = if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
+              crate::ship::WeaponType::Torpedo
             } else {
-              ship.magazine.missiles = ship.magazine.missiles.saturating_sub(1);
+              crate::ship::WeaponType::Missile
+            };
+            if let Some(load) = ship.loaded.get_mut(missile.mount).and_then(|load| load.of_mut(kind)) {
+              *load = load.saturating_sub(u32::from(missile.count));
             }
           }
         }
         for missile in missiles {
-          if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon) {
+          if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon, missile.count) {
             warn!("Could not launch missile: {}", msg);
           }
         }
-        effects
+        fire
       })
-      .collect::<Vec<EffectMsg>>();
-    battery_effects.extend(effects);
+      .collect::<Vec<Fire>>();
+    battery_effects.extend(land_fire(fire, &self.ships, rng));
     battery_effects
   }
 
@@ -1252,6 +1374,7 @@ impl Entities {
         let missile_pos = missile.get_position();
         // Captured before the match, whose arm shadows `missile` with its name.
         let launcher = missile.weapon.clone();
+        let count = missile.count;
         let Some(missile_source) = ship_snapshot.get(&missile.source) else {
           warn!(
             "(Entity.update_all) Cannot find source {} for missile. It may have been destroyed.",
@@ -1290,46 +1413,62 @@ impl Entities {
               );
               let mut target = target.write().unwrap();
 
-              // A torpedo costs two points where a missile costs one, so a
-              // ship's point defence stops half as many of them.
+              // Point defence drains its pool missile by missile, whichever
+              // salvo they came in: the pool is the ship's for the round,
+              // not a gunner's against one salvo. A torpedo costs two points
+              // where a missile costs one, so a ship's point defence stops
+              // half as many of them.
               let cost = interception_cost(launcher.primary_kind());
-              let stopped = target.take_interception(cost);
+              let stopped = (0..count).take_while(|_| target.take_interception(cost)).count();
+              let stopped = u16::try_from(stopped).unwrap_or(count);
+              let through = count - stopped;
+              cleanup_missile_list.push(missile.clone());
 
-              // This stops the attack
-              if stopped {
+              let mut effects = Vec::new();
+              if stopped > 0 {
                 debug!(
-                  "(Entity.update_all) Missile {} destroyed by point defense by {}.",
+                  "(Entity.update_all) {stopped} of {count} in salvo {} destroyed by point defense by {}.",
                   missile, target_name
                 );
-                cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                *intercepted.entry((target_name.clone(), what)).or_default() += 1;
-                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }])
-              } else {
-                // The attack gets through point defense
-                // A launched object resolves as the gun that threw it.
+                *intercepted.entry((target_name.clone(), what)).or_default() += u32::from(stopped);
+                target.note_intercepted(missile_source.get_name(), u32::from(stopped));
+                effects.push(EffectMsg::ExhaustedMissile { position: target.get_position() });
+              }
+              if through > 0 {
+                // The rest get through point defence, and each rolls its own
+                // attack: a launched object resolves as the gun that threw it.
                 let Some(firing) = launcher.firing_default() else {
                   warn!("(Entity.update_all) Missile {missile} has no launching gun.");
                   return None;
                 };
-                let effects = attack(
+                // A salvo of one reads as a lone missile always has.
+                let title = (count > 1).then(|| {
+                  let kind = String::from(&firing.kind);
+                  if stopped > 0 {
+                    format!("{kind} salvo ({count}, {stopped} shot down)")
+                  } else {
+                    format!("{kind} salvo ({count})")
+                  }
+                });
+                effects.extend(volley(
                   HitMods {
                     smart: smart_missile_bonus,
                     ..HitMods::default()
                   },
-                  0,
+                  &[],
                   missile_source,
                   &mut target,
                   &firing,
-                  // Missiles cannot do called shots
+                  through,
+                  title.as_deref(),
+                  // Missiles cannot do called shots.
                   None,
                   boost_map,
                   rng,
-                );
-                cleanup_missile_list.push(missile);
-
-                Some(effects)
+                ));
               }
+              Some(effects)
             } else {
               debug!(
                 "(Entity.update_all) Missile {} exhausted at position {:?}.",
@@ -1386,10 +1525,21 @@ impl Entities {
             UpdateAction::ShipDestroyed => {
               debug!("(Entity.update_all) Ship {} destroyed at position {:?}.", name, pos);
               cleanup_ships_list.push(name.to_string());
-              Some(vec![
+              let mut effects = vec![
                 EffectMsg::ShipDestroyed { position: pos },
                 EffectMsg::about(name, MessageCategory::Destruction, "%s destroyed.".to_string()),
-              ])
+              ];
+              // The carrier's loss is her craft's loss: everything in her
+              // berths goes with her.
+              effects.extend(ship.embarked.iter().map(|craft| {
+                EffectMsg::about(
+                  craft.get_name(),
+                  MessageCategory::Destruction,
+                  "%s destroyed in her berth aboard %t.".to_string(),
+                )
+                .at(name)
+              }));
+              Some(effects)
             }
             update => panic!("(Entity.update_all) Unexpected update {update:?} during ship updates."),
           }
@@ -1403,10 +1553,13 @@ impl Entities {
       self.missiles.remove(name);
     }
 
-    for name in &cleanup_ships_list {
-      debug!("(Entity.update_all) Removing ship {}", name);
-      self.ships.remove(name);
-    }
+    self.wrecks = cleanup_ships_list
+      .iter()
+      .filter_map(|name| {
+        debug!("(Entity.update_all) Removing ship {}", name);
+        self.ships.remove(name).map(|ship| ship.read().unwrap().clone())
+      })
+      .collect();
     if !cleanup_ships_list.is_empty() {
       self.prune_ship_references();
       // Anything still flying at a ship that just died has nothing to hit.
@@ -1526,12 +1679,18 @@ impl Entities {
           ShipAction::PointDefenseAction { .. }
           | ShipAction::FireAction { .. }
           | ShipAction::DeleteFireAction { .. }
+          | ShipAction::ReloadAction { .. }
+          | ShipAction::DeleteReloadAction { .. }
           | ShipAction::Jump { .. }
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
           | ShipAction::Repair { .. }
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
+          | ShipAction::ReviveWatch { .. }
+          | ShipAction::Launch { .. }
+          | ShipAction::Land { .. }
+          | ShipAction::ClearLand
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => {
@@ -1558,10 +1717,13 @@ impl Entities {
   // Quality modifiers are the level of sensors as well as skill of the crew.
   // A ship with several operators uses whichever one is on the station this
   // round; one with a single operator has no choice to make and uses them.
+  //
+  // The crew's own DM -- losses and radiation -- rides with the skill, as it
+  // does on every check the crew makes.
   fn sensor_quality_modifiers(&self, ship_name: &str, operator: usize) -> i16 {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
     let skill = ship.get_crew().get_sensors_at(operator);
-    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(skill)
+    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(skill) + ship.crew_dm()
   }
 
   fn sensor_lock(
@@ -1719,7 +1881,80 @@ impl Entities {
   }
 
   fn jam_missiles(&mut self, ship_name: &String, operator: usize, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
-    self.jam_missiles_check(ship_name, Some(operator), boost, rng)
+    let mut effects = self.jam_missiles_check(ship_name, Some(operator), boost, rng);
+    effects.append(&mut self.jam_extra_stations(ship_name, operator, rng));
+    effects
+  }
+
+  /// The other sensor stations a big ship has on duty, "one on-duty sensor
+  /// operator for every full 7,500 tons" (High Guard p. 34), each jamming
+  /// a different salvo. The sensop's own action covered the first; these go
+  /// automatically to the largest other salvoes still inbound, at the same
+  /// skill and without the captain's inspire, one station to a salvo and
+  /// never more stations than salvoes.
+  fn jam_extra_stations(&mut self, ship_name: &String, operator: usize, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let stations = {
+      let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+      jam_operators(ship.design.displacement)
+    };
+    if stations <= 1 {
+      return vec![];
+    }
+    // Largest first; by name among equals, so a seeded run is repeatable.
+    let mut salvoes = self
+      .missiles
+      .iter()
+      .filter(|(_, missile)| missile.read().unwrap().target == *ship_name)
+      .map(|(missile_name, missile)| (missile_name.clone(), missile.read().unwrap().count))
+      .collect::<Vec<_>>();
+    salvoes.sort_unstable_by(|(a_name, a_count), (b_name, b_count)| b_count.cmp(a_count).then(a_name.cmp(b_name)));
+    // The first station took its pick across every salvo; the rest are
+    // one to a salvo, so there are never more jams than salvoes inbound.
+    let extra = usize::from(stations - 1).min(salvoes.len().saturating_sub(1));
+    if extra == 0 {
+      return vec![];
+    }
+    let dm = self.jam_dm(ship_name, Some(operator), 0);
+    let mut effects = Vec::new();
+    for (station, salvo) in salvoes.into_iter().take(extra).enumerate() {
+      let dice = roll_dice(2, rng);
+      let check = i16::from(dice) + dm - 10;
+      let what = format!("jams salvo {} from sensor station {}", salvo.0, station + 2);
+      if check >= 0 {
+        effects.push(sensor_check_effect(
+          ship_name,
+          &what,
+          None,
+          dice,
+          dm,
+          10,
+          &format!("effect {check}"),
+        ));
+        #[allow(clippy::cast_sign_loss)]
+        let num_missiles = (check as usize).max(1);
+        effects.append(&mut self.jam_salvoes(ship_name, &[salvo], num_missiles, rng));
+      } else {
+        effects.push(sensor_check_effect(ship_name, &what, None, dice, dm, 10, "jamming failed"));
+      }
+    }
+    effects
+  }
+
+  /// The DM on a jamming check: the suite and the operator's skill (the
+  /// suite alone when the program is jamming), countermeasures, electronic
+  /// warfare software and the captain's inspire.
+  fn jam_dm(&self, ship_name: &str, operator: Option<usize>, boost: i16) -> i16 {
+    let quality = operator.map_or_else(
+      || {
+        let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+        SENSOR_QUALITY_MOD[ship.current_sensors as usize]
+      },
+      |operator| self.sensor_quality_modifiers(ship_name, operator),
+    );
+    quality
+      + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + self.electronic_warfare_mod(ship_name)
+      + boost
   }
 
   /// One jamming attempt. `operator` is `None` when the computer is doing it
@@ -1728,34 +1963,24 @@ impl Entities {
     &mut self, ship_name: &String, operator: Option<usize>, boost: i16, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
-    // Find all missiles targeting this ship.
-    let targeting_missiles = self
+    // Every salvo targeting this ship, and how many missiles are in it. In
+    // name order, so a seeded run picks the same missiles every time.
+    let mut targeting_salvoes = self
       .missiles
       .iter()
       .filter(|(_, missile)| missile.read().unwrap().target == *ship_name)
-      .map(|(missile_name, _missile)| missile_name.clone())
+      .map(|(missile_name, missile)| (missile_name.clone(), missile.read().unwrap().count))
       .collect::<Vec<_>>();
+    targeting_salvoes.sort_unstable();
 
     let dice = roll_dice(2, rng);
     // No operator means the program is doing it, and brings no skill of its
     // own -- only the suite's own quality.
-    let quality = operator.map_or_else(
-      || {
-        let ship = self.ships.get(ship_name).unwrap().read().unwrap();
-        SENSOR_QUALITY_MOD[ship.current_sensors as usize]
-      },
-      |operator| self.sensor_quality_modifiers(ship_name, operator),
-    );
-    let dm = quality
-      + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
-      + self.electronic_warfare_mod(ship_name)
-      + boost;
+    let dm = self.jam_dm(ship_name, operator, boost);
     let check = i16::from(dice) + dm - 10;
 
     debug!(
-      "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, sensor_quality mod {}, countermeasures mod {} gives an effect of {check}.",
-      quality,
-      countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures),
+      "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, DM {dm} gives an effect of {check}."
     );
 
     if check >= 0 {
@@ -1776,29 +2001,7 @@ impl Entities {
       // Cast is safe because from above check >= 0.
       #[allow(clippy::cast_sign_loss)]
       let num_missiles = (check as usize).max(1);
-      // Randomly pick the missiles that are destroyed.
-      let destroyed = targeting_missiles.choose_multiple(rng, num_missiles).collect::<Vec<_>>();
-      // Create for each destroyed missile an effect (exhaustion) and message.
-      effects.append(
-        &mut destroyed
-          .iter()
-          .flat_map(|missile_name| {
-            let dead_missile = self.missiles.remove(missile_name.as_str()).unwrap();
-            let missile = dead_missile.read().unwrap();
-            [
-              EffectMsg::ExhaustedMissile {
-                position: missile.get_position(),
-              },
-              EffectMsg::about(
-                ship_name,
-                MessageCategory::Destruction,
-                format!("Missile {} destroyed by %s's jamming.", missile.get_name()),
-              ),
-            ]
-          })
-          .collect::<Vec<_>>(),
-      );
-      // Remove the destroyed missiles from the list of all missiles.
+      effects.append(&mut self.jam_salvoes(ship_name, &targeting_salvoes, num_missiles, rng));
     } else {
       // If the EW check failed, just let the users know.
       effects.push(sensor_check_effect(
@@ -1814,6 +2017,57 @@ impl Entities {
         10,
         "jamming failed",
       ));
+    }
+    effects
+  }
+
+  /// Destroy `num_missiles` of the missiles in `salvoes`, picked at random
+  /// from all of them: jamming acts on any missile coming at the ship, not
+  /// on one salvo. A salvo that loses every missile is gone; one that loses
+  /// some flies on with the rest. One line per salvo hit.
+  fn jam_salvoes(
+    &mut self, ship_name: &str, salvoes: &[(String, u16)], num_missiles: usize, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
+    let total: usize = salvoes.iter().map(|(_, count)| usize::from(*count)).sum();
+    // Which missiles, numbered across the salvoes in order, then counted
+    // back into the salvo each belongs to.
+    let mut lost = vec![0u16; salvoes.len()];
+    for pick in rand::seq::index::sample(rng, total, num_missiles.min(total)) {
+      let mut index = pick;
+      for (slot, (_, count)) in salvoes.iter().enumerate() {
+        if index < usize::from(*count) {
+          lost[slot] += 1;
+          break;
+        }
+        index -= usize::from(*count);
+      }
+    }
+
+    let mut effects = Vec::new();
+    for ((name, count), lost) in salvoes.iter().zip(lost) {
+      if lost == 0 {
+        continue;
+      }
+      let Some(salvo) = self.missiles.get(name).cloned() else {
+        continue;
+      };
+      let mut salvo = salvo.write().unwrap();
+      let what = String::from(&salvo.weapon.primary_kind()).to_lowercase();
+      let line = if *count == 1 {
+        format!("Missile {name} destroyed by %s's jamming.")
+      } else {
+        format!("%s's jamming destroys {lost} of the {count} {what}s in salvo {name}.")
+      };
+      effects.push(EffectMsg::ExhaustedMissile {
+        position: salvo.get_position(),
+      });
+      effects.push(EffectMsg::about(ship_name, MessageCategory::Destruction, line));
+      salvo.count -= lost;
+      let empty = salvo.count == 0;
+      drop(salvo);
+      if empty {
+        self.missiles.remove(name);
+      }
     }
     effects
   }
@@ -1947,6 +2201,230 @@ impl Entities {
     Ok(())
   }
 
+  /// Put `ships` in the squadron `squadron` of their team, or take them out of
+  /// theirs (`None`). The ships must all be on one team, the name must be
+  /// usable, and the squadron may hold at most [`MAX_SQUADRON`] ships
+  /// afterwards. Nothing changes if any of that fails.
+  ///
+  /// # Errors
+  /// Returns an error naming what is wrong.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn set_squadron(&self, ships: &[String], squadron: Option<&str>) -> Result<String, String> {
+    // A craft aboard a carrier is not on the plot, so she is reached through
+    // her carrier: she keeps her team, and takes the squadron she will
+    // launch into.
+    let (on_plot, aboard): (Vec<&String>, Vec<&String>) = ships.iter().partition(|name| self.ships.contains_key(*name));
+    let carriers_of = aboard
+      .iter()
+      .map(|name| {
+        self
+          .ships
+          .values()
+          .find(|ship| {
+            ship
+              .read()
+              .unwrap()
+              .embarked
+              .iter()
+              .any(|craft| craft.get_name() == name.as_str())
+          })
+          .cloned()
+          .map(|carrier| ((*name).clone(), carrier))
+          .ok_or_else(|| format!("There is no ship named {name}."))
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+    let set_aboard = |squadron: Option<&str>, orders: Option<String>| {
+      for (name, carrier) in &carriers_of {
+        let mut carrier = carrier.write().unwrap();
+        if let Some(craft) = carrier.embarked.iter_mut().find(|craft| craft.get_name() == name) {
+          craft.squadron = squadron.map(str::to_string);
+          craft.squadron_orders.clone_from(&orders);
+        }
+      }
+    };
+    let found = on_plot
+      .iter()
+      .map(|name| self.ships.get(*name).ok_or_else(|| format!("There is no ship named {name}.")))
+      .collect::<Result<Vec<_>, _>>()?;
+    let Some(name) = squadron else {
+      for ship in &found {
+        let mut ship = ship.write().unwrap();
+        ship.squadron = None;
+        ship.squadron_orders = None;
+      }
+      set_aboard(None, None);
+      return Ok(format!("{} ship(s) left their squadron.", ships.len()));
+    };
+    let name = squadron_name(name)?;
+    let mut teams: Vec<Option<Team>> = found.iter().map(|ship| ship.read().unwrap().team).collect();
+    teams.extend(carriers_of.iter().map(|(_, carrier)| carrier.read().unwrap().team));
+    let Some(team) = teams.first().copied() else {
+      return Ok("No ships to move.".to_string());
+    };
+    if teams.iter().any(|other| *other != team) {
+      return Err("A squadron's ships must all be on one team.".to_string());
+    }
+    let in_squadron = |ship: &Ship| ship.team == team && ship.squadron.as_deref() == Some(name);
+    let size = self
+      .ships
+      .iter()
+      .map(|(ship_name, ship)| {
+        let ship = ship.read().unwrap();
+        // The craft aboard count towards the squadron they will launch into.
+        let aboard = ship
+          .embarked
+          .iter()
+          .filter(|craft| ships.contains(&craft.get_name().to_string()) || in_squadron(craft))
+          .count();
+        usize::from(ships.contains(ship_name) || in_squadron(&ship)) + aboard
+      })
+      .sum::<usize>();
+    if size > MAX_SQUADRON {
+      return Err(format!(
+        "A squadron holds at most {MAX_SQUADRON} ships; {name} would have {size}."
+      ));
+    }
+    // The squadron's orders, from a ship already in it, for those joining.
+    let orders = self
+      .ships
+      .iter()
+      .filter(|(ship_name, _)| !ships.contains(ship_name))
+      .map(|(_, ship)| ship.read().unwrap())
+      .find(|ship| ship.team == team && ship.squadron.as_deref() == Some(name))
+      .and_then(|ship| ship.squadron_orders.clone());
+    for ship in &found {
+      let mut ship = ship.write().unwrap();
+      if ship.squadron.as_deref() != Some(name) {
+        ship.squadron_orders.clone_from(&orders);
+      }
+      ship.squadron = Some(name.to_string());
+    }
+    set_aboard(Some(name), orders);
+    Ok(format!("{} ship(s) joined {name}.", ships.len()))
+  }
+
+  /// Rename `team`'s squadron `from` to `to`.
+  ///
+  /// # Errors
+  /// Returns an error if the team has no squadron `from`, `to` is unusable,
+  /// or the team already has a squadron `to`.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn rename_squadron(&self, team: Option<Team>, from: &str, to: &str) -> Result<String, String> {
+    let to = squadron_name(to)?;
+    let in_squadron = |name: &str| {
+      self
+        .ships
+        .values()
+        .filter(|ship| {
+          let ship = ship.read().unwrap();
+          ship.team == team && ship.squadron.as_deref() == Some(name)
+        })
+        .cloned()
+        .collect::<Vec<_>>()
+    };
+    let members = in_squadron(from);
+    if members.is_empty() {
+      return Err(format!("There is no squadron named {from}."));
+    }
+    if to != from && !in_squadron(to).is_empty() {
+      return Err(format!("There is already a squadron named {to}."));
+    }
+    for ship in &members {
+      ship.write().unwrap().squadron = Some(to.to_string());
+    }
+    Ok(format!("{from} is now {to}."))
+  }
+
+  /// Give orders: `ship_name`'s own, her squadron's (to every ship in it), or
+  /// her team's fleet's (to every ship on the team). `None` or blank clears
+  /// them. The newest order wins: a squadron's replaces its ships' own, and
+  /// a fleet's every squadron's and ship's on the team.
+  ///
+  /// # Errors
+  /// Returns an error if there is no such ship, or squadron orders are given
+  /// through a ship in no squadron.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn set_orders(&self, ship_name: &str, scope: OrdersScope, orders: Option<&str>) -> Result<String, String> {
+    let orders = orders.map(str::trim).filter(|text| !text.is_empty()).map(ToString::to_string);
+    let (team, squadron) = {
+      let ship = self
+        .ships
+        .get(ship_name)
+        .ok_or_else(|| format!("Unable to find ship {ship_name} to give orders to."))?
+        .read()
+        .unwrap();
+      (ship.team, ship.squadron.clone())
+    };
+    // The newest order wins: one given to the fleet replaces its squadrons'
+    // and ships' own, one given to a squadron its ships'. Withdrawing an
+    // order leaves the narrower ones as they are.
+    let replacing = orders.is_some();
+    let given = match scope {
+      OrdersScope::Ship => {
+        self.ships[ship_name].write().unwrap().orders.clone_from(&orders);
+        1
+      }
+      OrdersScope::Squadron => {
+        let squadron = squadron.ok_or_else(|| format!("{ship_name} is in no squadron."))?;
+        let mut count = 0;
+        for ship in self.ships.values() {
+          let mut ship = ship.write().unwrap();
+          if ship.team == team && ship.squadron.as_deref() == Some(squadron.as_str()) {
+            ship.squadron_orders.clone_from(&orders);
+            if replacing {
+              ship.orders = None;
+            }
+            count += 1;
+          }
+        }
+        count
+      }
+      OrdersScope::Fleet => {
+        let mut count = 0;
+        for ship in self.ships.values() {
+          let mut ship = ship.write().unwrap();
+          if ship.team == team {
+            ship.fleet_orders.clone_from(&orders);
+            if replacing {
+              ship.squadron_orders = None;
+              ship.orders = None;
+            }
+            count += 1;
+          }
+        }
+        count
+      }
+    };
+    info!("(Entities.set_orders) {scope:?} orders through {ship_name} to {given} ship(s): {orders:?}.");
+    Ok(format!("Orders given to {given} ship(s)."))
+  }
+
+  /// Give `ship_name` her team's fleet orders, from another ship of the
+  /// team: what a ship joining a team takes up.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on a ship.
+  pub fn take_up_fleet_orders(&self, ship_name: &str) {
+    let Some(joining) = self.ships.get(ship_name) else {
+      return;
+    };
+    let team = joining.read().unwrap().team;
+    let orders = self
+      .ships
+      .iter()
+      .filter(|(name, _)| name.as_str() != ship_name)
+      .map(|(_, ship)| ship.read().unwrap())
+      .find(|ship| ship.team == team)
+      .and_then(|ship| ship.fleet_orders.clone());
+    joining.write().unwrap().fleet_orders = orders;
+  }
+
   /// Give every ship a contact on every other ship that is not stealthed and is
   /// within Distant.
   ///
@@ -2073,18 +2551,77 @@ impl Entities {
   ///
   /// A band is the whole of the to-hit modifier, and for a stealthed ship an
   /// opening band is what loses the contact, so a change is worth saying.
-  fn band_change_effect(
-    ship_snapshot: &HashMap<String, Ship>, observer_name: &str, target_name: &str, band_now: Range,
-  ) -> Option<EffectMsg> {
-    let band_start = Self::snapshot_band(ship_snapshot, observer_name, target_name)?;
-    (band_now != band_start).then(|| {
-      EffectMsg::about(
-        observer_name,
-        MessageCategory::Detection,
-        format!("%s: %t now at {band_now} range (was {band_start})."),
-      )
-      .at(target_name)
-    })
+  ///
+  /// `moves` is every (observer, target, band at the start, band now), with
+  /// each observer's together. When fleets close, every ship sees every enemy
+  /// cross the same band at once: a hundred a side made some 4,000 lines in a
+  /// round. So an observer's contacts that made the same move share one line
+  /// naming them all; a contact that moved alone keeps its own.
+  fn band_change_effects(moves: &[(&String, &String, Range, Range)]) -> Vec<EffectMsg> {
+    moves
+      .chunk_by(|a, b| a.0 == b.0)
+      .flat_map(|observer_moves| {
+        let mut transitions: Vec<(Range, Range)> = Vec::new();
+        for (_, _, from, to) in observer_moves {
+          if !transitions.contains(&(*from, *to)) {
+            transitions.push((*from, *to));
+          }
+        }
+        let observer = observer_moves[0].0;
+        transitions.into_iter().map(move |(from, to)| {
+          let targets: Vec<&String> = observer_moves
+            .iter()
+            .filter(|(_, _, f, t)| (*f, *t) == (from, to))
+            .map(|(_, target, _, _)| *target)
+            .collect();
+          match targets.as_slice() {
+            [target] => EffectMsg::about(
+              observer,
+              MessageCategory::Detection,
+              format!("%s: %t now at {to} range (was {from})."),
+            )
+            .at(target),
+            _ => EffectMsg::about(
+              observer,
+              MessageCategory::Detection,
+              format!("%s: {} now at {to} range (was {from}).", join_names(targets)),
+            ),
+          }
+        })
+      })
+      .collect()
+  }
+
+  /// The acquisition checks an observer could not have failed, as one line
+  /// when there are several.
+  ///
+  /// A check that passes even on a 2 tells a referee nothing, and a loud fleet
+  /// coming into range makes one per pair: thousands a round with a hundred
+  /// ships a side. A check that could have failed is still reported on its
+  /// own, with its arithmetic.
+  fn sure_check_effects(sure: &[(&String, &String, i16, EffectMsg)]) -> Vec<EffectMsg> {
+    sure
+      .chunk_by(|a, b| a.0 == b.0)
+      .map(|checks| {
+        if let [(_, _, _, single)] = checks {
+          return single.clone();
+        }
+        let lowest = checks.iter().map(|(_, _, dm, _)| *dm).min().unwrap_or_default();
+        EffectMsg::outcome(
+          checks[0].0,
+          MessageCategory::Detection,
+          format!(
+            "%s sensor checks on {}: contact.",
+            join_names(checks.iter().map(|(_, target, _, _)| *target))
+          ),
+          true,
+        )
+        .rolled(format!(
+          "none could fail: lowest DM {lowest:+}, so at least {} vs 8",
+          2 + lowest
+        ))
+      })
+      .collect()
   }
 
   /// # Panics
@@ -2116,7 +2653,10 @@ impl Entities {
     // no contact on. Worth saying even when nothing is rolled -- the band sets
     // the to-hit modifier, and for a stealthed target an opening band is what
     // puts the contact at risk.
-    let mut band_changes = Vec::<EffectMsg>::new();
+    let mut band_moves = Vec::<(&String, &String, Range, Range)>::new();
+    // Acquisition checks that could not fail, with each one's DM, held back
+    // to be reported together (see `sure_check_effects`).
+    let mut sure = Vec::<(&String, &String, i16, EffectMsg)>::new();
 
     for observer_name in &names {
       for target_name in &names {
@@ -2147,8 +2687,10 @@ impl Entities {
         let holds_contact = observer.contacts.iter().any(|name| name == *target_name);
 
         if holds_contact {
-          if let Some(change) = Self::band_change_effect(ship_snapshot, observer_name, target_name, band_now) {
-            band_changes.push(change);
+          if let Some(band_start) = Self::snapshot_band(ship_snapshot, observer_name, target_name) {
+            if band_start != band_now {
+              band_moves.push((*observer_name, *target_name, band_start, band_now));
+            }
           }
 
           // Beyond Distant everything is an undifferentiated blip (p. 76), so
@@ -2207,27 +2749,23 @@ impl Entities {
           let dm: i16 = terms.iter().map(|(_, value)| value).sum::<i16>() + boost;
           let roll = roll_dice(2, rng);
           let total = i32::from(roll) + i32::from(dm);
-          if total >= STANDARD_ROLL_THRESHOLD {
+          let found = total >= STANDARD_ROLL_THRESHOLD;
+          if found {
             acquired.push(((*observer_name).clone(), (*target_name).clone()));
           }
-          rolls.push(detection_roll_effect(
-            observer_name,
-            target_name,
-            roll,
-            dm,
-            total,
-            if total >= STANDARD_ROLL_THRESHOLD {
-              "contact"
-            } else {
-              "no contact"
-            },
-            &terms,
-          ));
+          let outcome = if found { "contact" } else { "no contact" };
+          let check = detection_roll_effect(observer_name, target_name, roll, dm, total, outcome, &terms);
+          if 2 + i32::from(dm) >= STANDARD_ROLL_THRESHOLD {
+            sure.push((*observer_name, *target_name, dm, check));
+          } else {
+            rolls.push(check);
+          }
         }
       }
     }
 
-    effects.append(&mut band_changes);
+    effects.append(&mut Self::band_change_effects(&band_moves));
+    effects.append(&mut Self::sure_check_effects(&sure));
     effects.append(&mut rolls);
     effects.append(&mut self.apply_detection_changes(&lost, &acquired));
     effects
@@ -2322,6 +2860,48 @@ impl Entities {
         format!("{ship_name} cannot {what}: its {station} station is out."),
       )
     })
+  }
+
+  /// The captains' revives, as the round ends: `orders` is each ship and
+  /// how many of its frozen watch to wake. They "replace disabled or killed
+  /// crew members the following turn" (High Guard p. 27), which is the next
+  /// round from here, and lift whatever crew DM the losses carried.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  #[must_use]
+  pub fn revive_watch_pass(&self, orders: &[(String, u32)]) -> Vec<EffectMsg> {
+    orders
+      .iter()
+      .filter_map(|(ship_name, count)| {
+        let mut ship = self.ships.get(ship_name)?.write().unwrap();
+        let in_berths = ship.frozen_watch;
+        let short = ship.design.crew.saturating_sub(ship.current_crew);
+        let revived = ship.revive_watch(*count);
+        let line = if revived == 0 {
+          if in_berths == 0 {
+            "%s has no frozen watch to revive.".to_string()
+          } else if short == 0 {
+            format!("%s's crew is at full strength; the frozen watch of {in_berths} stays in the berths.")
+          } else {
+            "%s revives nobody.".to_string()
+          }
+        } else {
+          let dm = ship.crew_dm_terms()[0].1;
+          let checks = if dm < 0 {
+            format!("; still DM{dm} to every check")
+          } else {
+            String::new()
+          };
+          format!(
+            "%s revives {revived} of the frozen watch: crew back to {}%, {} left in the berths{checks}.",
+            ship.crew_percent(),
+            ship.frozen_watch
+          )
+        };
+        Some(EffectMsg::outcome(ship_name, MessageCategory::Info, line, revived > 0))
+      })
+      .collect()
   }
 
   /// Count disabled bridge stations down at the end of the round.
@@ -2733,7 +3313,7 @@ impl Entities {
           .is_some_and(|s| s.read().unwrap().sensor_locks.iter().any(|n| n == target))
       };
 
-      actions.retain(|action| {
+      actions.retain_mut(|action| {
         match action {
           // Keep FireActions, JamComms if the target still exists.
           ShipAction::JamComms { target, .. } | ShipAction::FireAction { target, .. } => {
@@ -2751,12 +3331,27 @@ impl Entities {
           }
           // Keep JamMissiles and PointDefense in all cases.
           ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles { .. } => true,
+          // A Land order stands until the craft is aboard, or the carrier is
+          // gone.
+          ShipAction::Land { carrier } => self.ships.contains_key(carrier),
+          // A Launch stands until every craft on it is out: those the tubes
+          // had no room for wait for next round. Craft launched, lost, or in
+          // a berth release (which runs on its own) come off the list.
+          ShipAction::Launch { craft } => {
+            let carrier = self.ships[ship_name.as_str()].read().unwrap();
+            craft.retain(|name| carrier.craft_aboard(name).is_some() && !carrier.in_flight_op(name));
+            !craft.is_empty()
+          }
           // Engineer actions should be scrubbed each turn - they are one-time actions.
           // LeadershipCheck is also one-shot (the captain re-queues it each
           // turn through the Captain HUD).
           // Anti-actions are consumed by `merge` and should never reach here, but
           // strip them defensively if they do.
+          // A Reload is a round's work, chosen again each time it is wanted:
+          // nothing reloads by itself.
           ShipAction::DeleteFireAction { .. }
+          | ShipAction::ReloadAction { .. }
+          | ShipAction::DeleteReloadAction { .. }
           | ShipAction::Jump { .. }
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
@@ -2764,6 +3359,8 @@ impl Entities {
           | ShipAction::ComputerRepair { .. }
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
+          | ShipAction::ReviveWatch { .. }
+          | ShipAction::ClearLand
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => false,
@@ -2888,6 +3485,23 @@ impl Entities {
                 team,
                 safe: result.success,
               });
+              // The craft aboard go with her, as her ships of the side.
+              let craft: Vec<(String, Option<Team>)> = self.ships.get(ship_name).map_or_else(Vec::new, |ship| {
+                ship
+                  .read()
+                  .unwrap()
+                  .embarked
+                  .iter()
+                  .map(|craft| (craft.get_name().to_string(), craft.team))
+                  .collect()
+              });
+              for (name, team) in craft {
+                self.departed.push(Departure {
+                  name,
+                  team,
+                  safe: result.success,
+                });
+              }
             }
             result
           }
@@ -2977,12 +3591,17 @@ impl Entities {
     let short_jump = jump_range < ship.current_jump;
 
     let skill = ship.get_crew().engineer_at(engineer).jump;
+    let crew = ship.crew_dm();
     drop(ship);
 
     let target: u8 = 6;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (j-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (j-drive)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("crew", crew),
+      ],
       target,
     );
 
@@ -3038,6 +3657,7 @@ impl Entities {
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).maneuver;
+    let crew = ship.read().unwrap().crew_dm();
     let target: u8 = 10;
     // "This check suffers a cumulative DM-2 each time it is attempted after
     // the first" (Core Rulebook p. 171). The penalty only comes off with 1D
@@ -3049,6 +3669,7 @@ impl Entities {
         ("engineering (m-drive)", i16::from(skill)),
         ("captain", boost.max(0)),
         ("repeated overloads", -2 * i16::from(attempts)),
+        ("crew", crew),
       ],
       target,
     );
@@ -3117,6 +3738,7 @@ impl Entities {
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
+    let crew = ship.read().unwrap().crew_dm();
     let target: u8 = 10;
     // The same cumulative DM-2 the drive takes, for the same reason.
     let attempts = ship.read().unwrap().overload_plant_attempts;
@@ -3126,6 +3748,7 @@ impl Entities {
         ("engineering (power)", i16::from(skill)),
         ("captain", boost.max(0)),
         ("repeated overloads", -2 * i16::from(attempts)),
+        ("crew", crew),
       ],
       target,
     );
@@ -3242,10 +3865,15 @@ impl Entities {
     }
 
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
+    let crew = ship.read().unwrap().crew_dm();
     let target: u8 = 8;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (power)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("crew", crew),
+      ],
       target,
     );
 
@@ -3397,6 +4025,8 @@ impl Entities {
         ("captain", boost.max(0)),
         ("damage", -i16::from(crit_level)),
         ("auto-repair", i16::from(drones)),
+        // The drones carry no crew DM; an engineer does.
+        ("crew", if engineer.is_some() { ship_write.crew_dm() } else { 0 }),
       ],
       target,
     );
@@ -3512,7 +4142,17 @@ impl Serialize for Entities {
       filename: &self.filename,
       round: self.round,
       departed: &self.departed,
-      ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
+      // What each carrier's deck can do is worked out as the world goes out,
+      // so a console or an AI reads it rather than deriving it.
+      ships: self
+        .ships
+        .values()
+        .map(|s| {
+          let mut ship = s.read().unwrap().clone();
+          ship.flight_deck = ship.flight_deck();
+          ship
+        })
+        .collect::<Vec<Ship>>(),
       missiles: self
         .missiles
         .values()
@@ -3568,9 +4208,28 @@ impl<'de> Deserialize<'de> for Entities {
     }
 
     let guts = Entities::deserialize(deserializer)?;
+    // A ship that starts aboard a carrier (`aboard`) is listed at the top
+    // level of the file for the author's sake, and goes into the carrier's
+    // berths here, so the world opens with her off the plot.
+    let (boarding, mut ships): (Vec<Ship>, Vec<Ship>) = guts.ships.into_iter().partition(|ship| ship.aboard.is_some());
+    for craft in boarding {
+      let carrier = craft.aboard.clone().unwrap_or_default();
+      let Some(host) = ships.iter_mut().find(|ship| ship.get_name() == carrier) else {
+        return Err(serde::de::Error::custom(format!(
+          "{} is aboard {carrier}, which is no ship in the scenario (or is itself aboard something)",
+          craft.get_name()
+        )));
+      };
+      if !host.is_carrier() {
+        return Err(serde::de::Error::custom(format!(
+          "{} is aboard {carrier}, which has no docking space or hangar",
+          craft.get_name()
+        )));
+      }
+      host.embarked.push(craft);
+    }
     Ok(crate::entity::Entities {
-      ships: guts
-        .ships
+      ships: ships
         .into_iter()
         .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
         .collect(),
@@ -3591,6 +4250,7 @@ impl<'de> Deserialize<'de> for Entities {
       filename: String::new(),
       round: guts.round,
       departed: guts.departed,
+      wrecks: Vec::new(),
     })
   }
 }
@@ -3665,7 +4325,7 @@ mod tests {
     )?;
 
     // Launch a missile
-    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
 
     // Test Display trait
     let display_output = format!("{entities}");
@@ -3935,7 +4595,7 @@ mod tests {
     );
 
     // Test 5: Add a valid missile
-    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert!(
       entities.validate(),
       "Entities with a valid planet, two ships, and missile should be valid"
@@ -4000,7 +4660,7 @@ mod tests {
       None,
       None,
     );
-    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     // Test 8: Create a missile with no target_ptr
     {
       entities
@@ -4284,6 +4944,11 @@ mod tests {
       None,
     );
 
+    // The design's 80 canisters: each sandcaster turret's twenty in it, and
+    // the rest in stores.
+    let fresh = Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(fresh.aboard().sand, 80);
+    let loaded = serde_json::to_value(&fresh.loaded).unwrap();
     let cmp = json!({
     "metadata":{"name":"","description":"","owner":""},
     "filename":"","round":1,
@@ -4300,7 +4965,8 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
-        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 40},
+        "loaded": loaded,
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4319,7 +4985,8 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
-        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 40},
+        "loaded": loaded,
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4338,7 +5005,8 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
-        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 40},
+        "loaded": loaded,
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4402,6 +5070,8 @@ mod tests {
       software: vec![],
       computer_bis: false,
       computer_fib: false,
+      radiation_shielding: false,
+      frozen_watch: 0,
       tl: 10,
       role: None,
       source: None,
@@ -4544,7 +5214,7 @@ mod tests {
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Add some missiles to test
-    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
 
     // Test the two should not be equal
     assert_ne!(
@@ -4553,15 +5223,15 @@ mod tests {
     );
 
     // Add the same missile to entities2
-    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Test with a different missile
-    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert_ne!(entities1, entities2, "Entities should not be equal with different missiles");
 
     // Add the same missile to entities2
-    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
+    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).unwrap();
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Test with floating-point precision issues
@@ -4662,13 +5332,13 @@ mod tests {
 
     // Test launching a missile with an invalid target
     assert!(
-      entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).is_err(),
+      entities.launch_missile("Ship1", "Ship2", test_missile_weapon(), 1).is_err(),
       "Launching a missile with an invalid target should be an error"
     );
 
     // Test launching a missile with an invalid source
     assert!(
-      entities.launch_missile("Ship2", "Ship1", test_missile_weapon()).is_err(),
+      entities.launch_missile("Ship2", "Ship1", test_missile_weapon(), 1).is_err(),
       "Launching a missile with an invalid source should be an error"
     );
   }
@@ -4852,6 +5522,109 @@ mod tests {
     )));
   }
 
+  /// A ship of 15,000 tons has two sensor stations on duty (High Guard
+  /// p. 34): the sensop's action jams across everything inbound, and the
+  /// second station jams the largest other salvo on its own, at the same
+  /// skill. Never more stations than salvoes, and none under 15,000 tons.
+  #[test_log::test]
+  fn extra_sensor_stations_jam_the_largest_other_salvoes() {
+    let big = |tons: u32, name: &str| {
+      let design = Arc::new(ShipDesignTemplate {
+        displacement: tons,
+        ..ShipDesignTemplate::default()
+      });
+      let mut crew = Crew::default();
+      crew.set_skill(Skills::Sensors, 4);
+      let mut ship = Ship::new(name.to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+      ship.set_name(name.to_string());
+      ship
+    };
+    let salvo = |name: &str, target: &str, count: u16| {
+      let mut missile = create_test_missile(name, target);
+      missile.count = count;
+      missile
+    };
+    let run = |tons: u32, counts: &[u16]| -> (Vec<String>, Vec<u16>) {
+      let mut entities = Entities::default();
+      let mut rng = StepRng::new(5, 0); // Always a 6: every check made is made.
+      entities
+        .ships
+        .insert("defender".to_string(), Arc::new(RwLock::new(big(tons, "defender"))));
+      for (i, count) in counts.iter().enumerate() {
+        let name = format!("salvo{i}");
+        entities
+          .missiles
+          .insert(name.clone(), Arc::new(RwLock::new(salvo(&name, "defender", *count))));
+      }
+      entities.fixup_pointers().unwrap();
+      let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
+      let effects = entities.sensor_actions(&actions, &BoostMap::default(), &mut rng);
+      let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+      let mut left: Vec<u16> = entities.missiles.values().map(|m| m.read().unwrap().count).collect();
+      left.sort_unstable();
+      (lines, left)
+    };
+    let station_lines = |lines: &[String]| lines.iter().filter(|l| l.contains("from sensor station")).count();
+
+    // Two stations, three salvoes: the sensop's jam and one more, on the
+    // largest salvo left.
+    let (lines, left) = run(15_000, &[40, 30, 2]);
+    assert_eq!(station_lines(&lines), 1, "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("from sensor station 2")), "{lines:?}");
+    // Both jams destroyed something.
+    assert!(left.iter().map(|c| u32::from(*c)).sum::<u32>() < 72, "{left:?}");
+
+    // One salvo: nothing for the second station to do.
+    let (lines, _) = run(15_000, &[40]);
+    assert_eq!(station_lines(&lines), 0, "{lines:?}");
+
+    // Ten stations, three salvoes: two extra jams, one to a salvo.
+    let (lines, _) = run(75_000, &[40, 30, 20]);
+    assert_eq!(station_lines(&lines), 2, "{lines:?}");
+    // A salvo the sensop's jam finished off is not one to jam again.
+    let (lines, _) = run(75_000, &[40, 30, 2]);
+    assert_eq!(station_lines(&lines), 1, "{lines:?}");
+
+    // Under 15,000 tons there is one station.
+    let (lines, _) = run(14_999, &[40, 30, 2]);
+    assert_eq!(station_lines(&lines), 0, "{lines:?}");
+  }
+
+  /// The captains' revives, as the round ends: the crew comes back from the
+  /// berths, no more than were lost, and the log says so either way.
+  #[test_log::test]
+  fn the_frozen_watch_is_revived_as_the_round_ends() {
+    let design = Arc::new(ShipDesignTemplate {
+      displacement: 6_000,
+      crew: 1_000,
+      frozen_watch: 50,
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    let mut ship = Ship::new("Big".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.current_crew = 900;
+    entities.ships.insert("Big".to_string(), Arc::new(RwLock::new(ship)));
+    let ship = Ship::new("Whole".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.ships.insert("Whole".to_string(), Arc::new(RwLock::new(ship)));
+    entities.fixup_pointers().unwrap();
+
+    let effects = entities.revive_watch_pass(&[
+      ("Big".to_string(), 30),
+      ("Whole".to_string(), 10),
+      ("Gone".to_string(), 5),
+    ]);
+    let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+      lines[0].contains("Big revives 30 of the frozen watch: crew back to 93%, 20 left"),
+      "{}",
+      lines[0]
+    );
+    assert!(lines[1].contains("full strength"), "{}", lines[1]);
+    let big = entities.ships.get("Big").unwrap().read().unwrap();
+    assert_eq!((big.current_crew, big.frozen_watch), (930, 20));
+  }
+
   /// Same-round-impact jamming: when an attacker launches a missile at a
   /// nearby defender close enough that the missile would impact during the
   /// same round's `update_all`, the defender's `JamMissiles` action must
@@ -4881,7 +5654,9 @@ mod tests {
 
     // Mimic the post-fix round ordering: a launch (from fire_actions) followed
     // by a jam pass (the second sensor_actions call).
-    entities.launch_missile("attacker", "defender", test_missile_weapon()).unwrap();
+    entities
+      .launch_missile("attacker", "defender", test_missile_weapon(), 1)
+      .unwrap();
     assert_eq!(entities.missiles.len(), 1, "Missile should be in flight after launch");
 
     let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
@@ -5196,6 +5971,174 @@ mod tests {
   }
 
   /// Build a picket with a contact nobody else has, plus a quiet team-mate.
+  /// `blue` ships on Blue and `red` on Red, named `Blue 1`, `Red 1` and so on.
+  fn two_fleets(blue: usize, red: usize) -> Entities {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for (team, count) in [(Team::Blue, blue), (Team::Red, red)] {
+      for i in 1..=count {
+        let name = format!("{team:?} {i}");
+        entities.add_ship(name.clone(), Vec3::zero(), Vec3::zero(), &design, None, None);
+        entities.ships.get(&name).unwrap().write().unwrap().team = Some(team);
+      }
+    }
+    entities
+  }
+
+  fn squadron_of(entities: &Entities, ship: &str) -> Option<String> {
+    entities.ships.get(ship).unwrap().read().unwrap().squadron.clone()
+  }
+
+  fn names(prefix: &str, range: std::ops::RangeInclusive<usize>) -> Vec<String> {
+    range.map(|i| format!("{prefix} {i}")).collect()
+  }
+
+  #[test]
+  fn ships_join_and_leave_a_squadron() {
+    let entities = two_fleets(3, 0);
+    entities.set_squadron(&names("Blue", 1..=2), Some("  Lance ")).unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 1").as_deref(), Some("Lance"));
+    assert_eq!(squadron_of(&entities, "Blue 3"), None);
+    entities.set_squadron(&names("Blue", 1..=1), None).unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 1"), None);
+    assert_eq!(squadron_of(&entities, "Blue 2").as_deref(), Some("Lance"));
+  }
+
+  #[test]
+  fn a_squadron_holds_at_most_twenty() {
+    let entities = two_fleets(22, 0);
+    entities.set_squadron(&names("Blue", 1..=20), Some("Lance")).unwrap();
+    let err = entities.set_squadron(&names("Blue", 21..=21), Some("Lance")).unwrap_err();
+    assert!(err.contains("at most 20"), "{err}");
+    assert_eq!(squadron_of(&entities, "Blue 21"), None);
+    // Moving ships already in it does not count them twice.
+    entities.set_squadron(&names("Blue", 1..=20), Some("Lance")).unwrap();
+  }
+
+  #[test]
+  fn a_squadron_is_within_one_team() {
+    let entities = two_fleets(1, 1);
+    let both = vec!["Blue 1".to_string(), "Red 1".to_string()];
+    assert!(entities.set_squadron(&both, Some("Mixed")).is_err());
+    assert_eq!(squadron_of(&entities, "Blue 1"), None);
+    // Each team may have a squadron of the same name, and they are separate.
+    entities.set_squadron(&both[..1], Some("Alpha")).unwrap();
+    entities.set_squadron(&both[1..], Some("Alpha")).unwrap();
+    entities.rename_squadron(Some(Team::Blue), "Alpha", "Beta").unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 1").as_deref(), Some("Beta"));
+    assert_eq!(squadron_of(&entities, "Red 1").as_deref(), Some("Alpha"));
+  }
+
+  #[test]
+  fn squadron_names_and_renames_are_checked() {
+    let entities = two_fleets(2, 0);
+    assert!(entities.set_squadron(&names("Blue", 1..=1), Some("   ")).is_err());
+    assert!(entities.set_squadron(&names("Blue", 1..=1), Some(&"x".repeat(41))).is_err());
+    assert!(entities.set_squadron(&names("Blue", 1..=1), Some("Nobody")).is_ok());
+    assert!(entities.set_squadron(&["Ghost".to_string()], Some("Lance")).is_err());
+    entities.set_squadron(&names("Blue", 2..=2), Some("Lance")).unwrap();
+    assert!(entities.rename_squadron(Some(Team::Blue), "Lance", "Nobody").is_err());
+    assert!(entities.rename_squadron(Some(Team::Blue), "Missing", "Other").is_err());
+    entities.rename_squadron(Some(Team::Blue), "Lance", "Spear").unwrap();
+    assert_eq!(squadron_of(&entities, "Blue 2").as_deref(), Some("Spear"));
+  }
+
+  fn orders_on(entities: &Entities, ship: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let ship = entities.ships.get(ship).unwrap().read().unwrap();
+    (ship.fleet_orders.clone(), ship.squadron_orders.clone(), ship.orders.clone())
+  }
+
+  #[test]
+  fn orders_go_to_their_scope() {
+    let entities = two_fleets(3, 1);
+    entities.set_squadron(&names("Blue", 1..=2), Some("Lance")).unwrap();
+    entities
+      .set_orders("Blue 3", OrdersScope::Fleet, Some("Hold the gate."))
+      .unwrap();
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some(" Fighters first. "))
+      .unwrap();
+    entities
+      .set_orders("Blue 2", OrdersScope::Ship, Some("Stay by the flagship."))
+      .unwrap();
+    let fleet = Some("Hold the gate.".to_string());
+    let lance = Some("Fighters first.".to_string());
+    assert_eq!(orders_on(&entities, "Blue 1"), (fleet.clone(), lance.clone(), None));
+    assert_eq!(
+      orders_on(&entities, "Blue 2"),
+      (fleet.clone(), lance, Some("Stay by the flagship.".to_string()))
+    );
+    assert_eq!(orders_on(&entities, "Blue 3"), (fleet, None, None));
+    assert_eq!(
+      orders_on(&entities, "Red 1"),
+      (None, None, None),
+      "another team's ships are untouched"
+    );
+    assert!(
+      entities.set_orders("Blue 3", OrdersScope::Squadron, Some("x")).is_err(),
+      "Blue 3 is in none"
+    );
+    entities.set_orders("Blue 3", OrdersScope::Fleet, Some("  ")).unwrap();
+    assert_eq!(orders_on(&entities, "Blue 1").0, None, "blank clears");
+  }
+
+  #[test]
+  fn the_newest_order_replaces_the_narrower_ones_under_it() {
+    let entities = two_fleets(3, 1);
+    entities.set_squadron(&names("Blue", 1..=2), Some("Lance")).unwrap();
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Fighters first."))
+      .unwrap();
+    entities
+      .set_orders("Blue 2", OrdersScope::Ship, Some("Stay by the flagship."))
+      .unwrap();
+    entities.set_orders("Blue 3", OrdersScope::Ship, Some("Scout ahead.")).unwrap();
+    entities.set_orders("Red 1", OrdersScope::Ship, Some("Run.")).unwrap();
+
+    // A squadron's order replaces her ships' own, and only theirs.
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Screen the line."))
+      .unwrap();
+    assert_eq!(orders_on(&entities, "Blue 2").2, None);
+    assert_eq!(orders_on(&entities, "Blue 3").2.as_deref(), Some("Scout ahead."));
+
+    // The fleet's replaces every squadron's and ship's on the team.
+    entities.set_orders("Blue 3", OrdersScope::Fleet, Some("Engage.")).unwrap();
+    let engage = Some("Engage.".to_string());
+    for ship in ["Blue 1", "Blue 2", "Blue 3"] {
+      assert_eq!(orders_on(&entities, ship), (engage.clone(), None, None), "{ship}");
+    }
+    assert_eq!(
+      orders_on(&entities, "Red 1").2.as_deref(),
+      Some("Run."),
+      "another team's are untouched"
+    );
+
+    // A narrower order given after it stands beside it; withdrawing the
+    // fleet's leaves it alone.
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Wing 1, screen the flagship."))
+      .unwrap();
+    entities.set_orders("Blue 3", OrdersScope::Fleet, None).unwrap();
+    assert_eq!(
+      orders_on(&entities, "Blue 1").1.as_deref(),
+      Some("Wing 1, screen the flagship.")
+    );
+  }
+
+  #[test]
+  fn a_ship_takes_up_her_squadrons_orders_and_leaves_them_behind() {
+    let entities = two_fleets(3, 0);
+    entities.set_squadron(&names("Blue", 1..=1), Some("Lance")).unwrap();
+    entities
+      .set_orders("Blue 1", OrdersScope::Squadron, Some("Fighters first."))
+      .unwrap();
+    entities.set_squadron(&names("Blue", 2..=2), Some("Lance")).unwrap();
+    assert_eq!(orders_on(&entities, "Blue 2").1.as_deref(), Some("Fighters first."));
+    entities.set_squadron(&names("Blue", 2..=2), None).unwrap();
+    assert_eq!(orders_on(&entities, "Blue 2").1, None);
+  }
+
   fn handoff_pair(picket_team: Option<crate::ship::Team>, mate_team: Option<crate::ship::Team>) -> Entities {
     let mut entities = Entities::default();
     let design = Arc::new(ShipDesignTemplate::default());
@@ -5337,7 +6280,12 @@ mod tests {
       None,
     );
     entities
-      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .launch_missile(
+        "Raider",
+        "Picket",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
+      )
       .unwrap();
     assert_eq!(entities.missiles.len(), 1);
 
@@ -5373,7 +6321,12 @@ mod tests {
       None,
     );
     entities
-      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .launch_missile(
+        "Raider",
+        "Picket",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
+      )
       .unwrap();
 
     let mut rng = StepRng::new(5, 0);
@@ -5983,6 +6936,143 @@ mod tests {
     );
   }
 
+  /// A ship added aboard a carrier goes into a berth, off the plot, and can
+  /// be given the squadron she will launch into while she is there.
+  #[tokio::test]
+  async fn a_ship_added_aboard_goes_into_a_berth() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    let wind = templates.get("Strike Carrier - Wind").unwrap();
+    let fighter = templates.get("Light Fighter").unwrap();
+    let mut entities = Entities::new();
+    entities.add_ship("Sirocco".to_string(), Vec3::zero(), Vec3::zero(), wind, None, None);
+    entities.add_ship("Gale 01".to_string(), Vec3::zero(), Vec3::zero(), fighter, None, None);
+    entities.add_ship("Gale 02".to_string(), Vec3::zero(), Vec3::zero(), fighter, None, None);
+
+    // Refused: herself, a ship with no berths, a ship that is not there, a
+    // craft too big for any berth.
+    assert!(entities.berth_check("Sirocco", "Sirocco", 75_000).is_err());
+    assert!(entities.berth_check("Sirocco", "Gale 01", 75_000).is_err());
+    assert!(entities.berth_check("Gale 01", "Mistral", 10).is_err());
+    assert!(entities.berth_check("Gale 01", "Sirocco", 50).is_err());
+    assert!(entities.berth_check("Gale 01", "Sirocco", 10).is_ok());
+
+    entities.embark_ship("Gale 01", "Sirocco").unwrap();
+    assert!(!entities.ships.contains_key("Gale 01"));
+    {
+      let carrier = entities.ships["Sirocco"].read().unwrap();
+      let craft = carrier.embarked.iter().find(|craft| craft.get_name() == "Gale 01").unwrap();
+      assert_eq!(craft.carrier.as_deref(), Some("Sirocco"));
+      assert!(craft.aboard.is_none());
+      assert_eq!(carrier.berths_free().len(), 79);
+    }
+
+    // The squadron reaches her through her carrier, and counts her.
+    let reply = entities
+      .set_squadron(&["Gale 01".to_string(), "Gale 02".to_string()], Some("Wind Wing 1"))
+      .unwrap();
+    assert_eq!(reply, "2 ship(s) joined Wind Wing 1.");
+    let aboard_squadron = entities.ships["Sirocco"]
+      .read()
+      .unwrap()
+      .embarked
+      .iter()
+      .find(|craft| craft.get_name() == "Gale 01")
+      .and_then(|craft| craft.squadron.clone());
+    assert_eq!(aboard_squadron.as_deref(), Some("Wind Wing 1"));
+    assert_eq!(
+      entities.ships["Gale 02"].read().unwrap().squadron.as_deref(),
+      Some("Wind Wing 1")
+    );
+    entities.set_squadron(&["Gale 01".to_string()], None).unwrap();
+    let left = entities.ships["Sirocco"].read().unwrap().embarked[0].squadron.clone();
+    assert!(left.is_none());
+  }
+
+  /// Keelhaven as the capital ships plan sets it: Red holds Keelhaven with
+  /// the Hadrian, the Jaellemo and their boats and fighters, Blue attacks
+  /// with the Wind and her escorts, every attacker starts at Distant of every
+  /// defender, and no squadron is over twenty.
+  #[test_log::test(tokio::test)]
+  async fn keelhaven_opens_at_distant() {
+    config_test_ship_templates().await;
+    let bytes = fs::read("./scenarios/Keelhaven.json").unwrap();
+    let entities =
+      Entities::parse_bytes_with_ship_templates(&bytes, "Keelhaven", get_ship_templates_snapshot()).unwrap();
+    assert_eq!(entities.metadata.rounds, Some(60));
+    // On the plot: the carriers' wings start in their berths.
+    let ships: Vec<Ship> = entities.ships.values().map(|ship| ship.read().unwrap().clone()).collect();
+    let side = |team: Team| ships.iter().filter(move |ship| ship.team == Some(team));
+    assert_eq!((side(Team::Red).count(), side(Team::Blue).count()), (77, 9));
+
+    let count = |team: Team, design: &str| side(team).filter(|ship| ship.design.name == design).count();
+    assert_eq!(count(Team::Red, "Battle Rider - Hadrian"), 1);
+    assert_eq!(count(Team::Red, "Planetoid Monitor - Jaellemo"), 1);
+    assert_eq!(count(Team::Red, "System Defence Boat - Dragon"), 15);
+    assert_eq!(count(Team::Red, "System Defense Boat"), 10);
+    assert_eq!(count(Team::Red, "Heavy Fighter"), 50);
+    assert_eq!(count(Team::Blue, "Strike Carrier - Wind"), 1);
+    assert_eq!(count(Team::Blue, "Light Cruiser - Valiant"), 2);
+    assert_eq!(count(Team::Blue, "Light Fighter"), 0);
+
+    let keelhaven = crate::ship::Post::Body("Keelhaven".to_string());
+    assert!(
+      side(Team::Red).all(|ship| ship.goal == Some(crate::ship::Goal::Hold) && ship.post.as_ref() == Some(&keelhaven))
+    );
+    assert!(side(Team::Blue).all(|ship| ship.goal == Some(crate::ship::Goal::Destroy)));
+
+    // Each carrier's air group is aboard her, in the wing squadrons it will
+    // launch into, on her team, at her position, with its home set.
+    for (carrier, wing, design, size, wings) in [
+      ("Keelhaven Bastion", "Jaellemo Wing", "Heavy Fighter", 30, 2),
+      ("Sirocco", "Wind Wing", "Light Fighter", 80, 4),
+    ] {
+      let host = ships.iter().find(|ship| ship.get_name() == carrier).unwrap();
+      assert_eq!(host.embarked.len(), size, "{carrier}");
+      assert!(host
+        .flight_deck()
+        .is_some_and(|deck| deck.berths_free == u32::from(carrier == "Keelhaven Bastion")));
+      let mut names: Vec<&str> = host.embarked.iter().filter_map(|c| c.squadron.as_deref()).collect();
+      names.sort_unstable();
+      names.dedup();
+      assert_eq!(names.len(), wings, "{wing}: {names:?}");
+      for craft in &host.embarked {
+        assert_eq!(craft.design.name, design, "{}", craft.get_name());
+        assert!(craft.squadron.as_deref().is_some_and(|s| s.starts_with(wing)));
+        assert_eq!(craft.team, host.team);
+        assert_eq!(craft.carrier.as_deref(), Some(carrier));
+        assert_eq!(craft.get_position(), host.get_position());
+        assert!(craft.aboard.is_none());
+      }
+    }
+    // The whole order of battle is still 196 ships.
+    let aboard: usize = ships.iter().map(|ship| ship.embarked.len()).sum();
+    assert_eq!(ships.len() + aboard, 196);
+    let sides = entities.sides();
+    assert_eq!(sides.iter().map(|side| side.ships.len()).sum::<usize>(), 196);
+
+    let distant_km = f64::from(crate::rules_tables::RANGE_BANDS[3]) / 1000.0;
+    for attacker in side(Team::Blue) {
+      for defender in side(Team::Red) {
+        let km = (attacker.get_position() - defender.get_position()).magnitude() / 1000.0;
+        assert!(
+          km > distant_km,
+          "{} starts {km:.0} km from {}",
+          attacker.get_name(),
+          defender.get_name()
+        );
+      }
+    }
+
+    let mut squadrons: HashMap<(Option<Team>, &str), usize> = HashMap::new();
+    for ship in &ships {
+      *squadrons
+        .entry((ship.team, ship.squadron.as_deref().unwrap_or("")))
+        .or_default() += 1;
+    }
+    assert!(squadrons.values().all(|&n| n <= 20), "{squadrons:?}");
+  }
+
   /// The band sets the to-hit modifier, so a change is worth saying even when
   /// nothing is rolled -- and for an unstealthed target nothing ever is.
   #[test]
@@ -6071,6 +7161,67 @@ mod tests {
         .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("now at"))),
       "a ship with no contact should not be told the range, got {effects:?}"
     );
+  }
+
+  /// When a fleet closes, an observer sees many contacts cross the same band
+  /// at once. They share one line, so a hundred ships a side do not make
+  /// thousands of lines a round.
+  #[test]
+  fn contacts_that_move_band_together_share_a_line() {
+    let mut entities = detection_pair(None, 1.0e6);
+    let plain = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Decoy".to_string(),
+      Vec3::new(1.0e6, 1.0e3, 0.0),
+      Vec3::zero(),
+      &plain,
+      None,
+      None,
+    );
+    entities.establish_initial_contacts();
+    let snapshot = entities.ship_deep_copy();
+    for name in ["Quarry", "Decoy"] {
+      let mut ship = entities.ships.get(name).unwrap().write().unwrap();
+      let y = ship.get_position().y;
+      ship.set_position(Vec3::new(5.0e6, y, 0.0));
+    }
+
+    let mut rng = SmallRng::seed_from_u64(7);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
+    let seeker_lines: Vec<String> = effects
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { ship, .. } if ship.name == "Seeker"))
+      .map(EffectMsg::rendered)
+      .filter(|line| line.contains("now at"))
+      .collect();
+    assert_eq!(
+      seeker_lines,
+      vec!["Seeker: Decoy and Quarry now at Medium range (was Short).".to_string()],
+      "both moved the same band, so one line"
+    );
+  }
+
+  /// Checks that could not fail are gathered per observer; one on its own, or
+  /// any that could have failed, keeps its own line and arithmetic.
+  #[test]
+  fn checks_that_cannot_fail_share_a_line() {
+    let seeker = "Seeker".to_string();
+    let (a, b, c) = ("Alpha".to_string(), "Bravo".to_string(), "Charlie".to_string());
+    let check = |target: &str| detection_roll_effect("Seeker", target, 7, 9, 16, "contact", &[]);
+    let effects = Entities::sure_check_effects(&[
+      (&seeker, &a, 9, check("Alpha")),
+      (&seeker, &b, 7, check("Bravo")),
+      (&c, &a, 8, detection_roll_effect("Charlie", "Alpha", 3, 8, 11, "contact", &[])),
+    ]);
+    assert_eq!(effects.len(), 2, "{effects:?}");
+    assert_eq!(effects[0].rendered(), "Seeker sensor checks on Alpha and Bravo: contact.");
+    assert!(
+      matches!(&effects[0], EffectMsg::Message { roll: Some(roll), succeeded: Some(true), .. }
+        if roll.contains("lowest DM +7") && roll.contains("at least 9")),
+      "{:?}",
+      effects[0]
+    );
+    assert_eq!(effects[1].rendered(), "Charlie sensor check on Alpha: contact.");
   }
 
   /// A captain can put the sensop's attention on one particular check.
@@ -6189,6 +7340,7 @@ mod tests {
         "Shooter",
         "Doomed",
         Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
       )
       .expect("(test) launch");
     assert_eq!(entities.missiles.len(), 1);
@@ -6224,6 +7376,7 @@ mod tests {
         "Shooter",
         "Doomed",
         Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
       )
       .expect("(test) launch");
     entities.ships.remove("Doomed");
@@ -6255,6 +7408,7 @@ mod tests {
         "Shooter",
         "Quarry",
         Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        1,
       )
       .expect("(test) launch");
 
@@ -6948,6 +8102,176 @@ mod tests {
     }
   }
 
+  /// A carrier that jumps takes the craft in her berths with her, and they
+  /// count as departed with her.
+  #[tokio::test]
+  async fn a_carrier_that_jumps_takes_her_craft() {
+    use crate::software::SoftwareKind;
+    config_test_ship_templates().await;
+    let name = "./scenarios/tutorial-8-jump.json";
+    let bytes = fs::read(name).expect("the jump lesson's scenario");
+    let mut entities = Entities::parse_bytes_with_ship_templates(&bytes, name, get_ship_templates_snapshot()).unwrap();
+    let fighter = get_ship_template("Light Fighter").unwrap();
+    {
+      let mut killer = entities.ships["Killer"].write().unwrap();
+      killer.enable_jump();
+      killer.set_software_running(
+        Software {
+          kind: SoftwareKind::FireControl,
+          level: 2,
+        },
+        false,
+      );
+      killer.set_software_running(
+        Software {
+          kind: SoftwareKind::JumpControl,
+          level: 2,
+        },
+        true,
+      );
+      killer.embark(Ship::new("Flea".to_string(), Vec3::zero(), Vec3::zero(), &fighter, None, None));
+    }
+    let mut rng = SmallRng::seed_from_u64(3);
+    entities.engineer_actions(
+      &[("Killer".to_string(), vec![ShipAction::Jump { engineer: 0 }])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(!entities.ships.contains_key("Killer"));
+    assert!(!entities.ships.contains_key("Flea"), "she was never on the plot");
+    let names: Vec<&str> = entities.departed.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(names, vec!["Killer", "Flea"]);
+    assert_eq!(
+      entities.departed[1].team,
+      Some(crate::ship::Team::Blue),
+      "she took the carrier's team"
+    );
+    assert_eq!(entities.departed[0].safe, entities.departed[1].safe);
+  }
+
+  /// A carrier destroyed takes the craft in her berths with her, each with a
+  /// line of its own.
+  #[tokio::test]
+  async fn a_carrier_lost_is_her_crafts_loss() {
+    config_test_ship_templates().await;
+    let mut entities = Entities::new();
+    let wind = get_ship_template("Strike Carrier - Wind").unwrap();
+    let fighter = get_ship_template("Light Fighter").unwrap();
+    entities.add_ship("Sirocco".to_string(), Vec3::zero(), Vec3::zero(), &wind, None, None);
+    {
+      let mut carrier = entities.ships["Sirocco"].write().unwrap();
+      for n in 1..=3 {
+        carrier.embark(Ship::new(format!("Gale {n}"), Vec3::zero(), Vec3::zero(), &fighter, None, None));
+      }
+      carrier.current_hull = 0;
+    }
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(1);
+    let effects = entities.update_all(&snapshot, &BoostMap::default(), &mut rng);
+    assert!(entities.ships.is_empty());
+    let lines: Vec<String> = effects.iter().map(EffectMsg::rendered).collect();
+    assert!(lines.iter().any(|l| l == "Sirocco destroyed."), "{lines:?}");
+    for n in 1..=3 {
+      assert!(
+        lines
+          .iter()
+          .any(|l| l == &format!("Gale {n} destroyed in her berth aboard Sirocco.")),
+        "{lines:?}"
+      );
+    }
+  }
+
+  /// A scenario file lists craft that start aboard at the top level with
+  /// `aboard`; they are in their carrier's berths once read, and written
+  /// back out the same way.
+  #[tokio::test]
+  async fn a_scenario_round_trips_its_embarked_craft() {
+    config_test_ship_templates().await;
+    let bytes = fs::read("./scenarios/Keelhaven.json").unwrap();
+    let entities =
+      Entities::parse_bytes_with_ship_templates(&bytes, "Keelhaven", get_ship_templates_snapshot()).unwrap();
+    let aboard = |entities: &Entities, carrier: &str| -> Vec<String> {
+      let mut names: Vec<String> = entities.ships[carrier]
+        .read()
+        .unwrap()
+        .embarked
+        .iter()
+        .map(|c| c.get_name().to_string())
+        .collect();
+      names.sort();
+      names
+    };
+    assert_eq!(aboard(&entities, "Sirocco").len(), 80);
+    assert_eq!(aboard(&entities, "Keelhaven Bastion").len(), 30);
+
+    let written = entities.to_scenario_file_json().unwrap();
+    let file: serde_json::Value = serde_json::from_slice(&written).unwrap();
+    let ships = file["ships"].as_array().unwrap();
+    assert_eq!(ships.len(), 196, "every ship at the top level");
+    assert_eq!(ships.iter().filter(|s| s["aboard"] == "Sirocco").count(), 80);
+    assert_eq!(ships.iter().filter(|s| s["aboard"] == "Keelhaven Bastion").count(), 30);
+    assert!(ships.iter().all(|s| s.get("embarked").is_none()), "nothing nested");
+    assert!(ships.iter().all(|s| s.get("flight_deck").is_none()));
+
+    let again =
+      Entities::parse_bytes_with_ship_templates(&written, "Keelhaven", get_ship_templates_snapshot()).unwrap();
+    assert_eq!(again.ships.len(), entities.ships.len());
+    for carrier in ["Sirocco", "Keelhaven Bastion"] {
+      assert_eq!(aboard(&again, carrier), aboard(&entities, carrier));
+      let craft = &again.ships[carrier].read().unwrap().embarked[0];
+      assert!(craft.squadron.is_some());
+      assert_eq!(craft.carrier.as_deref(), Some(carrier));
+    }
+
+    // Nested `embarked` is read too, as a game copy carries it, and the
+    // wire names the carrier's deck.
+    let wire = serde_json::to_string(&entities).unwrap();
+    let nested: Entities =
+      with_ship_templates_for_deserialization(get_ship_templates_snapshot(), || serde_json::from_str(&wire)).unwrap();
+    assert_eq!(aboard(&nested, "Sirocco").len(), 80);
+    let wire: serde_json::Value = serde_json::from_str(&wire).unwrap();
+    let sirocco = wire["ships"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .find(|s| s["name"] == "Sirocco")
+      .unwrap();
+    assert_eq!(sirocco["flight_deck"]["launch_per_round"], 10);
+    assert_eq!(sirocco["flight_deck"]["recover_per_round"], 10);
+    assert_eq!(sirocco["flight_deck"]["berths_free"], 0);
+    assert_eq!(sirocco["embarked"].as_array().unwrap().len(), 80);
+  }
+
+  /// A craft aboard a ship the scenario does not have, or one with no
+  /// berth, is a broken file.
+  #[tokio::test]
+  async fn a_craft_aboard_nothing_is_refused() {
+    config_test_ship_templates().await;
+    let scenario = |carrier: &str, design: &str| {
+      format!(
+        r#"{{"ships": [
+          {{"name": "Host", "position": [0,0,0], "velocity": [0,0,0], "plan": [[[0,0,0],0]], "design": "{design}"}},
+          {{"name": "Flea", "position": [0,0,0], "velocity": [0,0,0], "plan": [[[0,0,0],0]], "design": "Light Fighter", "aboard": "{carrier}"}}
+        ]}}"#
+      )
+    };
+    let load =
+      |json: String| Entities::parse_bytes_with_ship_templates(json.as_bytes(), "t", get_ship_templates_snapshot());
+    let missing = load(scenario("Nobody", "Strike Carrier - Wind"))
+      .err()
+      .map(|e| e.to_string())
+      .unwrap_or_default();
+    assert!(missing.contains("Flea is aboard Nobody"), "{missing}");
+    let no_berth = load(scenario("Host", "Buccaneer"))
+      .err()
+      .map(|e| e.to_string())
+      .unwrap_or_default();
+    assert!(no_berth.contains("no docking space or hangar"), "{no_berth}");
+    let fine = load(scenario("Host", "Strike Carrier - Wind")).unwrap();
+    assert_eq!(fine.ships.len(), 1);
+    assert_eq!(fine.ships["Host"].read().unwrap().embarked.len(), 1);
+  }
+
   /// No astrogation, no jump -- and the engineer is told why.
   #[test]
   fn jump_needs_astrogation() {
@@ -7015,6 +8339,7 @@ mod tests {
         }],
       )],
       &[],
+      &HashMap::new(),
       &snapshot,
       &BoostMap::default(),
       &mut rng,
@@ -7698,5 +9023,201 @@ mod tests {
   fn test_sensor_detection_modifiers_invalid_ships() {
     let entities = Entities::new();
     entities.sensor_detection_modifiers("nonexistent_attacker", "nonexistent_target");
+  }
+}
+
+/// A launch from one mount flies as one salvo and is resolved missile by
+/// missile when it arrives.
+#[cfg(test)]
+mod salvo_tests {
+  use super::*;
+  use crate::crew::{Crew, Skills};
+  use crate::ship::{ShipDesignTemplate, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use rand::rngs::mock::StepRng;
+  use rand::rngs::SmallRng;
+  use rand::SeedableRng;
+
+  fn missile_rack() -> Weapon {
+    Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)
+  }
+
+  /// Two ships close enough that anything launched arrives in the round it
+  /// is launched, the target big enough to survive it, with no armour.
+  fn duel() -> Entities {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Hulk".to_string(),
+      displacement: 2000,
+      hull: 100_000,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Shooter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Target".to_string(),
+      Vec3::new(100_000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+  }
+
+  fn hull(entities: &Entities) -> u32 {
+    entities.ships["Target"].read().unwrap().get_current_hull_points()
+  }
+
+  fn lines(effects: &[EffectMsg]) -> Vec<String> {
+    effects
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { .. }))
+      .map(EffectMsg::rendered)
+      .collect()
+  }
+
+  fn resolve(entities: &mut Entities, seed: u64) -> Vec<EffectMsg> {
+    let snapshot = entities.ship_deep_copy();
+    entities.update_all(&snapshot, &BoostMap::default(), &mut SmallRng::seed_from_u64(seed))
+  }
+
+  #[test]
+  fn a_salvo_is_one_entity() {
+    let mut entities = duel();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 120).unwrap();
+    assert_eq!(entities.missiles.len(), 1);
+    assert_eq!(entities.missiles.values().next().unwrap().read().unwrap().count, 120);
+  }
+
+  /// "Each one rolls to hit": a salvo of twelve does exactly what twelve
+  /// lone missiles do, roll for roll.
+  #[test]
+  fn a_salvo_rolls_each_missile_like_lone_missiles() {
+    for seed in 0..20 {
+      let mut salvo = duel();
+      salvo.launch_missile("Shooter", "Target", missile_rack(), 12).unwrap();
+      let effects = resolve(&mut salvo, seed);
+
+      let mut singles = duel();
+      for _ in 0..12 {
+        singles.launch_missile("Shooter", "Target", missile_rack(), 1).unwrap();
+      }
+      resolve(&mut singles, seed);
+
+      assert_eq!(hull(&salvo), hull(&singles), "seed {seed}");
+      assert!(salvo.missiles.is_empty(), "the salvo is spent on impact");
+
+      // One line for the twelve, and its damage is the hull lost.
+      let lines = lines(&effects);
+      let summary: Vec<&String> = lines.iter().filter(|l| l.contains("missile salvo (12)")).collect();
+      assert_eq!(summary.len(), 1, "seed {seed}: {lines:?}");
+      let lost = 100_000 - hull(&salvo);
+      if lost > 0 {
+        assert!(summary[0].contains(&format!(", {lost} damage")), "{}", summary[0]);
+      }
+      assert!(summary[0].contains(" of 12 hit"), "{}", summary[0]);
+      assert!(
+        !lines.iter().any(|l| l.starts_with("Shooter missile -> ")),
+        "no missile reports on its own: {lines:?}"
+      );
+    }
+  }
+
+  /// A salvo of one reads as a lone missile always has.
+  #[test]
+  fn a_salvo_of_one_reads_as_a_missile() {
+    let mut entities = duel();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 1).unwrap();
+    let lines = lines(&resolve(&mut entities, 3));
+    assert!(lines.iter().any(|l| l.starts_with("Shooter missile -> Target")), "{lines:?}");
+    assert!(!lines.iter().any(|l| l.contains("salvo")), "{lines:?}");
+  }
+
+  /// Point defence is the ship's pool for the round, drained missile by
+  /// missile across every salvo that arrives, not one salvo's worth.
+  #[test]
+  fn point_defence_drains_across_salvoes() {
+    let mut entities = duel();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 6).unwrap();
+    entities.launch_missile("Shooter", "Target", missile_rack(), 6).unwrap();
+    entities.ships["Target"].write().unwrap().set_point_defense_pool(8);
+    let lines = lines(&resolve(&mut entities, 1));
+
+    assert!(
+      lines.contains(&"8 missiles destroyed by Target's point defence.".to_string()),
+      "{lines:?}"
+    );
+    // The first salvo arrives first and is wiped out; the second loses two
+    // and the other four roll.
+    assert!(
+      lines
+        .iter()
+        .any(|l| l.contains("missile salvo (6, 2 shot down) -> Target") && l.contains(" of 4 hit")),
+      "{lines:?}"
+    );
+    assert_eq!(lines.iter().filter(|l| l.contains("salvo")).count(), 1, "{lines:?}");
+    assert!(entities.missiles.is_empty());
+  }
+
+  /// A torpedo still costs two points, and a point left over cannot stop
+  /// half of one.
+  #[test]
+  fn torpedoes_cost_two_inside_a_salvo() {
+    let mut entities = duel();
+    let tube = Weapon::single(WeaponType::Torpedo, WeaponMount::Barbette);
+    entities.launch_missile("Shooter", "Target", tube, 3).unwrap();
+    entities.ships["Target"].write().unwrap().set_point_defense_pool(5);
+    let lines = lines(&resolve(&mut entities, 1));
+    assert!(
+      lines.contains(&"2 torpedos destroyed by Target's point defence.".to_string()),
+      "{lines:?}"
+    );
+    assert!(lines.iter().any(|l| l.contains("torpedo salvo (3, 2 shot down)")), "{lines:?}");
+  }
+
+  fn salvo_at(name: &str, target: &str, count: u16) -> Missile {
+    let mut missile = Missile::default();
+    missile.set_name(name.to_string());
+    missile.target = target.to_string();
+    missile.count = count;
+    missile
+  }
+
+  /// Jamming picks its missiles from everything coming at the ship, not from
+  /// one salvo, and a salvo that loses some flies on with the rest.
+  #[test]
+  fn jamming_destroys_missiles_across_salvoes() {
+    let mut entities = Entities::default();
+    let mut crew = Crew::default();
+    crew.set_skill(Skills::Sensors, 4);
+    let mut ship = Ship::default();
+    ship.set_crew(crew);
+    ship.set_name("defender".to_string());
+    entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
+    for (name, count) in [("a", 5), ("b", 5), ("c", 5)] {
+      entities
+        .missiles
+        .insert(name.to_string(), Arc::new(RwLock::new(salvo_at(name, "defender", count))));
+    }
+    entities.fixup_pointers().unwrap();
+
+    // Every die a 6: the same check that destroys seven missiles in
+    // `test_jam_missiles`.
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
+    let effects = entities.sensor_actions(&actions, &BoostMap::default(), &mut StepRng::new(5, 0));
+
+    let left: u16 = entities.missiles.values().map(|m| m.read().unwrap().count).sum();
+    assert_eq!(left, 15 - 7, "seven missiles jammed out of fifteen");
+    let lines = lines(&effects);
+    let reported: u16 = lines
+      .iter()
+      .filter_map(|l| {
+        l.strip_prefix("defender's jamming destroys ")
+          .and_then(|rest| rest.split(' ').next())
+          .and_then(|n| n.parse::<u16>().ok())
+      })
+      .sum();
+    assert_eq!(reported, 7, "the lines add up to what was destroyed: {lines:?}");
   }
 }

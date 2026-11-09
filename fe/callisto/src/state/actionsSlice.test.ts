@@ -9,7 +9,7 @@ vi.mock("lib/serverManager", async (importOriginal) => ({
   updateActions: vi.fn(),
 }));
 
-import {actionsSlice, toggleBoost, dropBoosts, unfireWeapon, setSensorAction, setEngineerAction, setActions} from "state/actionsSlice";
+import {actionsSlice, toggleBoost, dropBoosts, unfireWeapon, setSensorAction, setEngineerAction, setActions, setReviveWatch} from "state/actionsSlice";
 import {DEFAULT_SENSOR_STATE, SensorAction} from "components/controls/Actions";
 
 const reduce = actionsSlice.reducer;
@@ -246,5 +246,54 @@ describe("two consoles on one ship agree", () => {
     const after = {[SHIP]: {...state[SHIP], leadershipCheck: null, pendingBoosts: []}};
     state = reduce(state, setActions({parsed: after, rolledShips: []}));
     expect(boostsOf(state)).toHaveLength(0);
+  });
+});
+
+describe("reloads", () => {
+  test("go to the server in the order chosen, once each, and withdrawing one says so", async () => {
+    const {reloadWeapon, unreloadWeapon} = await import("state/actionsSlice");
+    const {actionPayload, payloadToAction} = await import("components/controls/Actions");
+    let state = reduce(undefined, reloadWeapon({shipName: SHIP, weapon_id: 3}));
+    state = reduce(state, reloadWeapon({shipName: SHIP, weapon_id: 2}));
+    state = reduce(state, reloadWeapon({shipName: SHIP, weapon_id: 3}));
+    expect(state[SHIP].reload).toEqual([3, 2]);
+    expect(actionPayload(state)).toEqual([
+      [SHIP, [{ReloadAction: {weapon_id: 3}}, {ReloadAction: {weapon_id: 2}}]],
+    ]);
+
+    state = reduce(state, unreloadWeapon({shipName: SHIP, weapon_id: 3}));
+    expect(state[SHIP].reload).toEqual([2]);
+    expect(actionPayload(state)[0][1]).toEqual([{ReloadAction: {weapon_id: 2}}, {DeleteReloadAction: {weapon_id: 3}}]);
+
+    // What the server sends back is read in its order.
+    const parsed = payloadToAction([[SHIP, [{ReloadAction: {weapon_id: 1}}, {ReloadAction: {weapon_id: 0}}]]]);
+    expect(parsed[SHIP].reload).toEqual([1, 0]);
+    expect(parsed[SHIP].unreload).toEqual([]);
+  });
+});
+
+describe("the frozen watch", () => {
+  // The revive is the captain's action for the round, as the leadership
+  // check is: queuing one drops the other, on the server as here.
+  test("a revive replaces the leadership check, and a boost replaces the revive", () => {
+    let state = boosted({kind: "AssistGunner", ship: SHIP});
+    state = reduce(state, setReviveWatch({shipName: SHIP, count: 12}));
+    expect(state[SHIP].reviveWatch).toBe(12);
+    expect(state[SHIP].leadershipCheck).toBeNull();
+    expect(state[SHIP].clearLeadership).toBe(false);
+
+    state = reduce(state, toggleBoost({shipName: SHIP, target: {kind: "Evade", ship: SHIP}}));
+    expect(state[SHIP].reviveWatch).toBeNull();
+    expect(boostsOf(state)).toHaveLength(1);
+  });
+
+  test("withdrawing a revive asks the server to forget it, once", () => {
+    let state = reduce(undefined, setReviveWatch({shipName: SHIP, count: 5}));
+    state = reduce(state, setReviveWatch({shipName: SHIP, count: 0}));
+    expect(state[SHIP].reviveWatch).toBeNull();
+    expect(state[SHIP].clearRevive).toBe(true);
+    // Nothing queued, nothing to forget.
+    state = reduce(state, setReviveWatch({shipName: SHIP, count: 0}));
+    expect(state[SHIP].clearRevive).toBe(false);
   });
 });

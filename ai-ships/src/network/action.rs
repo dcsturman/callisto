@@ -16,7 +16,7 @@ use crate::decision::{straggler_margin, STRAGGLER_STEP};
 use crate::observation::Observation;
 use callisto::entity::Entity;
 use callisto::ship::{Range, Ship};
-use callisto::tactics::{self, Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
+use callisto::tactics::{self, Engage, EngineerVerb, Flight, Helm, Intent, Posture, SensorVerb};
 
 use crate::network::orders;
 use cgmath::InnerSpace;
@@ -73,10 +73,16 @@ pub enum Head {
   Captain,
   /// Fight or link.
   Computer,
+  /// Flight operations: none, launch (a carrier sends out her ready craft,
+  /// the tubes' worth a round) or land (a craft goes home to her carrier).
+  Flight,
 }
 
+/// The flight head's choices, in order.
+pub const FLIGHTS: usize = 3;
+
 impl Head {
-  pub const ALL: [Head; 15] = [
+  pub const ALL: [Head; 16] = [
     Head::Verb,
     Head::HelmTarget,
     Head::Band,
@@ -92,6 +98,7 @@ impl Head {
     Head::Target2,
     Head::Captain,
     Head::Computer,
+    Head::Flight,
   ];
 
   /// How many choices the head has.
@@ -108,6 +115,7 @@ impl Head {
       Head::Assist | Head::Jump | Head::Computer => 2,
       Head::Sensor1 | Head::Sensor2 => orders::SENSOR_ORDERS.len(),
       Head::Captain => orders::RANKINGS.len(),
+      Head::Flight => FLIGHTS,
     }
   }
 
@@ -127,7 +135,7 @@ impl Head {
 /// The number of heads.
 pub const HEADS: usize = Head::ALL.len();
 /// One ship's mask: every head's choices, end to end.
-pub const MASK_LEN: usize = Head::Computer.offset() + Head::Computer.size();
+pub const MASK_LEN: usize = Head::Flight.offset() + Head::Flight.size();
 /// Each head's size, for the Python side's action space.
 pub const HEAD_SIZES: [usize; HEADS] = {
   let mut sizes = [0; HEADS];
@@ -210,6 +218,7 @@ fn intent_of(choice: &Choice, picture: &Picture, helm: Helm, ship: &Ship, view: 
   let ranking = orders::RANKINGS[index(Head::Captain)];
   Intent {
     posture: Some(POSTURES[index(Head::Posture)]),
+    flight: flight_of(index(Head::Flight), ship),
     helm,
     evade,
     assist_gunners: Some(index(Head::Assist) == 1),
@@ -225,6 +234,23 @@ fn intent_of(choice: &Choice, picture: &Picture, helm: Helm, ship: &Ship, view: 
     software: orders::software_orders(ship, computer, leaving),
     boosts: orders::captain_boosts(ship, view, ranking, evade.is_some_and(|g| g > 0)),
     ..Intent::default()
+  }
+}
+
+/// The flight operation a ship's choice asks for. "none" leaves the deck to
+/// the crews' own rules (`tactics`: launch when an enemy is in reach, come
+/// home when spent), so a network widened with nothing learned for this head
+/// plays exactly as the crews do; "launch" and "land" are what training
+/// learns to choose over them. Where a choice does not apply -- launch with
+/// nothing aboard, land with no carrier -- it is "none".
+fn flight_of(choice: usize, ship: &Ship) -> Option<Flight> {
+  match choice {
+    1 if !ship.embarked.is_empty() => Some(Flight::Launch {
+      craft: Vec::new(),
+      count: None,
+    }),
+    2 => ship.carrier.clone().map(|carrier| Flight::Land { carrier }),
+    _ => None,
   }
 }
 
@@ -251,6 +277,16 @@ fn root_of<'a>(ship: &'a str, guides: &'a HashMap<String, String>) -> Option<&'a
 /// model commander's squadrons fly. Follows that go round in a loop hold.
 #[must_use]
 pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> Vec<(String, Intent)> {
+  side_intents_with(own, view, true)
+}
+
+/// [`side_intents`], with the side-wide missile sharing on or off. Off, the
+/// launchers go with the guns, as they did before point defence was
+/// counted: kept as a baseline to measure against.
+#[must_use]
+pub fn side_intents_with(
+  own: &[(&Ship, &Choice, &Picture)], view: &Observation, missile_sharing: bool,
+) -> Vec<(String, Intent)> {
   let mut helms: BTreeMap<String, Helm> = BTreeMap::new();
   let mut guides: HashMap<String, String> = HashMap::new();
   for (ship, choice, picture) in own {
@@ -325,7 +361,12 @@ pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> V
       (name.to_string(), intent)
     })
     .collect::<Vec<_>>();
-  share_fire(&mut intents, own, view);
+  share_fire(&mut intents, own, view, missile_sharing);
+  if !missile_sharing {
+    return intents;
+  }
+  let ships: Vec<&Ship> = own.iter().map(|(ship, _, _)| *ship).collect();
+  crate::network::missiles::share_missiles(&mut intents, &ships, view);
   intents
 }
 
@@ -333,6 +374,17 @@ pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> V
 /// more guns on the same target are wasted. Above 1 because expected damage
 /// is an average, and dice run short.
 pub const ENOUGH: f64 = 1.5;
+
+/// A ship's spinal mounts, by index. One cannot attack a fighter that is
+/// manoeuvring (High Guard p. 34), so it has no damage on one to be shared by.
+fn spinal_mounts(ship: &Ship) -> impl Iterator<Item = usize> + '_ {
+  ship
+    .weapons()
+    .iter()
+    .enumerate()
+    .filter(|(_, weapon)| weapon.mount.spinal_multiple().is_some())
+    .map(|(mount, _)| mount)
+}
 
 /// Share each ship's guns out across the side's targets so that none are
 /// wasted on a target already dealt with. A ship's chosen fire target is her
@@ -343,8 +395,11 @@ pub const ENOUGH: f64 = 1.5;
 /// to `ENOUGH` times its hull, counting what the ships before her sent. A big
 /// ship takes every gun; a fighter takes one, and the rest move on. Guns left
 /// over still fire at the priority. Called shots and named mounts are left
-/// as they are.
-fn share_fire(intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture)], view: &Observation) {
+/// as they are. Launchers are not counted here: they are shared out after,
+/// across the side (`missiles::share_missiles`).
+fn share_fire(
+  intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture)], view: &Observation, skip_launchers: bool,
+) {
   let enemies = view.enemies();
   let hull = |name: &str| {
     enemies
@@ -370,16 +425,33 @@ fn share_fire(intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture
         return vec![];
       };
       let band = tactics::band_at((contact.position - ship.get_position()).magnitude());
+      // Launchers are shared out separately, across the side, against point
+      // defence (`missiles::share_missiles`).
+      let launchers: Vec<usize> = tactics::weapons_that_bear(ship, band)
+        .into_iter()
+        .filter(|(mount, kind)| skip_launchers && tactics::launch_size(&ship.weapons()[*mount], *kind).is_some())
+        .map(|(mount, _)| mount)
+        .collect();
       view
         .engagement(name, target)
         .and_then(|table| table.we_hit.iter().find(|odds| odds.band == band))
-        .map(|odds| odds.by_mount.iter().copied().filter(|(_, damage)| *damage > 0.0).collect())
+        .map(|odds| {
+          odds
+            .by_mount
+            .iter()
+            .copied()
+            .filter(|(mount, damage)| *damage > 0.0 && !launchers.contains(mount))
+            .collect()
+        })
         .unwrap_or_default()
     };
     let room = |target: &str, sent: &HashMap<String, f64>| {
       (ENOUGH * hull(target) - sent.get(target).copied().unwrap_or(0.0)).max(0.0)
     };
     let mut free: Vec<usize> = by_mount(&priority).iter().map(|(mount, _)| *mount).collect();
+    // A spinal that cannot lay on the priority is free for the next target.
+    let spinals: Vec<usize> = spinal_mounts(ship).filter(|mount| !free.contains(mount)).collect();
+    free.extend(spinals);
     let mut shares: Vec<(String, Vec<usize>)> = Vec::new();
     let mut target = Some(priority.clone());
     while let Some(aim) = target.take() {
@@ -495,5 +567,179 @@ pub fn choice_of(intent: &Intent, ship: &Ship, picture: &Picture) -> Choice {
   choice[Head::Dodge as usize] = i64::from(intent.evade.unwrap_or_else(|| ship.get_dodge_thrust())).min(2);
   choice[Head::Assist as usize] = i64::from(intent.assist_gunners.unwrap_or_else(|| ship.get_assist_gunners()));
   choice[Head::Jump as usize] = i64::from(intent.engineering.iter().any(|verb| matches!(verb, EngineerVerb::Jump)));
+  choice[Head::Flight as usize] = match intent.flight {
+    Some(Flight::Launch { .. }) => 1,
+    Some(Flight::Land { .. }) => 2,
+    Some(Flight::Hold) | None => 0,
+  };
   choice
+}
+
+#[cfg(test)]
+mod spinal_tests {
+  use super::*;
+  use crate::observation::observe;
+  use callisto::entity::{Entities, Vec3};
+  use callisto::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  /// A ship whose priority is a fighter keeps her turret on it and sends her
+  /// spinal, which cannot attack a fighter, to the cruiser beside it.
+  #[test]
+  fn a_spinal_goes_to_the_target_it_can_hit() {
+    let monitor = Arc::new(ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      hull: 15_000,
+      maneuver: 1,
+      power: 10_000,
+      tl: 15,
+      weapons: vec![
+        Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 2, tl: None }),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let fighter = Arc::new(ShipDesignTemplate {
+      name: "Fighter".to_string(),
+      displacement: 10,
+      hull: 4,
+      maneuver: 6,
+      power: 10,
+      ..ShipDesignTemplate::default()
+    });
+    let mut world = Entities::default();
+    world.add_ship("Monitor".to_string(), Vec3::zero(), Vec3::zero(), &monitor, None, None);
+    world.add_ship(
+      "Fighter".to_string(),
+      Vec3::new(5.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &fighter,
+      None,
+      None,
+    );
+    world.add_ship(
+      "Cruiser".to_string(),
+      Vec3::new(5.5e6, 0.0, 0.0),
+      Vec3::zero(),
+      &monitor,
+      None,
+      None,
+    );
+    world.ships["Monitor"].write().unwrap().team = Some(Team::Blue);
+    world.ships["Fighter"].write().unwrap().team = Some(Team::Red);
+    world.ships["Cruiser"].write().unwrap().team = Some(Team::Red);
+    world.establish_initial_contacts();
+    let view = observe(&world, &["Monitor".to_string()]);
+    let ship = world.ships["Monitor"].read().unwrap().clone();
+    let choice: Choice = [0; HEADS];
+    let picture = Picture::default();
+    let mut intents = vec![(
+      "Monitor".to_string(),
+      Intent {
+        fire: vec![Engage {
+          target: "Fighter".to_string(),
+          ..Engage::default()
+        }],
+        ..Intent::default()
+      },
+    )];
+    share_fire(&mut intents, &[(&ship, &choice, &picture)], &view, false);
+    let fire = &intents[0].1.fire;
+    let on = |target: &str| {
+      fire
+        .iter()
+        .find(|engage| engage.target == target)
+        .map(|engage| engage.weapons.clone())
+    };
+    assert_eq!(on("Fighter"), Some(vec![1]), "{fire:?}");
+    assert_eq!(on("Cruiser"), Some(vec![0]), "{fire:?}");
+  }
+}
+
+#[cfg(test)]
+mod flight_tests {
+  use super::*;
+  use callisto::ship::ShipDesignTemplate;
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  fn ship(carrier: Option<&str>, aboard: usize) -> Ship {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new(
+      "Ship".to_string(),
+      callisto::entity::Vec3::zero(),
+      callisto::entity::Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    ship.carrier = carrier.map(str::to_string);
+    for i in 0..aboard {
+      ship.embarked.push(Ship::new(
+        format!("Craft {i}"),
+        callisto::entity::Vec3::zero(),
+        callisto::entity::Vec3::zero(),
+        &design,
+        None,
+        None,
+      ));
+    }
+    ship
+  }
+
+  /// "none" is the crews' own rules for everyone; "launch" and "land" mean
+  /// what they say where they apply, and are "none" where they do not.
+  #[test]
+  fn the_flight_head_becomes_a_flight_order() {
+    let launch = Some(Flight::Launch {
+      craft: vec![],
+      count: None,
+    });
+    assert_eq!(flight_of(0, &ship(None, 0)), None);
+    assert_eq!(flight_of(1, &ship(None, 0)), None);
+    assert_eq!(flight_of(0, &ship(None, 2)), None);
+    assert_eq!(flight_of(1, &ship(None, 2)), launch);
+    assert_eq!(flight_of(2, &ship(None, 2)), None);
+    assert_eq!(flight_of(0, &ship(Some("Mother"), 0)), None);
+    assert_eq!(flight_of(1, &ship(Some("Mother"), 0)), None);
+    assert_eq!(
+      flight_of(2, &ship(Some("Mother"), 0)),
+      Some(Flight::Land {
+        carrier: "Mother".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn a_flight_order_reads_back_as_its_choice() {
+    let me = ship(Some("Mother"), 0);
+    let picture = Picture::default();
+    let choice = |flight: Option<Flight>| {
+      choice_of(
+        &Intent {
+          flight,
+          ..Intent::default()
+        },
+        &me,
+        &picture,
+      )[Head::Flight as usize]
+    };
+    assert_eq!(choice(None), 0);
+    assert_eq!(choice(Some(Flight::Hold)), 0);
+    assert_eq!(
+      choice(Some(Flight::Launch {
+        craft: vec![],
+        count: None
+      })),
+      1
+    );
+    assert_eq!(
+      choice(Some(Flight::Land {
+        carrier: "Mother".to_string()
+      })),
+      2
+    );
+  }
 }

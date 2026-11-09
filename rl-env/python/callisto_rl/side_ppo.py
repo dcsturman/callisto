@@ -29,8 +29,8 @@ import torch
 from ._engine import SideEngine
 from .ppo import WINS
 from .selfplay import Mix, Opponent
-from .sidenet import SideNet
-from .vec_env import DESIGNS, SIDE_POOL, default_pool, outcome_for
+from .sidenet import HEADS, SideNet
+from .vec_env import CAPITAL_POOL, DESIGNS, default_pool, outcome_for
 
 VIEWS = 5  # own, foes, side, pairs, masks
 
@@ -220,7 +220,7 @@ class Player(threading.Thread):
         """The orders for every side of the group's games this round, and its
         learner entries recorded."""
         tensors = [torch.as_tensor(v) for v in group.views]
-        actions = np.zeros((2 * group.games, group.views[4].shape[1], 15), dtype=np.int64)
+        actions = np.zeros((2 * group.games, group.views[4].shape[1], HEADS), dtype=np.int64)
         # Every view to the playing device in one transfer.
         on_device = [t.to(self.device) for t in tensors]
 
@@ -269,7 +269,7 @@ class Player(threading.Thread):
 
     def _run(self) -> None:
         s = self.s
-        scenarios = list(s.scenarios or default_pool(SIDE_POOL))
+        scenarios = list(s.scenarios or default_pool(CAPITAL_POOL))
         groups = [self._group(scenarios, k) for k in range(max(1, s.groups))]
         # While one group's engine steps on this thread (it lets go of
         # Python's lock), the next group's orders are chosen on a helper

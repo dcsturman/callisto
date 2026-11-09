@@ -172,6 +172,60 @@ pub struct Reply {
   pub output_tokens: u64,
 }
 
+/// A tool the model must answer by calling: its name, what it is for, and
+/// its parameters as JSON Schema.
+#[derive(Debug, Clone)]
+pub struct Tool {
+  pub name: &'static str,
+  pub description: &'static str,
+  pub schema: Value,
+}
+
+impl Tool {
+  /// The per-round decision the model commander answers with.
+  #[must_use]
+  pub fn plan_round() -> Self {
+    Tool {
+      name: decision::TOOL_NAME,
+      description: decision::TOOL_DESCRIPTION,
+      schema: decision::schema(),
+    }
+  }
+}
+
+/// What came back from one call of a tool: its arguments as the model sent
+/// them, and what the call used.
+#[derive(Debug, Clone)]
+pub struct Call {
+  pub args: Value,
+  pub input_tokens: u64,
+  pub cached_tokens: u64,
+  pub output_tokens: u64,
+}
+
+impl Call {
+  /// What this call cost, in US dollars, if the model's price is known.
+  #[must_use]
+  pub fn cost(&self, spec: &ModelSpec) -> Option<f64> {
+    #[allow(clippy::cast_precision_loss)]
+    price(spec).map(|(input, cached, output)| {
+      let fresh = self.input_tokens.saturating_sub(self.cached_tokens) as f64;
+      (fresh * input + self.cached_tokens as f64 * cached + self.output_tokens as f64 * output) / 1_000_000.0
+    })
+  }
+
+  /// The arguments read as a round's decision.
+  fn into_reply(self) -> Result<Reply, Error> {
+    Ok(Reply {
+      decision: serde_json::from_value(self.args.clone()).map_err(|e| bad(&e.to_string(), &self.args))?,
+      raw: self.args.to_string(),
+      input_tokens: self.input_tokens,
+      cached_tokens: self.cached_tokens,
+      output_tokens: self.output_tokens,
+    })
+  }
+}
+
 /// A connection to Vertex AI for one project and region.
 pub struct Vertex {
   client: reqwest::Client,
@@ -220,6 +274,8 @@ enum Auth {
 /// How long a cache lives, and how long we use it before making a new one.
 const CACHE_TTL: Duration = Duration::from_hours(1);
 const CACHE_TRUSTED: Duration = Duration::from_mins(55);
+/// How long a prompt refused a cache goes without asking again.
+const REFUSED_CACHE: Duration = Duration::from_hours(24);
 
 const SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
 const ATTEMPTS: u32 = 3;
@@ -288,18 +344,30 @@ impl Vertex {
   /// Returns an error if the call fails after retries, or the answer is not a
   /// decision.
   pub async fn plan_round(&self, spec: &ModelSpec, system: &str, situation: &str) -> Result<Reply, Error> {
+    self.call(spec, system, situation, &Tool::plan_round()).await?.into_reply()
+  }
+
+  /// Ask `model` to answer `situation` by calling `tool`.
+  ///
+  /// # Errors
+  /// Returns an error if the call fails after retries, or the answer is not
+  /// a call of the tool.
+  pub async fn call(&self, spec: &ModelSpec, system: &str, situation: &str, tool: &Tool) -> Result<Call, Error> {
     match spec.family {
-      Family::Gemini => self.gemini_round(&spec.model, system, situation).await,
+      Family::Gemini => self.gemini_round(&spec.model, system, situation, tool).await,
       Family::Claude => {
         let url = self.endpoint("anthropic", &spec.model, "rawPredict");
-        claude_reply(&self.post(&url, &claude_request(system, situation)).await?)
+        claude_reply(&self.post(&url, &claude_request(system, situation, tool)).await?, tool.name)
       }
       Family::Maas => {
         let url = self.chat_completions();
-        maas_reply(&self.post(&url, &maas_request(&spec.model, system, situation)).await?)
+        maas_reply(
+          &self.post(&url, &maas_request(&spec.model, system, situation, tool)).await?,
+          tool.name,
+        )
       }
       Family::Anthropic => {
-        let mut request = claude_request(system, situation);
+        let mut request = claude_request(system, situation, tool);
         request["model"] = json!(spec.model);
         if let Some(fields) = request.as_object_mut() {
           fields.remove("anthropic_version");
@@ -315,13 +383,16 @@ impl Vertex {
           request["max_tokens"] = json!(16_384);
           request["output_config"] = json!({"effort": effort});
           request["tool_choice"] = json!({"type": "auto"});
-          request["messages"][0]["content"] =
-            json!(format!("{situation}\n\nThink it through, then answer by calling `plan_round`."));
+          request["messages"][0]["content"] = json!(format!(
+            "{situation}\n\nThink it through, then answer by calling `{}`.",
+            tool.name
+          ));
         }
         claude_reply(
           &self
             .post_as(Auth::Anthropic, "https://api.anthropic.com/v1/messages", &request)
             .await?,
+          tool.name,
         )
       }
     }
@@ -343,28 +414,32 @@ impl Vertex {
   /// A Gemini round, through an explicit cache of the system prompt and tool
   /// when there is one: those tokens are billed at a fraction of the rate.
   /// If the cache cannot be made, or has vanished, the round goes without.
-  async fn gemini_round(&self, model: &str, system: &str, situation: &str) -> Result<Reply, Error> {
+  async fn gemini_round(&self, model: &str, system: &str, situation: &str, tool: &Tool) -> Result<Call, Error> {
     let url = self.endpoint("google", model, "generateContent");
-    if let Some(cache) = self.gemini_cache(model, system).await {
+    if let Some(cache) = self.gemini_cache(model, system, tool).await {
       match self.post(&url, &gemini_cached_request(&cache, model, situation)).await {
-        Ok(answer) => return gemini_reply(&answer),
+        Ok(answer) => return gemini_reply(&answer, tool.name),
         Err(Error::Refused { status, body }) if status == 400 || status == 404 || status == 403 => {
           warn!("(provider) The prompt cache was refused ({status}); going without it this round: {body}");
-          self.caches.lock().await.remove(&cache_key(model, system));
+          self.caches.lock().await.remove(&cache_key(model, system, tool));
         }
         Err(e) => return Err(e),
       }
     }
-    gemini_reply(&self.post(&url, &gemini_request(system, situation, model)).await?)
+    gemini_reply(
+      &self.post(&url, &gemini_request(system, situation, model, tool)).await?,
+      tool.name,
+    )
   }
 
   /// The cache for this model, made if there is none or it is about to lapse.
-  async fn gemini_cache(&self, model: &str, system: &str) -> Option<String> {
-    let key = cache_key(model, system);
+  async fn gemini_cache(&self, model: &str, system: &str, tool: &Tool) -> Option<String> {
+    let key = cache_key(model, system, tool);
     let mut caches = self.caches.lock().await;
     if let Some((name, until)) = caches.get(&key) {
       if std::time::Instant::now() < *until {
-        return Some(name.clone());
+        // An empty name: this prompt was refused a cache; do not ask again.
+        return (!name.is_empty()).then(|| name.clone());
       }
     }
     let host = if self.region == "global" {
@@ -376,7 +451,7 @@ impl Vertex {
       "https://{host}/v1/projects/{}/locations/{}/cachedContents",
       self.project, self.region
     );
-    let mut body = gemini_fixed(system);
+    let mut body = gemini_fixed(system, tool);
     body["model"] = json!(format!(
       "projects/{}/locations/{}/publishers/google/models/{model}",
       self.project, self.region
@@ -390,6 +465,11 @@ impl Vertex {
       }
       Err(e) => {
         warn!("(provider) Could not cache the prompt for {model}; sending it whole. {e}");
+        // Refused -- too short to cache, say -- is not going to change:
+        // stop asking for a day. A failure to connect is tried again.
+        if matches!(e, Error::Refused { .. }) {
+          caches.insert(key, (String::new(), std::time::Instant::now() + REFUSED_CACHE));
+        }
         None
       }
     }
@@ -505,17 +585,17 @@ fn uppercase_types(schema: &mut Value) {
 
 /// The fixed part of a Gemini request: the system prompt, the one tool, and
 /// that it must be called. What the cache holds.
-fn gemini_fixed(system: &str) -> Value {
-  let mut schema = decision::schema();
+fn gemini_fixed(system: &str, tool: &Tool) -> Value {
+  let mut schema = tool.schema.clone();
   uppercase_types(&mut schema);
   json!({
     "systemInstruction": {"parts": [{"text": system}]},
     "tools": [{"functionDeclarations": [{
-      "name": decision::TOOL_NAME,
-      "description": decision::TOOL_DESCRIPTION,
+      "name": tool.name,
+      "description": tool.description,
       "parameters": schema
     }]}],
-    "toolConfig": {"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": [decision::TOOL_NAME]}}
+    "toolConfig": {"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": [tool.name]}}
   })
 }
 
@@ -530,8 +610,8 @@ fn gemini_generation(model: &str) -> Value {
   json!({"temperature": 0.3, "maxOutputTokens": 32768, "thinkingConfig": thinking})
 }
 
-fn gemini_request(system: &str, situation: &str, model: &str) -> Value {
-  let mut body = gemini_fixed(system);
+fn gemini_request(system: &str, situation: &str, model: &str, tool: &Tool) -> Value {
+  let mut body = gemini_fixed(system, tool);
   body["contents"] = json!([{"role": "user", "parts": [{"text": situation}]}]);
   body["generationConfig"] = gemini_generation(model);
   body
@@ -545,7 +625,7 @@ fn gemini_cached_request(cache: &str, model: &str, situation: &str) -> Value {
   })
 }
 
-fn gemini_reply(answer: &Value) -> Result<Reply, Error> {
+fn gemini_reply(answer: &Value, tool: &str) -> Result<Call, Error> {
   let usage = &answer["usageMetadata"];
   let parts = answer["candidates"][0]["content"]["parts"]
     .as_array()
@@ -553,12 +633,11 @@ fn gemini_reply(answer: &Value) -> Result<Reply, Error> {
   let args = parts
     .iter()
     .find_map(|part| part.get("functionCall"))
-    .filter(|call| call["name"] == decision::TOOL_NAME)
+    .filter(|call| call["name"] == tool)
     .map(|call| call["args"].clone())
-    .ok_or_else(|| bad("no plan_round call", answer))?;
-  Ok(Reply {
-    decision: serde_json::from_value(args.clone()).map_err(|e| bad(&e.to_string(), &args))?,
-    raw: args.to_string(),
+    .ok_or_else(|| bad(&format!("no {tool} call"), answer))?;
+  Ok(Call {
+    args,
     input_tokens: usage["promptTokenCount"].as_u64().unwrap_or(0),
     cached_tokens: usage["cachedContentTokenCount"].as_u64().unwrap_or(0),
     // Thinking is billed as output, so it is counted as output.
@@ -567,7 +646,7 @@ fn gemini_reply(answer: &Value) -> Result<Reply, Error> {
   })
 }
 
-fn claude_request(system: &str, situation: &str) -> Value {
+fn claude_request(system: &str, situation: &str, tool: &Tool) -> Value {
   json!({
     "anthropic_version": "vertex-2023-10-16",
     "max_tokens": 8192,
@@ -577,25 +656,24 @@ fn claude_request(system: &str, situation: &str) -> Value {
     "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
     "messages": [{"role": "user", "content": situation}],
     "tools": [{
-      "name": decision::TOOL_NAME,
-      "description": decision::TOOL_DESCRIPTION,
-      "input_schema": decision::schema()
+      "name": tool.name,
+      "description": tool.description,
+      "input_schema": tool.schema
     }],
-    "tool_choice": {"type": "tool", "name": decision::TOOL_NAME}
+    "tool_choice": {"type": "tool", "name": tool.name}
   })
 }
 
-fn claude_reply(answer: &Value) -> Result<Reply, Error> {
+fn claude_reply(answer: &Value, tool: &str) -> Result<Call, Error> {
   let usage = &answer["usage"];
   let content = answer["content"].as_array().ok_or_else(|| bad("no content", answer))?;
   let input = content
     .iter()
-    .find(|block| block["type"] == "tool_use" && block["name"] == decision::TOOL_NAME)
+    .find(|block| block["type"] == "tool_use" && block["name"] == tool)
     .map(|block| block["input"].clone())
-    .ok_or_else(|| bad("no plan_round call", answer))?;
-  Ok(Reply {
-    decision: serde_json::from_value(input.clone()).map_err(|e| bad(&e.to_string(), &input))?,
-    raw: input.to_string(),
+    .ok_or_else(|| bad(&format!("no {tool} call"), answer))?;
+  Ok(Call {
+    args: input,
     // Anthropic counts cache reads and writes apart from `input_tokens`;
     // input here is all of it, of which `cached_tokens` were read from cache.
     input_tokens: usage["input_tokens"].as_u64().unwrap_or(0)
@@ -606,7 +684,7 @@ fn claude_reply(answer: &Value) -> Result<Reply, Error> {
   })
 }
 
-fn maas_request(model: &str, system: &str, situation: &str) -> Value {
+fn maas_request(model: &str, system: &str, situation: &str, tool: &Tool) -> Value {
   json!({
     "model": model,
     "max_tokens": 8192,
@@ -618,26 +696,25 @@ fn maas_request(model: &str, system: &str, situation: &str) -> Value {
     "tools": [{
       "type": "function",
       "function": {
-        "name": decision::TOOL_NAME,
-        "description": decision::TOOL_DESCRIPTION,
-        "parameters": decision::schema()
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.schema
       }
     }],
-    "tool_choice": {"type": "function", "function": {"name": decision::TOOL_NAME}}
+    "tool_choice": {"type": "function", "function": {"name": tool.name}}
   })
 }
 
-fn maas_reply(answer: &Value) -> Result<Reply, Error> {
+fn maas_reply(answer: &Value, tool: &str) -> Result<Call, Error> {
   let usage = &answer["usage"];
   let arguments = answer["choices"][0]["message"]["tool_calls"]
     .as_array()
-    .and_then(|calls| calls.iter().find(|call| call["function"]["name"] == decision::TOOL_NAME))
+    .and_then(|calls| calls.iter().find(|call| call["function"]["name"] == tool))
     .and_then(|call| call["function"]["arguments"].as_str())
-    .ok_or_else(|| bad("no plan_round call", answer))?;
+    .ok_or_else(|| bad(&format!("no {tool} call"), answer))?;
   let input: Value = serde_json::from_str(arguments).map_err(|e| bad(&e.to_string(), answer))?;
-  Ok(Reply {
-    decision: serde_json::from_value(input.clone()).map_err(|e| bad(&e.to_string(), &input))?,
-    raw: input.to_string(),
+  Ok(Call {
+    args: input,
     input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0),
     cached_tokens: usage["prompt_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0),
     // Reasoning, where a model reports it, is part of the completion.
@@ -646,10 +723,11 @@ fn maas_reply(answer: &Value) -> Result<Reply, Error> {
 }
 
 /// What a Gemini cache is kept under: the model and the prompt it holds.
-fn cache_key(model: &str, system: &str) -> String {
+fn cache_key(model: &str, system: &str, tool: &Tool) -> String {
   use std::hash::{Hash, Hasher};
   let mut hasher = std::collections::hash_map::DefaultHasher::new();
   system.hash(&mut hasher);
+  tool.name.hash(&mut hasher);
   format!("{model}#{:016x}", hasher.finish())
 }
 
@@ -667,9 +745,10 @@ fn bad(why: &str, raw: &Value) -> Error {
 /// Returns an error if the answer is not a decision.
 pub fn parse_reply(family: Family, answer: &Value) -> Result<Reply, Error> {
   match family {
-    Family::Gemini => gemini_reply(answer),
+    Family::Gemini => gemini_reply(answer, decision::TOOL_NAME),
     // Anthropic's own API answers in the same shape as Claude on Vertex.
-    Family::Claude | Family::Anthropic => claude_reply(answer),
-    Family::Maas => maas_reply(answer),
+    Family::Claude | Family::Anthropic => claude_reply(answer, decision::TOOL_NAME),
+    Family::Maas => maas_reply(answer, decision::TOOL_NAME),
   }
+  .and_then(Call::into_reply)
 }

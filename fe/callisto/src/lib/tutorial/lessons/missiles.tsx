@@ -48,7 +48,8 @@ export const missiles: Lesson = {
       body: (
         <p>
           The Gunner card&apos;s <b>Salvoes</b> board lists every missile coming at you: whose they are, and when
-          they arrive. These hit this round.
+          they arrive. These hit this round. Below it, <b>Ours in flight</b> shows your own: how many at each
+          target, and when they land.
         </p>
       ),
     },
@@ -102,8 +103,9 @@ export const missiles: Lesson = {
       target: ["magazine"],
       body: (
         <p>
-          Missiles are counted. The magazine shows how many Warden has left, and every launch uses some. A
-          launcher keeps launching every round until you call it off, so keep an eye on it.
+          Missiles are counted. Each launcher fires from its own load, shown under the stores, and every
+          launch uses some. A launcher keeps launching every round until you call it off or it runs dry; then
+          choose <em>&lt;Reload&gt;</em> as the target to refill it from stores.
         </p>
       ),
     },

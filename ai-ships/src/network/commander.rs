@@ -11,10 +11,10 @@ use std::sync::Arc;
 use crate::commander::Commander;
 use crate::observation::Observation;
 use async_trait::async_trait;
-use callisto::tactics::{EngineerVerb, Helm, Intent, SensorVerb};
+use callisto::tactics::{EngineerVerb, Flight, Helm, Intent, SensorVerb};
 use rand::SeedableRng;
 
-use crate::network::action::{side_intents, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
+use crate::network::action::{side_intents, side_intents_with, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
 use crate::network::encode::{believed_hull, remember, side_goal};
 use crate::network::encode::{encode_ship, Context, Memory, Picture, OBS_LEN};
 use crate::network::history::History;
@@ -30,7 +30,7 @@ pub const MAX_ROUNDS: u32 = 40;
 pub struct Net {
   policy: Arc<Policy>,
   memory: Memory,
-  hull_at_start: Option<u32>,
+  hull_at_start: Option<u64>,
   /// Choices drawn as in training, rather than always the best scored.
   rng: Option<rand::rngs::SmallRng>,
   /// The goal to play for, in place of the scenario's.
@@ -107,9 +107,14 @@ fn rationale(intent: &Intent) -> String {
       .software
       .iter()
       .any(|order| order.running && order.program == callisto::software::SoftwareKind::JumpControl);
+  let flight = match &intent.flight {
+    Some(Flight::Launch { .. }) => ", launching her craft".to_string(),
+    Some(Flight::Land { carrier }) => format!(", going home to {carrier}"),
+    Some(Flight::Hold) | None => String::new(),
+  };
   let lead = if withdrawing { "Withdrawing to jump: " } else { "" };
   format!(
-    "{lead}{}{fire}{dodge}{jamming}.",
+    "{lead}{}{fire}{dodge}{jamming}{flight}.",
     if withdrawing { helm } else { capitalise(&helm) }
   )
 }
@@ -137,6 +142,7 @@ fn label(head: Head, choice: usize, picture: &Picture) -> String {
     Head::Sensor1 | Head::Sensor2 => format!("{:?}", orders::SENSOR_ORDERS[choice]),
     Head::Captain => format!("{:?}", orders::RANKINGS[choice]),
     Head::Computer => ["fight", "link"][choice].to_string(),
+    Head::Flight => ["none", "launch", "land"][choice].to_string(),
   }
 }
 
@@ -170,7 +176,7 @@ impl Commander for Net {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     remember(&mut self.memory, view, view.round);
     self.history.look(view);
-    let hull: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
+    let hull: u64 = view.own.iter().map(|ship| u64::from(ship.current_hull)).sum();
     let start = *self.hull_at_start.get_or_insert(hull);
     let ctx = Context {
       view,
@@ -230,13 +236,19 @@ pub struct SideCommander {
   net: Arc<SideNet>,
   memory: Memory,
   history: History,
-  hull_at_start: Option<u32>,
+  hull_at_start: Option<u64>,
   /// The middle of the side when this commander first saw it: where a Hold
   /// side holds if its scenario names no post.
   start: Option<Vec3>,
   rng: Option<rand::rngs::SmallRng>,
   goal: Option<callisto::ship::Goal>,
   last: serde_json::Value,
+  /// Whether missiles are shared out across the side against point defence;
+  /// off only to measure the old way against it (`network-legacy`).
+  missile_sharing: bool,
+  /// For a side larger than the network's slots: a pass for each squadron,
+  /// by name, as the fleet commander plays one.
+  passes: std::collections::HashMap<String, SideCommander>,
 }
 
 impl SideCommander {
@@ -251,19 +263,124 @@ impl SideCommander {
       rng: None,
       goal: None,
       last: serde_json::Value::Null,
+      missile_sharing: true,
+      passes: std::collections::HashMap::new(),
+    }
+  }
+
+  /// A pass for one squadron, playing as this commander does.
+  fn squadron_pass(&mut self) -> SideCommander {
+    use rand::{RngCore, SeedableRng};
+    let mut pass = SideCommander::new(Arc::clone(&self.net));
+    pass.goal = self.goal;
+    pass.missile_sharing = self.missile_sharing;
+    pass.rng = self.rng.as_mut().map(|rng| rand::rngs::SmallRng::seed_from_u64(rng.next_u64()));
+    pass
+  }
+
+  /// A side larger than the network's slots, played a squadron at a time as
+  /// the fleet commander plays it with no orders: each pass sees its
+  /// squadron, the nearest of the rest of the side, and the enemies nearest
+  /// it, so no ship is left without orders.
+  fn decide_by_squadron(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    let groups = crate::fleet::squadrons(&view.own, &[]);
+    let mut intents = Vec::new();
+    for (name, members) in &groups {
+      let ships = crate::fleet::ships_of(view, members);
+      let (shown, _) = crate::fleet::foes_for(view, &ships, &crate::fleet::Step::default());
+      let part = crate::fleet::pass_view(view, members, &shown);
+      if !self.passes.contains_key(name) {
+        let pass = self.squadron_pass();
+        self.passes.insert(name.clone(), pass);
+      }
+      let pass = self.passes.get_mut(name).expect("inserted above");
+      intents.extend(
+        pass
+          .decide_pass(&part, &PassOrders::default())
+          .into_iter()
+          .filter(|(ship, _)| members.contains(ship)),
+      );
+    }
+    self.last = serde_json::Value::Null;
+    intents
+  }
+}
+
+/// What one pass of the network is told besides what it sees: a squadron's
+/// goal and post, and which enemies it may target. All `None` plays the side
+/// as the scenario has it.
+#[derive(Debug, Clone, Default)]
+pub struct PassOrders {
+  pub goal: Option<callisto::ship::Goal>,
+  /// Where a Hold pass holds, and how close counts (metres).
+  pub post: Option<(Vec3, f64)>,
+  /// The enemies its ships may fire on, lock and steer by; `None` for any.
+  pub allowed: Option<Vec<String>>,
+}
+
+/// Close every choice that names an enemy outside `allowed`: fire, lock and
+/// the second operator's target keep "none"; the helm keeps its targets if
+/// any allowed one is left, and otherwise may not close on anyone.
+fn restrict(masks: &mut [bool], tokens: &crate::network::side::Tokens, allowed: &[String]) {
+  use crate::network::side::{offset, MASK_LEN as SIDE_MASK};
+  let barred: Vec<usize> = tokens
+    .foes
+    .iter()
+    .enumerate()
+    .filter(|(_, name)| !allowed.contains(name))
+    .map(|(j, _)| j)
+    .collect();
+  for mask in masks.chunks_mut(SIDE_MASK) {
+    for head in [Head::Fire, Head::Lock, Head::Target2] {
+      for j in &barred {
+        mask[offset(head) + 1 + j] = false;
+      }
+    }
+    let helm = offset(Head::HelmTarget);
+    let open_allowed = (0..tokens.foes.len()).any(|j| mask[helm + j] && !barred.contains(&j));
+    if open_allowed {
+      for j in &barred {
+        mask[helm + j] = false;
+      }
+    } else {
+      for verb in [Verb::Intercept, Verb::HoldRange] {
+        mask[offset(Head::Verb) + verb as usize] = false;
+      }
     }
   }
 }
 
-#[async_trait]
-impl Commander for SideCommander {
-  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+/// The network has slots for twenty ships; in one pass the rest of the side
+/// keep their course and get no fire orders (a whole side larger than that
+/// is played a squadron at a time, `SideCommander::decide_by_squadron`), but their crews still run the deck and
+/// the magazine, which an intent of no orders leaves to them.
+fn idle_beyond_the_slots(intents: &mut Vec<(String, Intent)>, view: &Observation) {
+  let idle: Vec<(String, Intent)> = view
+    .own
+    .iter()
+    .filter(|ship| !intents.iter().any(|(name, _)| name == ship.get_name()))
+    .map(|ship| {
+      (
+        ship.get_name().to_string(),
+        Intent {
+          rationale: "Beyond the network's twenty ships this round: holds her course.".to_string(),
+          ..Intent::default()
+        },
+      )
+    })
+    .collect();
+  intents.extend(idle);
+}
+
+impl SideCommander {
+  /// One pass of the network over `view`, under `orders`.
+  pub fn decide_pass(&mut self, view: &Observation, orders: &PassOrders) -> Vec<(String, Intent)> {
     use crate::network::side::{
       Buffers, SideContext, FOES, FOE_FEATS, MASK_LEN as SIDE_MASK, OWN, OWN_FEATS, PAIR_FEATS, SIDE_FEATS,
     };
     remember(&mut self.memory, view, view.round);
     self.history.look(view);
-    let hull: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
+    let hull: u64 = view.own.iter().map(|ship| u64::from(ship.current_hull)).sum();
     let start = *self.hull_at_start.get_or_insert(hull);
     let centre = *self.start.get_or_insert_with(|| {
       view
@@ -273,9 +390,11 @@ impl Commander for SideCommander {
         .fold(Vec3::new(0.0, 0.0, 0.0), |a, b| a + b)
         / view.own.len().max(1) as f64
     });
-    let goal = self.goal.unwrap_or_else(|| side_goal(&view.own));
+    let goal = orders.goal.or(self.goal).unwrap_or_else(|| side_goal(&view.own));
     let post = (goal == callisto::ship::Goal::Hold).then(|| {
-      crate::network::side::scenario_post(&view.own, &view.planets)
+      orders
+        .post
+        .or_else(|| crate::network::side::scenario_post(&view.own, &view.planets))
         .unwrap_or((centre, callisto::ship::DEFAULT_POST_RADIUS_KM * 1000.0))
     });
     let ctx = SideContext {
@@ -306,6 +425,9 @@ impl Commander for SideCommander {
         masks: &mut masks,
       },
     );
+    if let Some(allowed) = &orders.allowed {
+      restrict(&mut masks, &tokens, allowed);
+    }
     let logits = self.net.logits(&own, &foes, &side, &pairs);
     let picture = tokens.picture();
     let mut explained = serde_json::Map::new();
@@ -332,17 +454,36 @@ impl Commander for SideCommander {
           .map(|ship| (ship, choice, &picture))
       })
       .collect();
-    let mut intents = side_intents(&own_ships, view);
+    // Guns and missiles are shared out only among the enemies it may engage.
+    let allowed_view = orders.allowed.as_ref().map(|allowed| {
+      let mut part = view.clone();
+      part
+        .contacts
+        .retain(|contact| (view.team.is_some() && contact.team == view.team) || allowed.contains(&contact.name));
+      part
+    });
+    let mut intents = side_intents_with(&own_ships, allowed_view.as_ref().unwrap_or(view), self.missile_sharing);
     crate::network::side::hold_at_post(&mut intents, ctx.post);
-    let intents: Vec<(String, Intent)> = intents
+    let mut intents: Vec<(String, Intent)> = intents
       .into_iter()
       .map(|(ship, mut intent)| {
         intent.rationale = rationale(&intent);
         (ship, intent)
       })
       .collect();
+    idle_beyond_the_slots(&mut intents, view);
     self.history.record(&intents);
     intents
+  }
+}
+
+#[async_trait]
+impl Commander for SideCommander {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    if view.own.len() > crate::network::side::OWN {
+      return self.decide_by_squadron(view);
+    }
+    self.decide_pass(view, &PassOrders::default())
   }
 
   fn explain(&self) -> Option<serde_json::Value> {
@@ -369,12 +510,21 @@ fn cached<T>(
   Some(made)
 }
 
-/// The per-side network the service plays with, built in: side-20-9
-/// (`rl-env/checkpoints/side-20-9`, exported by `scripts/export_side.py`).
+/// The per-side network the service plays with, built in: side-cap-1
+/// (`rl-env/checkpoints/side-cap-1`, exported by `scripts/export_side.py`).
 /// Replace the file to change it; its layout must match this build's.
 pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 
-/// A commander by name: `network`, the built-in per-side network; a baseline
+/// The per-side network compiled into the service, loaded once.
+#[must_use]
+pub fn built_in() -> Option<Arc<SideNet>> {
+  cached(&LOADED_SIDE, "network", |_| {
+    SideNet::from_bytes(BUILT_IN, "the built-in network")
+  })
+}
+
+/// A commander by name: `network`, the built-in per-side network
+/// (`network-legacy` with its missiles shared out the old way); a baseline
 /// (`close`, `hold`, ...); or a trained network from its exported file --
 /// `net:<file.cpol>` for the per-ship network, `side:<file.cside>` for the
 /// per-side one, each playing its best choice, or with `~` (`net~:`,
@@ -383,9 +533,26 @@ pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 /// Each file is read once.
 #[must_use]
 pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
-  if name == "network" {
-    let net = cached(&LOADED_SIDE, name, |_| SideNet::from_bytes(BUILT_IN, "the built-in network"))?;
-    return Some(Box::new(SideCommander::new(net)));
+  // `fleet:<directive.json>`: squadrons under written orders, each its own
+  // pass of the built-in network.
+  if let Some(path) = name.strip_prefix("fleet:") {
+    let net = cached(&LOADED_SIDE, "network", |_| {
+      SideNet::from_bytes(BUILT_IN, "the built-in network")
+    })?;
+    let directive = std::fs::read_to_string(path)
+      .map_err(|e| format!("cannot read {path}: {e}"))
+      .and_then(|text| serde_json::from_str(&text).map_err(|e| format!("cannot read {path}: {e}")))
+      .map_err(|e| eprintln!("{e}"))
+      .ok()?;
+    return Some(Box::new(crate::fleet::FleetCommander::new(net, directive)));
+  }
+  if name == "network" || name == "network-legacy" {
+    let net = cached(&LOADED_SIDE, "network", |_| {
+      SideNet::from_bytes(BUILT_IN, "the built-in network")
+    })?;
+    let mut commander = SideCommander::new(net);
+    commander.missile_sharing = name == "network";
+    return Some(Box::new(commander));
   }
   let Some((kind, rest)) = name.split_once(':') else {
     return crate::commander::named(name, seed);
@@ -423,6 +590,25 @@ pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// Blocking an enemy closes every choice that names it, and leaves the
+  /// others -- and "none" -- open.
+  #[test]
+  fn restricting_closes_only_the_barred_enemies() {
+    use crate::network::side::{offset, Tokens, MASK_LEN as SIDE_MASK};
+    let tokens = Tokens {
+      own: vec!["Lance".to_string()],
+      foes: vec!["Spear".to_string(), "Tarsis".to_string()],
+    };
+    let mut masks = vec![true; SIDE_MASK];
+    restrict(&mut masks, &tokens, &["Spear".to_string()]);
+    let fire = offset(Head::Fire);
+    assert!(masks[fire], "none stays open");
+    assert!(masks[fire + 1], "the allowed enemy stays open");
+    assert!(!masks[fire + 2], "the barred enemy is closed");
+    let helm = offset(Head::HelmTarget);
+    assert!(masks[helm] && !masks[helm + 1]);
+  }
 
   /// The network compiled into the service loads with this build's layout,
   /// so a swapped-in file that does not fit fails here, not in production.

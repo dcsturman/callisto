@@ -186,6 +186,7 @@ pub fn ships_ordered(request: &RequestMsg) -> Option<Vec<String>> {
     RequestMsg::SetOrders(orders) => one(&orders.ship_name),
     RequestMsg::SetAiReport(report) => one(&report.ship_name),
     RequestMsg::SetShipTeam(team) => one(&team.ship_name),
+    RequestMsg::SetSquadron(squadron) => Some(squadron.ships.clone()),
     RequestMsg::AddShip(ship) => one(&ship.name),
     RequestMsg::Remove(name) => one(name),
     RequestMsg::RenameEntity(rename) => Some(vec![rename.current.clone(), rename.new_name.clone()]),
@@ -209,6 +210,7 @@ mod tests {
     let request = RequestMsg::SetOrders(SetOrders {
       ship_name: "Invigilator".to_string(),
       orders: Some("Close and board.".to_string()),
+      scope: crate::payloads::OrdersScope::Ship,
     });
     let ships = ships_ordered(&request).unwrap();
     log.order(1, &ships, By::Ai, true, &serde_json::to_value(&request).unwrap());

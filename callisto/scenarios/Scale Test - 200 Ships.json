@@ -1,0 +1,5410 @@
+{
+  "metadata": {
+    "name": "Scale Test - 200 Ships",
+    "owner": "dcsturman@gmail.com",
+    "description": "Two fleets of 100 ships in six squadrons each, 100,000 km apart at rest: cruisers, destroyer escorts, corvettes, boats and three wings of fighters. For testing how the game and its fleet tools hold up with hundreds of ships."
+  },
+  "planets": [],
+  "ships": [
+    {
+      "name": "Blue Line 01",
+      "position": [
+        -50000000.0,
+        -27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Colonial Cruiser - Kinunir",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 02",
+      "position": [
+        -50000000.0,
+        -26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Colonial Cruiser - Kinunir",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 03",
+      "position": [
+        -50000000.0,
+        -25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 04",
+      "position": [
+        -50000000.0,
+        -24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 05",
+      "position": [
+        -50000000.0,
+        -23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 06",
+      "position": [
+        -51000000.0,
+        -27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 07",
+      "position": [
+        -51000000.0,
+        -26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 08",
+      "position": [
+        -51000000.0,
+        -25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 09",
+      "position": [
+        -51000000.0,
+        -24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Line 10",
+      "position": [
+        -51000000.0,
+        -23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 01",
+      "position": [
+        -50000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 02",
+      "position": [
+        -50000000.0,
+        -16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 03",
+      "position": [
+        -50000000.0,
+        -15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 04",
+      "position": [
+        -50000000.0,
+        -14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 05",
+      "position": [
+        -50000000.0,
+        -13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 06",
+      "position": [
+        -51000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 07",
+      "position": [
+        -51000000.0,
+        -16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 08",
+      "position": [
+        -51000000.0,
+        -15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 09",
+      "position": [
+        -51000000.0,
+        -14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 10",
+      "position": [
+        -51000000.0,
+        -13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 11",
+      "position": [
+        -52000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 12",
+      "position": [
+        -52000000.0,
+        -16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 13",
+      "position": [
+        -52000000.0,
+        -15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 14",
+      "position": [
+        -52000000.0,
+        -14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 15",
+      "position": [
+        -52000000.0,
+        -13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Escort 16",
+      "position": [
+        -53000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Blue",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 01",
+      "position": [
+        -50000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 02",
+      "position": [
+        -50000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 03",
+      "position": [
+        -50000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 04",
+      "position": [
+        -50000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 05",
+      "position": [
+        -50000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 06",
+      "position": [
+        -51000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 07",
+      "position": [
+        -51000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 08",
+      "position": [
+        -51000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 09",
+      "position": [
+        -51000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 10",
+      "position": [
+        -51000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 11",
+      "position": [
+        -52000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 12",
+      "position": [
+        -52000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 13",
+      "position": [
+        -52000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 14",
+      "position": [
+        -52000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 15",
+      "position": [
+        -52000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 16",
+      "position": [
+        -53000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 17",
+      "position": [
+        -53000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 18",
+      "position": [
+        -53000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 19",
+      "position": [
+        -53000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Lance 20",
+      "position": [
+        -53000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 01",
+      "position": [
+        -50000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 02",
+      "position": [
+        -50000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 03",
+      "position": [
+        -50000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 04",
+      "position": [
+        -50000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 05",
+      "position": [
+        -50000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 06",
+      "position": [
+        -51000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 07",
+      "position": [
+        -51000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 08",
+      "position": [
+        -51000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 09",
+      "position": [
+        -51000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 10",
+      "position": [
+        -51000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 11",
+      "position": [
+        -52000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 12",
+      "position": [
+        -52000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 13",
+      "position": [
+        -52000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 14",
+      "position": [
+        -52000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 15",
+      "position": [
+        -52000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 16",
+      "position": [
+        -53000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 17",
+      "position": [
+        -53000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 18",
+      "position": [
+        -53000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 19",
+      "position": [
+        -53000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Spear 20",
+      "position": [
+        -53000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 01",
+      "position": [
+        -50000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 02",
+      "position": [
+        -50000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 03",
+      "position": [
+        -50000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 04",
+      "position": [
+        -50000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 05",
+      "position": [
+        -50000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 06",
+      "position": [
+        -51000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 07",
+      "position": [
+        -51000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 08",
+      "position": [
+        -51000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 09",
+      "position": [
+        -51000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 10",
+      "position": [
+        -51000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 11",
+      "position": [
+        -52000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 12",
+      "position": [
+        -52000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 13",
+      "position": [
+        -52000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 14",
+      "position": [
+        -52000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 15",
+      "position": [
+        -52000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 16",
+      "position": [
+        -53000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 17",
+      "position": [
+        -53000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 18",
+      "position": [
+        -53000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 19",
+      "position": [
+        -53000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Arrow 20",
+      "position": [
+        -53000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Blue",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 01",
+      "position": [
+        -50000000.0,
+        23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 02",
+      "position": [
+        -50000000.0,
+        24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 03",
+      "position": [
+        -50000000.0,
+        25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 04",
+      "position": [
+        -50000000.0,
+        26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 05",
+      "position": [
+        -50000000.0,
+        27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 06",
+      "position": [
+        -51000000.0,
+        23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 07",
+      "position": [
+        -51000000.0,
+        24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 08",
+      "position": [
+        -51000000.0,
+        25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 09",
+      "position": [
+        -51000000.0,
+        26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 10",
+      "position": [
+        -51000000.0,
+        27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 11",
+      "position": [
+        -52000000.0,
+        23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 12",
+      "position": [
+        -52000000.0,
+        24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 13",
+      "position": [
+        -52000000.0,
+        25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Blue Hammer 14",
+      "position": [
+        -52000000.0,
+        26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 01",
+      "position": [
+        50000000.0,
+        -27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Colonial Cruiser - Kinunir",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 02",
+      "position": [
+        50000000.0,
+        -26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Colonial Cruiser - Kinunir",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 03",
+      "position": [
+        50000000.0,
+        -25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 04",
+      "position": [
+        50000000.0,
+        -24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 05",
+      "position": [
+        50000000.0,
+        -23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 06",
+      "position": [
+        51000000.0,
+        -27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Fer-de-Lance",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 07",
+      "position": [
+        51000000.0,
+        -26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 08",
+      "position": [
+        51000000.0,
+        -25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 09",
+      "position": [
+        51000000.0,
+        -24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Line 10",
+      "position": [
+        51000000.0,
+        -23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Red",
+      "squadron": "Line",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 01",
+      "position": [
+        50000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 02",
+      "position": [
+        50000000.0,
+        -16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 03",
+      "position": [
+        50000000.0,
+        -15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 04",
+      "position": [
+        50000000.0,
+        -14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 05",
+      "position": [
+        50000000.0,
+        -13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 06",
+      "position": [
+        51000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 07",
+      "position": [
+        51000000.0,
+        -16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 08",
+      "position": [
+        51000000.0,
+        -15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 09",
+      "position": [
+        51000000.0,
+        -14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 10",
+      "position": [
+        51000000.0,
+        -13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 11",
+      "position": [
+        52000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 12",
+      "position": [
+        52000000.0,
+        -16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 13",
+      "position": [
+        52000000.0,
+        -15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 14",
+      "position": [
+        52000000.0,
+        -14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 15",
+      "position": [
+        52000000.0,
+        -13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Escort 16",
+      "position": [
+        53000000.0,
+        -17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Torpedo Boat",
+      "team": "Red",
+      "squadron": "Escort",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 01",
+      "position": [
+        50000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 02",
+      "position": [
+        50000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 03",
+      "position": [
+        50000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 04",
+      "position": [
+        50000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 05",
+      "position": [
+        50000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 06",
+      "position": [
+        51000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 07",
+      "position": [
+        51000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 08",
+      "position": [
+        51000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 09",
+      "position": [
+        51000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 10",
+      "position": [
+        51000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 11",
+      "position": [
+        52000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 12",
+      "position": [
+        52000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 13",
+      "position": [
+        52000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 14",
+      "position": [
+        52000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 15",
+      "position": [
+        52000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 16",
+      "position": [
+        53000000.0,
+        -7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 17",
+      "position": [
+        53000000.0,
+        -6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 18",
+      "position": [
+        53000000.0,
+        -5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 19",
+      "position": [
+        53000000.0,
+        -4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Lance 20",
+      "position": [
+        53000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Lance",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 01",
+      "position": [
+        50000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 02",
+      "position": [
+        50000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 03",
+      "position": [
+        50000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 04",
+      "position": [
+        50000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 05",
+      "position": [
+        50000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 06",
+      "position": [
+        51000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 07",
+      "position": [
+        51000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 08",
+      "position": [
+        51000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 09",
+      "position": [
+        51000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 10",
+      "position": [
+        51000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 11",
+      "position": [
+        52000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 12",
+      "position": [
+        52000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 13",
+      "position": [
+        52000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 14",
+      "position": [
+        52000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 15",
+      "position": [
+        52000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 16",
+      "position": [
+        53000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 17",
+      "position": [
+        53000000.0,
+        4000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 18",
+      "position": [
+        53000000.0,
+        5000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 19",
+      "position": [
+        53000000.0,
+        6000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Spear 20",
+      "position": [
+        53000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Spear",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 01",
+      "position": [
+        50000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 02",
+      "position": [
+        50000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 03",
+      "position": [
+        50000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 04",
+      "position": [
+        50000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 05",
+      "position": [
+        50000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 06",
+      "position": [
+        51000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 07",
+      "position": [
+        51000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 08",
+      "position": [
+        51000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 09",
+      "position": [
+        51000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 10",
+      "position": [
+        51000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 11",
+      "position": [
+        52000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 12",
+      "position": [
+        52000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 13",
+      "position": [
+        52000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 14",
+      "position": [
+        52000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 15",
+      "position": [
+        52000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 16",
+      "position": [
+        53000000.0,
+        13000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 17",
+      "position": [
+        53000000.0,
+        14000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 18",
+      "position": [
+        53000000.0,
+        15000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 19",
+      "position": [
+        53000000.0,
+        16000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Arrow 20",
+      "position": [
+        53000000.0,
+        17000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "squadron": "Arrow",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 01",
+      "position": [
+        50000000.0,
+        23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 02",
+      "position": [
+        50000000.0,
+        24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 03",
+      "position": [
+        50000000.0,
+        25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 04",
+      "position": [
+        50000000.0,
+        26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 05",
+      "position": [
+        50000000.0,
+        27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 06",
+      "position": [
+        51000000.0,
+        23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 07",
+      "position": [
+        51000000.0,
+        24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 08",
+      "position": [
+        51000000.0,
+        25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 09",
+      "position": [
+        51000000.0,
+        26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 10",
+      "position": [
+        51000000.0,
+        27000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 11",
+      "position": [
+        52000000.0,
+        23000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 12",
+      "position": [
+        52000000.0,
+        24000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 13",
+      "position": [
+        52000000.0,
+        25000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    },
+    {
+      "name": "Red Hammer 14",
+      "position": [
+        52000000.0,
+        26000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "squadron": "Hammer",
+      "goal": "destroy"
+    }
+  ]
+}

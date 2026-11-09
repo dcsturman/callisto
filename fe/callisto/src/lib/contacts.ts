@@ -50,6 +50,24 @@ export const isUndetectedBy = (viewer: Viewer, target: Ship, ships: Ship[]): boo
   );
 };
 
+/**
+ * {@link isUndetectedBy} for many targets at once: the team's combined
+ * picture is gathered once, rather than every team-mate's contacts being read
+ * again for each ship asked about.
+ */
+export const undetectedTest = (viewer: Viewer, ships: Ship[]): ((target: Ship) => boolean) => {
+  if (viewer == null) {
+    return () => false;
+  }
+  if ("ship" in viewer) {
+    return (target) => isUndetected(viewer.ship, target);
+  }
+  const seen = new Set(
+    ships.filter((ship) => ship.team === viewer.team).flatMap((ship) => ship.contacts ?? []),
+  );
+  return (target) => target.team !== viewer.team && !seen.has(target.name);
+};
+
 /** Whether `ship` is the viewer's own: their ship, or one of their team's. */
 export const isViewersOwn = (viewer: Viewer, ship: Ship): boolean =>
   viewer != null && ("ship" in viewer ? viewer.ship.name === ship.name : ship.team === viewer.team);

@@ -130,6 +130,10 @@ pub struct AddShipMsg {
   /// Standing orders the ship starts with.
   #[serde(default)]
   pub orders: Option<String>,
+  /// The carrier this ship starts aboard, in one of her berths and off the
+  /// plot, as a scenario file's `aboard` does. Absent puts her in space.
+  #[serde(default)]
+  pub aboard: Option<String>,
 }
 
 /// Start or stop one software package.
@@ -171,6 +175,26 @@ pub struct SetShipTeam {
   pub team: Option<Team>,
 }
 
+/// Put ships in a squadron, or (`None`) take them out of theirs. All must be
+/// on one team, and the squadron may hold at most
+/// [`MAX_SQUADRON`](crate::ship::MAX_SQUADRON) ships afterwards. A new name
+/// makes a new squadron; taking every ship out of one dissolves it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetSquadron {
+  pub ships: Vec<String>,
+  pub squadron: Option<String>,
+}
+
+/// Rename a team's squadron.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RenameSquadron {
+  pub team: Option<Team>,
+  pub from: String,
+  pub to: String,
+}
+
 /// Hand a ship to the AI service, or take it back.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetShipController {
@@ -187,13 +211,33 @@ pub struct SetAiReport {
   pub report: Option<AiReport>,
 }
 
-/// Give a ship standing orders. `None`, or an empty string, clears them.
+/// Give standing orders. `None`, or an empty string, clears them. `scope`
+/// says whose: this ship's own (the default), her squadron's, or her team's
+/// whole fleet's -- each ship of which carries a copy.
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetOrders {
   pub ship_name: String,
   #[serde(default)]
   pub orders: Option<String>,
+  #[serde(default, skip_serializing_if = "OrdersScope::is_ship")]
+  pub scope: OrdersScope,
+}
+
+/// Whose orders a [`SetOrders`] gives.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OrdersScope {
+  #[default]
+  Ship,
+  Squadron,
+  Fleet,
+}
+
+impl OrdersScope {
+  #[must_use]
+  pub fn is_ship(&self) -> bool {
+    *self == OrdersScope::Ship
+  }
 }
 
 /// Set a ship's emissions: whether it runs active sensors, and whether it is
@@ -224,6 +268,18 @@ pub struct LaunchMissileMsg {
   /// before torpedoes existed still load.
   #[serde(default = "default_launcher")]
   pub weapon: Weapon,
+  /// Missiles in the salvo: one launch from one mount flies as one object.
+  #[serde(default = "one_missile")]
+  pub count: u16,
+  /// Which of the source's mounts threw it, so the launch is taken out of
+  /// that mount's load. Not on the wire: it matters only the round it is
+  /// fired.
+  #[serde(skip)]
+  pub mount: usize,
+}
+
+fn one_missile() -> u16 {
+  1
 }
 
 /// A single missile rack, matching how every launch behaved before the
@@ -379,6 +435,81 @@ pub struct EffectsMsg {
   /// The round these results resolved.
   pub round: u32,
   pub effects: Vec<EffectMsg>,
+  /// The same round, added up: who was lost and to whom, who was hurt, and
+  /// how each side's fire went. Omitted for a round where nothing was.
+  #[serde(default, skip_serializing_if = "RoundSummary::is_empty")]
+  pub summary: RoundSummary,
+}
+
+/// A round's results added up, for a fight too big to read line by line.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoundSummary {
+  /// Ships destroyed this round, and craft lost in their carriers' berths.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub losses: Vec<Loss>,
+  /// Ships that lost hull or took criticals this round and are still in it.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub damaged: Vec<Damaged>,
+  /// Each side's fire this round.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub fire: Vec<SideFire>,
+}
+
+impl RoundSummary {
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.losses.is_empty() && self.damaged.is_empty() && self.fire.is_empty()
+  }
+}
+
+/// A ship lost this round.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Loss {
+  pub ship: ShipRef,
+  /// Who destroyed her: whoever took the most hull off her this round. For
+  /// a craft lost aboard, whoever destroyed her carrier.
+  pub by: Option<ShipRef>,
+  /// The carrier she was lost in, for a craft lost in her berth.
+  pub aboard: Option<String>,
+  pub squadron: Option<String>,
+  /// Her displacement, so the client can roll small craft up by squadron.
+  pub tons: u32,
+}
+
+/// A ship that lost hull or took criticals this round and is still in it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Damaged {
+  pub ship: ShipRef,
+  /// Hull lost this round.
+  pub hull_lost: u32,
+  /// Hull left, and her whole hull.
+  pub hull: u32,
+  pub max_hull: u32,
+  pub criticals: u32,
+  /// Who hit her, most hull first.
+  pub by: Vec<ShipRef>,
+  pub squadron: Option<String>,
+  pub tons: u32,
+}
+
+/// One side's fire in a round.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct SideFire {
+  /// `None` for ships on no side.
+  pub team: Option<Team>,
+  /// Attacks that got as far as a roll, missiles each counting as one.
+  pub attacks: u32,
+  pub hits: u32,
+  /// Hull the side's hits took off the enemy.
+  pub hull: u32,
+  pub criticals: u32,
+  /// The side's missiles stopped by point defence.
+  pub intercepted: u32,
+  /// Ships the side destroyed.
+  pub kills: u32,
 }
 
 /// A ship named in a result: who it was, and whose side it was on.
@@ -619,6 +750,10 @@ pub enum Role {
   /// cut down to that team. Holds those ships (`ChangeRole::ships`) and
   /// says Ready for them all.
   FleetCommand,
+  /// A squadron's commander: Fleet Command cut down to one squadron. Holds
+  /// its ships and says Ready for them, and may also be the captain of one
+  /// of them, the flagship (`ChangeRole::ship`), like an admiral aboard.
+  SquadronCommand,
 }
 
 /// Whether a player with these roles runs the table: holds no ship and is
@@ -627,7 +762,10 @@ pub enum Role {
 /// the referee. Matches `isReferee` on the client.
 #[must_use]
 pub fn is_referee(roles: &[Role], holds_ships: bool) -> bool {
-  !holds_ships && !roles.iter().any(|role| matches!(role, Role::Observer | Role::FleetCommand))
+  !holds_ships
+    && !roles
+      .iter()
+      .any(|role| matches!(role, Role::Observer | Role::FleetCommand | Role::SquadronCommand))
 }
 
 #[serde_as]
@@ -757,6 +895,9 @@ serde_with::serde_conv!(
     }
 );
 
+// Read once off the wire and matched on, so the biggest variant's size is of
+// no account.
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
@@ -772,6 +913,8 @@ pub enum RequestMsg {
   SetShipEmissions(SetShipEmissions),
   SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
+  SetSquadron(SetSquadron),
+  RenameSquadron(RenameSquadron),
   SetShipController(SetShipController),
   SetOrders(SetOrders),
   SetAiReport(SetAiReport),
@@ -780,6 +923,9 @@ pub enum RequestMsg {
   CaptainAction(CaptainActionMsg),
   /// A player saying their orders for this round are in, or taking it back.
   SetReady(bool),
+  /// Stop the rounds advancing on their own, or let them go again: sent
+  /// while a player's screen says the game is over and asks what next.
+  HoldRounds(bool),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
@@ -862,6 +1008,7 @@ mod tests {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     };
     let json = json!({
         "name": "ship1",
@@ -895,6 +1042,7 @@ mod tests {
       controller: None,
       orders: None,
       software: None,
+      aboard: None,
     };
     let json = json!({
         "name": "ship1",

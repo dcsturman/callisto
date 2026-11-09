@@ -11,19 +11,26 @@ use crate::action::{boost_target_alive, describe_boost, merge, BoostMap, BoostTa
 use crate::authentication::Authenticator;
 use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
+use crate::flight;
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetAiReport, SetOrders,
-  SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
-  ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, RenameSquadron, Role, RoundSummary,
+  SetAiReport, SetOrders, SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam,
+  SetSoftwareRunning, SetSquadron, ShipActionMsg, ShipDesignTemplateMsg,
 };
+use crate::reload::{self, Reload};
 use crate::server::Server;
-use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
+use crate::ship::{
+  get_ship_templates_snapshot, spinal_problems, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount,
+};
+use crate::summary;
 use crate::{debug, info, warn};
 
-/// Most weapons we will accept on a single ship.  Generous compared to any real
-/// design; it exists only so a client cannot ask us to allocate without bound.
-const MAX_SHIP_WEAPONS: usize = 64;
+/// Most weapons we will accept on a single ship.  It exists only so a client
+/// cannot ask us to allocate without bound.  Capital ships need room: a
+/// Tigress-class dreadnought (High Guard p. 283) carries well over a hundred
+/// mounts even once identical weapons are grouped, and a large station more.
+const MAX_SHIP_WEAPONS: usize = 256;
 
 /// Check client-supplied armament before it reaches the entity table.
 ///
@@ -45,7 +52,11 @@ fn validate_weapons(weapons: &[Weapon]) -> Result<(), String> {
       // A turret's size is now the number of guns in it.
       WeaponMount::Turret if !(1..=3).contains(&weapon.guns.len()) => Some(weapon.guns.len()),
       // Every other mount holds exactly one weapon.
-      WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_)
+      WeaponMount::Barbette
+      | WeaponMount::Bay(_)
+      | WeaponMount::FixedMount
+      | WeaponMount::Battery(_)
+      | WeaponMount::Spinal { .. }
         if weapon.guns.len() != 1 =>
       {
         Some(weapon.guns.len())
@@ -380,10 +391,21 @@ impl PlayerManager {
 
     if let Some(weapons) = &ship.weapons {
       validate_weapons(weapons)?;
+      // A spinal is sized against the hull it is fitted to.
+      if let Some(problem) = spinal_problems(weapons, design.displacement, design.tl).first() {
+        return Err(format!("(PlayerManager.add_ship) {problem}"));
+      }
     }
 
     let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
     let name = ship.name.clone();
+    // A berth is checked before the ship exists, so a refusal leaves nothing
+    // behind on the plot.
+    if let Some(carrier) = &ship.aboard {
+      entities
+        .berth_check(&name, carrier, design.displacement)
+        .map_err(|problem| format!("(PlayerManager.add_ship) {problem}"))?;
+    }
     entities.add_ship(ship.name, ship.position, ship.velocity, &design, ship.crew, ship.weapons);
 
     // Applied after creation rather than threaded through `add_ship`, which
@@ -402,6 +424,12 @@ impl PlayerManager {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
         if ship.team.is_some() {
+          if added.team != ship.team {
+            // A squadron belongs to its team.
+            added.squadron = None;
+            added.squadron_orders = None;
+            added.fleet_orders = None;
+          }
           added.team = ship.team;
         }
         if let Some(controller) = ship.controller {
@@ -431,6 +459,18 @@ impl PlayerManager {
           }
         }
       }
+    }
+
+    // A ship joining a team takes up its fleet's orders.
+    if ship.team.is_some() {
+      entities.take_up_fleet_orders(&name);
+    }
+
+    // Last, so she goes aboard with everything above already set.
+    if let Some(carrier) = &ship.aboard {
+      entities
+        .embark_ship(&name, carrier)
+        .map_err(|problem| format!("(PlayerManager.add_ship) {problem}"))?;
     }
 
     Ok("Add ship action executed".to_string())
@@ -600,12 +640,60 @@ impl PlayerManager {
       .write()
       .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
+    let changed = ship.team != request.team;
+    if changed {
+      // A squadron belongs to its team.
+      ship.squadron = None;
+      ship.squadron_orders = None;
+    }
     ship.team = request.team;
+    drop(ship);
+    if changed {
+      entities.take_up_fleet_orders(&request.ship_name);
+    }
     info!(
       "(PlayerManager.set_ship_team) {} is now on team {:?}.",
       request.ship_name, request.team
     );
     Ok("Set ship team executed".to_string())
+  }
+
+  /// Put ships in a squadron, or take them out: see [`Entities::set_squadron`].
+  ///
+  /// # Errors
+  /// Returns an error if a ship cannot be found, the ships are on different
+  /// teams, the name is unusable, or the squadron would be too big.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities, or if the server
+  /// has not yet been initialized.
+  pub fn set_squadron(&self, request: &SetSquadron) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    entities.set_squadron(&request.ships, request.squadron.as_deref())
+  }
+
+  /// Rename a team's squadron: see [`Entities::rename_squadron`].
+  ///
+  /// # Errors
+  /// Returns an error if there is no such squadron, the new name is unusable,
+  /// or another squadron on the team already has it.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities, or if the server
+  /// has not yet been initialized.
+  pub fn rename_squadron(&self, request: &RenameSquadron) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    entities.rename_squadron(request.team, &request.from, &request.to)
   }
 
   /// Hand a ship to the AI service, or take it back.
@@ -660,22 +748,7 @@ impl PlayerManager {
       .unwrap()
       .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
-
-    let mut ship = entities
-      .ships
-      .get(&request.ship_name)
-      .ok_or_else(|| format!("Unable to find ship {} to give orders to.", request.ship_name))?
-      .write()
-      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
-
-    ship.orders = request
-      .orders
-      .as_deref()
-      .map(str::trim)
-      .filter(|orders| !orders.is_empty())
-      .map(ToString::to_string);
-    info!("(PlayerManager.set_orders) {} has orders {:?}.", request.ship_name, ship.orders);
-    Ok("Set orders executed".to_string())
+    entities.set_orders(&request.ship_name, request.scope, request.orders.as_deref())
   }
 
   /// Record what the AI crewing a ship reports. Only an AI-crewed ship has a
@@ -961,8 +1034,23 @@ impl PlayerManager {
   /// Panics if the lock cannot be obtained to read the entities or if the server
   /// has not yet been initialized.
   #[must_use]
-  #[allow(clippy::too_many_lines)]
   pub fn update(&self) -> Vec<EffectMsg> {
+    self.run_round(false).0
+  }
+
+  /// [`Self::update`], returning the round added up as well as its results.
+  ///
+  /// # Panics
+  /// As for [`Self::update`].
+  #[must_use]
+  pub fn play_round(&self) -> (Vec<EffectMsg>, RoundSummary) {
+    self.run_round(true)
+  }
+
+  /// The round, added up only when `summarise`: training plays millions of
+  /// rounds nobody reads a summary of.
+  #[allow(clippy::too_many_lines)]
+  fn run_round(&self, summarise: bool) -> (Vec<EffectMsg>, RoundSummary) {
     // Grab the lock on entities
     let mut entities = self
       .server
@@ -1093,7 +1181,7 @@ impl PlayerManager {
     // engagements where the missile would otherwise impact in the same
     // round it was launched, with no defensive opportunity).
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, jam_missile_actions, point_defense_actions, engineer_actions): (
+    let (mut fire_actions, sensor_actions, jam_missile_actions, mut point_defense_actions, engineer_actions): (
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -1132,7 +1220,17 @@ impl PlayerManager {
         // the per-category slices. Nor do the anti-actions, which `merge`
         // consumes and which should never get this far -- but if one slips
         // through it belongs nowhere either.
+        // Reloads are worked out per ship below, and applied after fire.
+        // A revive is applied as the round ends, below.
+        // Flight operations are read before fire (Launch) and resolved
+        // after movement (Land), by the flight passes below.
         ShipAction::LeadershipCheck { .. }
+        | ShipAction::ReviveWatch { .. }
+        | ShipAction::ReloadAction { .. }
+        | ShipAction::DeleteReloadAction { .. }
+        | ShipAction::Launch { .. }
+        | ShipAction::Land { .. }
+        | ShipAction::ClearLand
         | ShipAction::ClearSensorAction { .. }
         | ShipAction::ClearEngineerAction { .. }
         | ShipAction::ClearLeadershipCheck => (None, None, None, None, None),
@@ -1146,6 +1244,71 @@ impl PlayerManager {
       ))
     }));
 
+    // The captains' revives, applied as the round ends so the crew is back
+    // for the next one.
+    let revives: Vec<(String, u32)> = actions
+      .iter()
+      .flat_map(|(ship_name, ship_actions)| {
+        ship_actions.iter().filter_map(move |action| match action {
+          ShipAction::ReviveWatch { count } => Some((ship_name.clone(), *count)),
+          _ => None,
+        })
+      })
+      .collect();
+
+    // Who reloads what, from the ships as the round starts. A mount its own
+    // gunner is reloading makes no attack and no reaction (Core Rulebook
+    // p. 172), so its Fire and Point Defence orders are set aside for the
+    // round -- and kept in the queue for the next.
+    let mut reload_lines: Vec<EffectMsg> = Vec::new();
+    let reloads: Vec<(String, Vec<Reload>)> = actions
+      .iter()
+      .filter_map(|(ship_name, ship_actions)| {
+        let ship = entities.ships.get(ship_name)?.read().unwrap();
+        let (reloads, mut refused) = reload::assign(&ship, ship_actions);
+        reload_lines.append(&mut refused);
+        (!reloads.is_empty()).then(|| (ship_name.clone(), reloads))
+      })
+      .collect();
+    let reloading: HashMap<String, Vec<usize>> = reloads
+      .iter()
+      .map(|(ship_name, reloads)| (ship_name.clone(), reload::busy(reloads)))
+      .collect();
+    for (ship_name, ship_actions) in fire_actions.iter_mut().chain(point_defense_actions.iter_mut()) {
+      let Some(busy) = reloading.get(ship_name) else {
+        continue;
+      };
+      ship_actions.retain(|action| match action {
+        ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id, .. } => {
+          !busy.contains(weapon_id)
+        }
+        _ => true,
+      });
+    }
+
+    // The round's Launch orders become flight operations, and a ship a berth
+    // operation holds still is pinned: no Thrust, no dodge, and no attacks
+    // (High Guard p. 61), so her fire orders are set aside for the round.
+    // Reactions stand: the deck is busy, the gunners are not.
+    let mut flight_lines = flight::begin_round(&mut entities, &mut rng);
+    let pinned = flight::pinned_ships(&entities);
+    for (ship_name, ship_actions) in &mut fire_actions {
+      if pinned.contains(ship_name) {
+        ship_actions.retain(|action| !matches!(action, ShipAction::FireAction { .. }));
+      }
+    }
+
+    // What was done to each ship is noted on her as it happens, for the
+    // round summary; last round's notes go first. Craft aboard too, so one
+    // that launches does not bring in what happened before she landed.
+    for ship in entities.ships.values() {
+      let mut ship = ship.write().unwrap();
+      ship.taken.clear();
+      for craft in &mut ship.embarked {
+        craft.taken.clear();
+      }
+    }
+
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
     // or destroyed they still get to take their actions.
@@ -1154,6 +1317,7 @@ impl PlayerManager {
     // First emit the leadership-action effects so the FE knows the +1
     // assignments before any sensor/fire results land.
     let mut effects = leadership_effects;
+    effects.append(&mut flight_lines);
 
     // A ship still running dark as the round runs loses its locks, before any
     // shot could use them. Not when the switch was thrown: a crew that turned
@@ -1174,6 +1338,7 @@ impl PlayerManager {
     effects.append(&mut entities.fire_actions(
       &fire_actions,
       &point_defense_actions,
+      &reloading,
       &ship_snapshot,
       &boost_map,
       &mut rng,
@@ -1197,8 +1362,24 @@ impl PlayerManager {
       .collect();
     effects.append(&mut entities.broad_spectrum_pass(&jammed_by_hand, &mut rng));
 
+    // Reloads land after fire, so a mount a spare gunner reloads both fires
+    // and is refilled this round; and before movement.
+    effects.append(&mut reload_lines);
+    for (ship_name, reloads) in &reloads {
+      if let Some(ship) = entities.ships.get(ship_name) {
+        effects.append(&mut reload::apply(&mut ship.write().unwrap(), reloads));
+      }
+    }
+
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
+
+    // Flight operations resolve after movement: craft due out take the plot
+    // (to act from next round), Land orders are checked where the ships now
+    // are, and a craft that has had a round aboard is rearmed. Before the
+    // engineers, so a carrier that jumps this round takes aboard what landed
+    // and leaves behind what launched.
+    effects.append(&mut flight::end_round(&mut entities, &ship_snapshot, &mut rng));
 
     // Jumps are now resolved as part of `engineer_actions` below (Jump is an
     // engineer-class action) — no separate phase here.
@@ -1220,6 +1401,9 @@ impl PlayerManager {
     // Evaluate queued engineer actions at end-of-turn. Effects ride the
     // existing Effects channel.
     effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
+
+    // The frozen watch comes out of the berths for next round.
+    effects.append(&mut entities.revive_watch_pass(&revives));
 
     // Detection runs last, after movement and after any ship has jumped out.
     // The trigger for losing a stealthed ship is the range opening, which needs
@@ -1256,8 +1440,13 @@ impl PlayerManager {
       effect.colour_from(&teams);
     }
 
+    let summary = if summarise {
+      summary::round_summary(&ship_snapshot, &entities)
+    } else {
+      RoundSummary::default()
+    };
     entities.round += 1;
-    effects
+    (effects, summary)
   }
 
   /// Computes a flight path for a ship.
@@ -1410,5 +1599,16 @@ mod tests {
 
     // No connection established in this test, so there should be no session keys.
     assert_eq!(session_keys.lock().unwrap().len(), 0);
+  }
+
+  #[test]
+  fn test_validate_weapons_cap() {
+    let turret = Weapon::uniform(crate::ship::WeaponType::Beam, WeaponMount::Turret, 3);
+    // A capital ship's worth of mounts is accepted, up to the cap...
+    assert!(validate_weapons(&vec![turret.clone(); 200]).is_ok());
+    assert!(validate_weapons(&vec![turret.clone(); MAX_SHIP_WEAPONS]).is_ok());
+    // ...and one more is not.
+    let err = validate_weapons(&vec![turret; MAX_SHIP_WEAPONS + 1]).unwrap_err();
+    assert!(err.contains("more than the limit of 256"), "{err}");
   }
 }

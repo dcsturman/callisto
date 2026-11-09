@@ -4,6 +4,7 @@ import { Team } from "lib/teams";
 export { availablePower } from "lib/power";
 import { PowerSystem } from "lib/power";
 import {Software} from "lib/software";
+import {Magazine} from "lib/magazine";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -105,6 +106,12 @@ export interface Ship extends Entity {
   current_sensors: string;
   active_weapons: boolean[];
   dodge_thrust: number;
+  /**
+   * She spent no Thrust and took no evasive action in the last round flown,
+   * which opens a ship under 2,000 tons to spinal fire (High Guard p. 34).
+   * Absent when false.
+   */
+  held_still?: boolean;
   assist_gunners: boolean;
   can_jump: boolean;
   sensor_locks: string[];
@@ -141,10 +148,16 @@ export interface Ship extends Entity {
   handoff_sensors?: boolean;
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
+  /** The squadron she flies in, within her team. */
+  squadron?: string;
   /** Who gives the ship its orders. Absent means the people at its consoles. */
   controller?: Controller;
   /** Standing orders, in plain English. Absent means none. */
   orders?: string;
+  /** Her team's fleet orders, as every ship of the team carries them. */
+  fleet_orders?: string;
+  /** Her squadron's orders, as every ship of it carries them. */
+  squadron_orders?: string;
   /** What the ship's side is trying to do: the goal a trained commander is scored on. */
   goal?: "destroy" | "hold" | "raid" | "escape";
   /** Where a Hold ship holds: a body by name, or a point in metres. Absent:
@@ -154,6 +167,30 @@ export interface Ship extends Entity {
   post_radius?: number;
   /** The AI's last report on this ship. Only an AI-crewed ship has one. */
   ai_report?: AiReport;
+  /**
+   * The craft aboard this carrier, whole: not on the plot, and nothing can
+   * detect, target or order one until it is launched. Absent when none.
+   */
+  embarked?: Ship[];
+  /** Launches and recoveries the carrier has under way. Absent when none. */
+  flight_ops?: FlightOp[];
+  /** The carrier a craft belongs to, kept after she launches. */
+  carrier?: string;
+  /**
+   * The carrier a new ship starts aboard: the scenario file's marker, sent
+   * by the Add Ship dialog on its way to the server and never read back
+   * (a craft aboard comes back inside her carrier's `embarked`).
+   */
+  aboard?: string;
+  /** Whole rounds a craft has spent aboard since she came in; one rearms her. */
+  rounds_aboard?: number;
+  /**
+   * Held still by a flight operation this round: no Thrust, no dodge, no
+   * attacks (HG p. 61). Absent when free.
+   */
+  pinned?: boolean;
+  /** What the carrier's deck can do this round. Absent on a ship with no berths. */
+  flight_deck?: FlightDeck;
   crew: Crew;
   /**
    * Which sensor operator and which engineer are working this round, as
@@ -169,11 +206,28 @@ export interface Ship extends Entity {
   /** Which of it the computer is running. Bandwidth limits this. */
   software_running?: Software[];
   /**
-   * Missiles, torpedoes and sandcaster barrels still aboard.
-   *
-   * Spent as they are fired and thrown; a reset restocks the ship.
+   * Missiles, torpedoes and sandcaster canisters in stores: what is aboard
+   * beyond what the mounts hold. A Reload refills a mount from here; a reset
+   * restocks the ship.
    */
-  magazine?: {missiles: number; torpedoes: number; sand: number};
+  magazine?: Magazine;
+  /** What each mount holds ready to fire, index-aligned with its weapons. */
+  loaded?: Magazine[];
+  /**
+   * Mounts of each weapon entry knocked out by a large-ship Weapons critical
+   * (High Guard p. 27), index-aligned with its weapons: a battery of twelve
+   * with three down fires nine. Absent while every mount is up.
+   */
+  mounts_down?: number[];
+  /** Spare crew still in low berths, to be revived by the captain. Absent when none. */
+  frozen_watch?: number;
+  /**
+   * Hull lost to Radiation weapons that shielding protects against, and to
+   * mesons, which it does not (High Guard p. 31). Each wears the crew down.
+   * Absent when none.
+   */
+  radiation_hull_lost?: number;
+  meson_hull_lost?: number;
   /**
    * Switchable features to start running, by index into the design's list.
    *
@@ -200,6 +254,28 @@ export interface Ship extends Entity {
   engineer_action_taken?: boolean;
   leadership_points?: number;
   leadership_rolled?: boolean;
+}
+
+/** A craft going out of a carrier's berth or coming in to one. */
+export interface FlightOp {
+  craft: string;
+  /** Through a tube (one round, nothing pinned), out of a berth, or in to one. */
+  kind: "TubeLaunch" | "BerthLaunch" | "BerthRecovery";
+  /** Rounds to go, counting this one. */
+  rounds_left: number;
+}
+
+/** A carrier's flight deck this round, worked out by the server as the world is sent. */
+export interface FlightDeck {
+  berths: number;
+  berths_free: number;
+  /** Craft the powered tubes release a round; zero means berths, with the carrier pinned. */
+  launch_per_round: number;
+  /** Craft the powered decks take a round; zero means berths, both ships pinned, no check. */
+  recover_per_round: number;
+  /** The largest craft a powered tube takes, and a powered deck. */
+  tube_tons: number;
+  deck_tons: number;
 }
 
 export enum ShipSystem {
@@ -337,6 +413,9 @@ export interface Missile extends Entity {
   fuse: number;
   /** Rounds of thrust it has left; absent from an older server. */
   burns?: number;
+  /** Missiles in this salvo. A launch from one mount flies as one object;
+   *  absent when it is a lone missile. */
+  count?: number;
 }
 
 export const defaultMissile = () => {

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMemo } from "react";
 import { Entity, Ship } from "./entities";
+import { missileCount } from "./missileCount";
 import { isUndetected } from "./contacts";
 
 import {useAppSelector} from "state/hooks";
@@ -17,7 +18,8 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
   setChoice: (entity: Entity | null) => void;
   current: Entity | string  | null;
   exclude?: string;
-  extra?: Entity;
+  /** Choices that are not entities, listed first: "<Point Defense>", "<Reload>". */
+  extra?: Entity | Entity[];
   formatter?: (name: string, entity: Entity) => string;
   /**
    * The ship doing the looking. Ships it has no sensor contact on are listed
@@ -58,6 +60,10 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
    * List only the ships on this team: what a fleet commander may pick from.
    */
   onlyTeam?: string | null;
+  /**
+   * List only these ships: what a squadron commander may pick from.
+   */
+  onlyShips?: string[] | null;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
@@ -72,6 +78,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   excludeSameTeam,
   noneLabel,
   onlyTeam,
+  onlyShips,
   ...props
 }) => {
   const entities = useAppSelector(entitiesSelector);
@@ -109,6 +116,8 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
     return null;
   }, [current, entities, filter]);
 
+  const extras = extra == null ? [] : Array.isArray(extra) ? extra : [extra];
+
   // Create a formatter that handles one not being provided.
   const nf = (name: string, entity: Entity) =>
     formatter ? formatter(name, entity) : name;
@@ -116,8 +125,9 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
 
-    if (extra && value === extra.name) {
-      setChoice(extra);
+    const pseudo = extras.find((entry) => entry.name === value);
+    if (pseudo) {
+      setChoice(pseudo);
       return;
     }
 
@@ -174,15 +184,16 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         onChange={handleSelectChange}
         {...props}>
         <option key="el-none" value="">{noneLabel ?? ""}</option>
-        {extra && (
-          <option key={"extra"} value={extra.name}>
-            {extra.name}
+        {extras.map((entry) => (
+          <option key={"extra-" + entry.name} value={entry.name}>
+            {entry.name}
           </option>
-        )}
+        ))}
         {filter.includes(EntitySelectorType.Ship) &&
           entities.ships
             .filter((candidate) => candidate.name !== exclude)
             .filter((candidate) => onlyTeam == null || candidate.team === onlyTeam)
+            .filter((candidate) => onlyShips == null || onlyShips.includes(candidate.name))
             .map((notMeShip) => {
               const undetected = isUndetected(observer, notMeShip);
               const sameTeam =
@@ -217,7 +228,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
             .filter((candidate) => candidate.name !== exclude)
             .map((missile) => (
               <option key={"elm-"+missile.name} value={missile.name}>
-                {nf(missile.name, missile)}
+                {nf(missileCount(missile) > 1 ? `${missile.name} ×${missileCount(missile)}` : missile.name, missile)}
               </option>
             ))}
       </select>

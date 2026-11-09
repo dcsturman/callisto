@@ -26,7 +26,8 @@ use crate::payloads::{
 };
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS};
 use crate::ship::{
-  FlightPlan, MountClass, PowerSystem, Range, Salvo, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
+  uses_munitions, FlightPlan, Magazine, MountClass, PowerSystem, Range, Salvo, Ship, ShipSystem, Weapon, WeaponMount,
+  WeaponProfile, WeaponType,
 };
 use crate::software::SoftwareKind;
 
@@ -140,6 +141,31 @@ pub struct SoftwareOrder {
   pub running: bool,
 }
 
+/// Flight operations: what a carrier does with her craft, and what a craft
+/// does about her carrier. A commander may give one; left to the crews
+/// ([`flight`]), a carrier launches when an enemy is within Very Long and a
+/// craft goes home when her loads are spent, when nothing is left to fight,
+/// or when her carrier is about to jump.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum Flight {
+  /// A carrier launches: `craft` by name, or every ready craft aboard when
+  /// empty (see [`ready_craft`]), the first `count` of them (the tubes'
+  /// rate when `None`). More than the tubes take in a round wait aboard.
+  Launch {
+    #[serde(default)]
+    craft: Vec<String>,
+    #[serde(default)]
+    count: Option<u32>,
+  },
+  /// A craft goes home: the helm closes on `carrier` and matches her
+  /// velocity, and the pilot gives *Land* once she is within reach.
+  Land { carrier: String },
+  /// No flight operation: a carrier keeps her craft aboard; a craft stays
+  /// out, going home only once her loads are spent, and any *Land* she had
+  /// standing is withdrawn.
+  Hold,
+}
+
 /// One ship's orders for a round, in a commander's terms.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct Intent {
@@ -163,6 +189,16 @@ pub struct Intent {
   /// on its own, so neither needs ordering.
   #[serde(default)]
   pub defend: Vec<usize>,
+  /// Mounts to reload this round, by index, in the order spare gunners take
+  /// them: launchers and sandcasters below their load. Once the spares are
+  /// spoken for, a mount's own gunner reloads it, and it then neither fires
+  /// nor defends. `None` leaves the choice to [`reloads`].
+  #[serde(default)]
+  pub reload: Option<Vec<usize>>,
+  /// A flight operation: a carrier's launch, a craft's return to her
+  /// carrier, or neither. `None` leaves it to [`flight`].
+  #[serde(default)]
+  pub flight: Option<Flight>,
   /// One per sensor operator aboard, in order; extras are dropped.
   #[serde(default)]
   pub sensors: Vec<SensorVerb>,
@@ -234,6 +270,21 @@ fn band_edges(band: Range) -> (f64, f64) {
 /// not fired at a ship.
 fn offensive(kind: WeaponType) -> bool {
   !matches!(kind, WeaponType::Sand | WeaponType::PointDefense | WeaponType::Repulsor)
+}
+
+/// How many missiles one launch from this mount puts in flight, firing
+/// `kind`, and how many points of a point-defence pool each one costs: a
+/// torpedo two, a missile one. `None` if `kind` is not a launcher here.
+#[must_use]
+pub fn launch_size(weapon: &Weapon, kind: WeaponType) -> Option<(u32, u32)> {
+  let firing = weapon.firing(kind)?;
+  let missiles = match profile_for(kind, firing.mount)?.salvo? {
+    Salvo::PerGun => u32::from(firing.count),
+    Salvo::Fixed(missiles) => u32::from(missiles),
+  };
+  // A missile battery throws every launcher's salvo as one.
+  let missiles = missiles * u32::from(weapon.mounts());
+  Some((missiles, if kind == WeaponType::Torpedo { 2 } else { 1 }))
 }
 
 /// The mounts on `ship` that can fire on a target at this range, each with the
@@ -381,7 +432,12 @@ fn dice_distribution(dice: u8) -> Vec<f64> {
 /// `combat::attack` does, over every way the damage dice can fall. Armour
 /// clips low rolls to nothing, which is why this is not the average roll
 /// minus armour: a weak gun against a heavy hull is nearly harmless.
-fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32, multiple: u32) -> f64 {
+///
+/// `percent` is the share armour lets through for a weapon that loses a
+/// percentage a point (a particle or railgun spinal), and 100 for the rest,
+/// which subtract `armour` instead; it is taken with the multiple, as
+/// `combat::attack` takes it.
+fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32, multiple: u32, percent: u32) -> f64 {
   dice
     .iter()
     .enumerate()
@@ -392,9 +448,11 @@ fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32
       let damage = if through == 0 {
         0
       } else {
-        (through + turret_bonus) * multiple
+        u64::from(through + turret_bonus) * u64::from(multiple) * u64::from(percent) / 100
       };
-      chance * f64::from(damage)
+      #[allow(clippy::cast_precision_loss)]
+      let damage = damage as f64;
+      chance * damage
     })
     .sum()
 }
@@ -408,6 +466,11 @@ fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32
 /// Dodging is not assumed: these are the odds against a ship flying straight.
 #[must_use]
 pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i32, armour: u32) -> Vec<BandOdds> {
+  let actual = band_between(attacker, defender);
+  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  let metres = (attacker.get_position() - defender.get_position())
+    .magnitude()
+    .clamp(0.0, f64::from(u32::MAX)) as u32;
   BANDS
     .iter()
     .map(|band| {
@@ -415,6 +478,9 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
       let mut best_chance: f64 = 0.0;
       let mut expected = 0.0;
       let mut launchers = 0;
+      // Mounts that can attack: a spinal bears on a fighter but cannot lay
+      // on her (`combat::attack_terms`).
+      let mut engaged = 0;
       let mut by_mount = Vec::with_capacity(bearing.len());
       for (index, kind) in &bearing {
         let weapon = &attacker.weapons()[*index];
@@ -429,14 +495,18 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
           firing: &firing,
           profile: &profile,
           range_band: *band,
+          // Where they really are, for the band they are really in.
+          distance: (actual == *band).then_some(metres),
           called_shot: false,
         };
         let Some(terms) = attack_terms(&situation, 0, 0) else {
           continue;
         };
+        engaged += 1;
         let dm: i32 = terms.iter().map(|(_, value)| value).sum();
         let dice = dice_distribution(profile.damage_dice);
-        let armour = armour.saturating_sub(u32::from(profile.ap));
+        let percent = profile.armour_through(armour);
+        let armour = profile.armour_subtracted(armour);
         let (count, turret_bonus, multiple) = match profile.salvo {
           Some(Salvo::PerGun) => (f64::from(firing.count), 0, 1),
           Some(Salvo::Fixed(missiles)) => (f64::from(missiles), 0, 1),
@@ -474,11 +544,17 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
             } else {
               total - STANDARD_ROLL_THRESHOLD
             };
-            expected_hit_damage(&dice, effect, armour, turret_bonus, multiple)
+            if percent == 0 {
+              0.0
+            } else {
+              expected_hit_damage(&dice, effect, armour, turret_bonus, multiple, percent)
+            }
           };
           (chance + p, damage + p * hit)
         });
         best_chance = best_chance.max(chance);
+        // A battery is one entry and an attack per mount in it.
+        let count = count * f64::from(weapon.mounts());
         expected += per_attack * count;
         by_mount.push((*index, per_attack * count));
       }
@@ -486,8 +562,8 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
         band: *band,
         best_chance,
         expected_damage: expected,
-        mounts: bearing.len(),
-        missiles_only: !bearing.is_empty() && launchers == bearing.len(),
+        mounts: engaged,
+        missiles_only: engaged > 0 && launchers == engaged,
         by_mount,
       }
     })
@@ -922,11 +998,25 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
   if let Some(posture) = intent.posture {
     requests.push(emissions(ship_name, posture));
   }
+  // A craft going home flies to her carrier, whatever else she was told.
+  let flight = resolve_flight(world, &own, intent);
+  let homing = homing_intent(world, &own, intent, flight.as_ref());
+  let intent = homing.as_ref().unwrap_or(intent);
   requests.extend(helm_requests(world, &own, ship_name, intent)?);
 
-  let mut actions = Vec::new();
+  let mut actions = flight_actions(world, &own, flight.as_ref());
   let mut committed = std::collections::HashSet::new();
-  // Defence first: a mount on point defence is spoken for before any fire
+  // Reloads first. Spare gunners take them in order, and a mount whose own
+  // gunner reloads it is spoken for: it neither fires nor defends.
+  let mut reload: Vec<usize> = Vec::new();
+  for weapon_id in intent.reload.clone().unwrap_or_else(|| reloads(world, &own, intent)) {
+    if own.can_reload(weapon_id) && !reload.contains(&weapon_id) {
+      reload.push(weapon_id);
+    }
+  }
+  committed.extend(reload.iter().skip(own.spare_gunners()).copied());
+  actions.extend(reload.iter().map(|&weapon_id| ShipAction::ReloadAction { weapon_id }));
+  // Defence next: a mount on point defence is spoken for before any fire
   // order can claim it.
   for &weapon_id in &intent.defend {
     let can_defend = own
@@ -947,12 +1037,14 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
     let Some(target) = world.ships.get(&engage.target) else {
       continue;
     };
-    let range = band_between(&own, &target.read().unwrap());
+    let target = target.read().unwrap();
+    let range = band_between(&own, &target);
     // A called shot is only offered at Short range, as the gunner's console
     // offers it; further out the gun fires as an ordinary shot.
     let called = engage.called.filter(|_| range == Range::Short);
     for (weapon_id, kind) in weapons_that_bear(&own, range) {
-      let chosen = engage.weapons.is_empty() || engage.weapons.contains(&weapon_id);
+      let chosen = (engage.weapons.is_empty() || engage.weapons.contains(&weapon_id))
+        && can_engage(&own, weapon_id, kind, &target);
       // A mount fires once a round, at whoever asked for it first.
       if chosen && committed.insert(weapon_id) {
         actions.push(ShipAction::FireAction {
@@ -1005,6 +1097,342 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
     requests.push(RequestMsg::ModifyActions(vec![(ship_name.to_string(), actions)]));
   }
   Ok(requests)
+}
+
+/// Whether mount `weapon_id`, firing `kind`, can be laid on `target` at all,
+/// beyond bearing on her: a spinal mount cannot attack a ship under 2,000
+/// tons that manoeuvred last round (High Guard p. 34), nor fire with its
+/// rounds spent. Left out, a spinal stays free for a target it can hit.
+fn can_engage(own: &Ship, weapon_id: usize, kind: WeaponType, target: &Ship) -> bool {
+  if own.get_weapon(weapon_id).mount.spinal_multiple().is_none() {
+    return true;
+  }
+  let loaded = !crate::ship::spinal_uses_rounds(kind) || own.magazine.rounds > 0;
+  spinal_can_lay_on(target.design.displacement, target.held_still) && loaded
+}
+
+/// Whether a spinal mount can be laid on a ship of `displacement` tons at
+/// all: not under 2,000 tons unless she held still last round (High Guard
+/// p. 34). The rule `combat::attack_terms` applies, for those that must know
+/// it before firing.
+#[must_use]
+pub fn spinal_can_lay_on(displacement: u32, held_still: bool) -> bool {
+  crate::rules_tables::spinal_size_dm(displacement).is_some() || held_still
+}
+
+/// The mounts `intent`'s fire orders would use, each with the gun it fires:
+/// the first engagement to claim a mount has it, as [`orders`] gives them.
+fn engaged_mounts(world: &Entities, own: &Ship, intent: &Intent) -> Vec<(usize, WeaponType)> {
+  let mut engaged: Vec<(usize, WeaponType)> = Vec::new();
+  for engage in &intent.fire {
+    if !own.contacts.contains(&engage.target) {
+      continue;
+    }
+    let Some(target) = world.ships.get(&engage.target) else {
+      continue;
+    };
+    let target = target.read().unwrap();
+    let range = band_between(own, &target);
+    for (weapon_id, kind) in weapons_that_bear(own, range) {
+      let chosen =
+        (engage.weapons.is_empty() || engage.weapons.contains(&weapon_id)) && can_engage(own, weapon_id, kind, &target);
+      if chosen && engaged.iter().all(|(id, _)| *id != weapon_id) {
+        engaged.push((weapon_id, kind));
+      }
+    }
+  }
+  engaged
+}
+
+/// Which mounts to reload this round, when a commander leaves it to tactics.
+///
+/// While spare gunners are free, every launcher and sandcaster below its load,
+/// emptiest first: it costs the mount nothing. With none free, a mount's own
+/// gunner reloads only where that gives up nothing worth having: an empty
+/// launcher or sandcaster, or a partly empty one with nothing to fire on (for
+/// sand, no fight this round). A mixed mount -- a rack beside a laser -- is
+/// reloaded only when the rest of it has no target.
+#[must_use]
+pub fn reloads(world: &Entities, own: &Ship, intent: &Intent) -> Vec<usize> {
+  let mut candidates: Vec<(usize, f64)> = (0..own.weapons().len())
+    .filter(|&weapon_id| own.active_weapons.get(weapon_id).copied().unwrap_or(true) && own.can_reload(weapon_id))
+    .map(|weapon_id| {
+      let held = own.loaded(weapon_id);
+      let full = own.capacity(weapon_id);
+      let share = f64::from(held.missiles + held.torpedoes + held.sand)
+        / f64::from((full.missiles + full.torpedoes + full.sand).max(1));
+      (weapon_id, share)
+    })
+    .collect();
+  candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+  let spares = own.spare_gunners();
+  let engaged = engaged_mounts(world, own, intent);
+  let fighting = !engaged.is_empty();
+  candidates
+    .into_iter()
+    .enumerate()
+    .filter(|&(place, (weapon_id, _))| {
+      if place < spares {
+        return true;
+      }
+      if intent.defend.contains(&weapon_id) {
+        return false;
+      }
+      let weapon = own.get_weapon(weapon_id);
+      let held = own.loaded(weapon_id);
+      let using = engaged.iter().find(|(id, _)| *id == weapon_id).map(|(_, kind)| *kind);
+      let mixed = weapon.guns.iter().any(|gun| !uses_munitions(gun.kind));
+      match using {
+        // The other gun of a mixed mount has a target: keep it firing.
+        Some(kind) if !uses_munitions(kind) => false,
+        // A launcher with a target is reloaded only once it is empty.
+        Some(kind) => held.of(kind) == 0,
+        // Sand is a reaction, wanted whenever there is a fight.
+        None if !mixed && weapon.has_kind(WeaponType::Sand) && fighting => held.sand == 0,
+        None => true,
+      }
+    })
+    .map(|(_, (weapon_id, _))| weapon_id)
+    .collect()
+}
+
+/// Whether `own` has an enemy in contact within `band`: a contact on another
+/// team (any contact, for a ship on no team) that close by true position.
+fn enemy_within(world: &Entities, own: &Ship, band: Range) -> bool {
+  own
+    .contacts
+    .iter()
+    .filter_map(|name| world.ships.get(name))
+    .map(|ship| ship.read().unwrap())
+    .any(|ship| (own.team.is_none() || ship.team != own.team) && band_between(own, &ship) <= band)
+}
+
+/// The guns a ship attacks with.
+fn attacking_kinds(ship: &Ship) -> Vec<WeaponType> {
+  ship
+    .weapons()
+    .iter()
+    .flat_map(Weapon::kinds)
+    .filter(|kind| offensive(*kind))
+    .collect()
+}
+
+/// Whether the ship's launchers have nothing left to fire: she has one, and
+/// neither her mounts nor her stores hold a missile or a torpedo. A ship
+/// with no launcher is never spent, whatever else she carries.
+#[must_use]
+pub fn loads_spent(ship: &Ship) -> bool {
+  let aboard = ship.aboard();
+  attacking_kinds(ship).iter().any(|kind| uses_munitions(*kind)) && aboard.missiles == 0 && aboard.torpedoes == 0
+}
+
+/// Whether `carrier`'s stores hold anything `craft`'s mounts could take.
+fn can_rearm(carrier: &Ship, craft: &Ship) -> bool {
+  let capacity = (0..craft.weapons().len()).fold(Magazine::default(), |sum, mount| sum.plus(craft.capacity(mount)));
+  !carrier.magazine.min(capacity).is_empty()
+}
+
+/// Whether the ship can do nothing out there: her launchers are spent and
+/// she has no other gun.
+fn nothing_to_fight_with(ship: &Ship) -> bool {
+  loads_spent(ship) && attacking_kinds(ship).iter().all(|kind| uses_munitions(*kind))
+}
+
+/// Whether `ship` is about to jump: Jump Control is running, or this
+/// round's orders start it or make the jump.
+fn leaving(ship: &Ship, intent: &Intent) -> bool {
+  ship.running_level(SoftwareKind::JumpControl).is_some()
+    || intent.engineering.iter().any(|verb| matches!(verb, EngineerVerb::Jump))
+    || intent
+      .software
+      .iter()
+      .any(|order| order.running && order.program == SoftwareKind::JumpControl)
+}
+
+/// The craft aboard `carrier` fit to launch, wing by wing: not already in
+/// a flight operation, not waiting on the stores to rearm her, and with
+/// something to fight with. In squadron order, then by name, so a round's
+/// launches come from one wing before the next.
+#[must_use]
+pub fn ready_craft(carrier: &Ship) -> Vec<String> {
+  let mut ready: Vec<(String, String)> = carrier
+    .embarked
+    .iter()
+    .enumerate()
+    .filter(|(index, craft)| {
+      !carrier.in_flight_op(craft.get_name()) && !carrier.craft_wants_rearming(*index) && !nothing_to_fight_with(craft)
+    })
+    .map(|(_, craft)| (craft.squadron.clone().unwrap_or_default(), craft.get_name().to_string()))
+    .collect();
+  ready.sort();
+  ready.into_iter().map(|(_, name)| name).collect()
+}
+
+/// The crews' own flight operation, when a commander gives none.
+///
+/// A carrier with craft aboard launches them when an enemy is in contact
+/// within Very Long, unless she is pinned or about to jump. A craft goes
+/// home when her launchers are spent and her carrier can refill them, when
+/// no enemy is in contact at all, or when her carrier is about to jump; a
+/// craft already being taken in (pinned) is left to it. Otherwise nothing.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn flight(world: &Entities, own: &Ship, intent: &Intent) -> Option<Flight> {
+  if let Some(carrier) = own.carrier.as_ref().filter(|name| world.ships.contains_key(*name)) {
+    if own.pinned {
+      return None;
+    }
+    let home = {
+      let home = world.ships[carrier].read().unwrap();
+      (loads_spent(own) && can_rearm(&home, own))
+        || !enemy_within(world, own, Range::Distant)
+        || home.running_level(SoftwareKind::JumpControl).is_some()
+    };
+    return home.then(|| Flight::Land {
+      carrier: carrier.clone(),
+    });
+  }
+  if own.embarked.is_empty() || own.pinned || leaving(own, intent) {
+    return None;
+  }
+  enemy_within(world, own, Range::VeryLong).then_some(Flight::Launch {
+    craft: Vec::new(),
+    count: None,
+  })
+}
+
+/// A carrier burning harder than this is not taking craft aboard: the
+/// landing check is DM-1 per G she spends (HG p. 104), so a craft waits on
+/// station until she eases off.
+const LANDING_CARRIER_G: f64 = 1.0;
+
+/// Whether `own` is in a position to land on `carrier` at the round's end
+/// if neither burns: within Short and inside the velocity limit now.
+fn on_the_approach(own: &Ship, carrier: &Ship) -> bool {
+  let closing = (own.get_velocity() - carrier.get_velocity()).magnitude();
+  band_between(own, carrier) <= Range::Short && closing <= crate::flight::landing_velocity_limit(own.current_maneuver)
+}
+
+/// The squadron whose turn it is to land on `carrier`: of her craft on the
+/// approach, the first squadron by name (a craft in none counts as her own).
+/// The landing check loses a point for every other craft coming in that is
+/// not of the same squadron (HG p. 104), so the wings take turns.
+fn wing_landing_now(world: &Entities, carrier_name: &str, carrier: &Ship) -> Option<String> {
+  world
+    .ships
+    .values()
+    .map(|ship| ship.read().unwrap())
+    .filter(|ship| ship.carrier.as_deref() == Some(carrier_name) && on_the_approach(ship, carrier))
+    .map(|ship| wing_key(&ship))
+    .min()
+}
+
+fn wing_key(ship: &Ship) -> String {
+  ship.squadron.clone().unwrap_or_else(|| ship.get_name().to_string())
+}
+
+/// `intent` with the helm closing on the carrier and matching her velocity,
+/// for a craft going home to one that is still there -- coasting once she is
+/// on the approach, since every G she spends counts against the landing
+/// check; `None` otherwise.
+fn homing_intent(world: &Entities, own: &Ship, intent: &Intent, flight: Option<&Flight>) -> Option<Intent> {
+  match flight {
+    Some(Flight::Land { carrier }) => world.ships.get(carrier).map(|home| Intent {
+      helm: Helm::Intercept {
+        target: carrier.clone(),
+        band: Range::Short,
+      },
+      max_thrust: on_the_approach(own, &home.read().unwrap()).then_some(0.0),
+      ..intent.clone()
+    }),
+    _ => None,
+  }
+}
+
+/// The flight operation `intent` means: the commander's own, or the crews'.
+/// A craft told to hold still goes home once her launchers are spent and
+/// her carrier can refill them: rearming is the crews' cycle, not an order.
+fn resolve_flight(world: &Entities, own: &Ship, intent: &Intent) -> Option<Flight> {
+  match &intent.flight {
+    Some(Flight::Hold) if loads_spent(own) => own
+      .carrier
+      .as_ref()
+      .and_then(|name| world.ships.get(name))
+      .filter(|home| can_rearm(&home.read().unwrap(), own))
+      .and(own.carrier.clone())
+      .map(|carrier| Flight::Land { carrier }),
+    Some(flight) => Some(flight.clone()),
+    None => flight(world, own, intent),
+  }
+}
+
+/// The actions a flight operation needs this round: the carrier's *Launch*
+/// of the craft the tubes can take; a craft's *Land* once she is on the
+/// approach (within Short, matched), her carrier is not burning hard --
+/// since a check made under a heavy burn fails and damages both ships --
+/// and it is her wing's turn; and
+/// for a craft not going home, the withdrawal of any *Land* she had
+/// standing, since the engine keeps one until she is aboard.
+fn flight_actions(world: &Entities, own: &Ship, flight: Option<&Flight>) -> Vec<ShipAction> {
+  match flight {
+    Some(Flight::Launch { craft, count }) => {
+      let chosen = launch_list(own, craft, *count);
+      if chosen.is_empty() {
+        Vec::new()
+      } else {
+        vec![ShipAction::Launch { craft: chosen }]
+      }
+    }
+    Some(Flight::Land { carrier }) => world
+      .ships
+      .get(carrier)
+      .filter(|home| {
+        let home = home.read().unwrap();
+        on_the_approach(own, &home)
+          && home.plan.0 .0.magnitude() <= LANDING_CARRIER_G * G
+          && wing_landing_now(world, carrier, &home).as_ref() == Some(&wing_key(own))
+      })
+      .map(|_| ShipAction::Land {
+        carrier: carrier.clone(),
+      })
+      .into_iter()
+      .collect(),
+    _ if own.carrier.is_some() => vec![ShipAction::ClearLand],
+    _ => Vec::new(),
+  }
+}
+
+/// The craft a *Launch* names this round: those asked for that are aboard
+/// and not already on their way out (every ready craft when none are
+/// named), the first `count`, and no more than the tubes release in a round
+/// when she has tubes for them.
+fn launch_list(own: &Ship, named: &[String], count: Option<u32>) -> Vec<String> {
+  let mut chosen: Vec<String> = if named.is_empty() {
+    ready_craft(own)
+  } else {
+    let mut seen = std::collections::HashSet::new();
+    named
+      .iter()
+      .filter(|name| own.craft_aboard(name).is_some() && !own.in_flight_op(name) && seen.insert(name.as_str()))
+      .cloned()
+      .collect()
+  };
+  let rate = chosen
+    .iter()
+    .filter_map(|name| own.craft_aboard(name))
+    .map(|craft| own.launch_per_round(craft.design.displacement))
+    .max()
+    .unwrap_or(0);
+  let limit = match (count, rate) {
+    (Some(count), 0) => count,
+    (Some(count), rate) => count.min(rate),
+    (None, 0) => u32::MAX,
+    (None, rate) => rate,
+  };
+  chosen.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+  chosen
 }
 
 /// Start and stop programs: stops first, so the bandwidth is free for what
@@ -1107,6 +1535,7 @@ fn spend_fire_control(own: &Ship, actions: &mut [ShipAction]) {
 mod tests {
   use super::*;
   use crate::ship::{config_test_ship_templates, get_ship_template};
+  use std::sync::Arc;
 
   const KM: f64 = 1000.0;
 
@@ -1153,6 +1582,138 @@ mod tests {
       })
       .flatten()
       .collect()
+  }
+
+  /// Two Patrol Corvettes `distance` metres apart: pulse turrets at mounts 1
+  /// and 2, triple-rack turrets at 3 and 4, and `gunners` at the guns.
+  async fn corvettes(distance: f64, gunners: usize) -> Entities {
+    config_test_ship_templates().await;
+    let design = get_ship_template("Patrol Corvette - Type T").unwrap();
+    let mut crew = crate::crew::Crew::new();
+    (0..gunners).for_each(|_| crew.add_gunnery(1));
+    let mut world = Entities::new();
+    world.add_ship("Hunter".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+    world.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(distance, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    world.ships["Hunter"].write().unwrap().contacts = vec!["Quarry".to_string()];
+    world
+  }
+
+  fn set_racks(world: &Entities, loads: [u32; 2]) {
+    let mut hunter = world.ships["Hunter"].write().unwrap();
+    hunter.loaded[2].missiles = loads[0];
+    hunter.loaded[3].missiles = loads[1];
+  }
+
+  fn engage_quarry() -> Intent {
+    Intent {
+      fire: vec![Engage {
+        target: "Quarry".to_string(),
+        ..Engage::default()
+      }],
+      ..Intent::default()
+    }
+  }
+
+  fn reloads_of(actions: &[ShipAction]) -> Vec<usize> {
+    actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::ReloadAction { weapon_id } => Some(*weapon_id),
+        _ => None,
+      })
+      .collect()
+  }
+
+  fn fired(actions: &[ShipAction]) -> Vec<usize> {
+    actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::FireAction { weapon_id, .. } => Some(*weapon_id),
+        _ => None,
+      })
+      .collect()
+  }
+
+  /// A spare gunner reloads for free, so it goes to the emptiest rack, and
+  /// both racks still fire. A rack with no spare for it and missiles left
+  /// keeps firing.
+  #[tokio::test]
+  async fn a_spare_gunner_reloads_the_emptiest_rack() {
+    let world = corvettes(50_000.0 * KM, 5).await;
+    set_racks(&world, [6, 3]);
+    let actions = fire_actions(&orders(&world, "Hunter", &engage_quarry()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![3]);
+    assert_eq!(fired(&actions), vec![2, 3], "both racks bear at Very Long; the lasers do not");
+  }
+
+  /// With no spare, an empty rack is reloaded by its own gunner and does not
+  /// fire; a part-full one with a target fires.
+  #[tokio::test]
+  async fn with_no_spare_only_an_empty_rack_with_a_target_is_reloaded() {
+    let world = corvettes(50_000.0 * KM, 4).await;
+    set_racks(&world, [0, 6]);
+    let actions = fire_actions(&orders(&world, "Hunter", &engage_quarry()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![2]);
+    assert_eq!(fired(&actions), vec![3]);
+
+    // With nothing to shoot at, a part-full rack is topped up too.
+    let actions = fire_actions(&orders(&world, "Hunter", &Intent::default()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![2, 3]);
+  }
+
+  /// A mixed turret -- a rack beside two lasers -- is not reloaded while its
+  /// lasers have a target, even with the rack empty; with no target it is.
+  #[tokio::test]
+  async fn a_mixed_turret_reloads_only_when_its_lasers_have_no_target() {
+    let world = corvettes(5.0 * KM, 1).await;
+    {
+      let mut hunter = world.ships["Hunter"].write().unwrap();
+      let mixed = Weapon {
+        mount: WeaponMount::Turret,
+        guns: vec![
+          crate::ship::Gun::new(WeaponType::Pulse),
+          crate::ship::Gun::new(WeaponType::Pulse),
+          crate::ship::Gun::new(WeaponType::Missile),
+        ],
+        count: 1,
+      };
+      hunter.set_weapons(Some(vec![mixed]));
+      hunter.fixup_current_values();
+      hunter.loaded[0].missiles = 0;
+      hunter.magazine.missiles = 20;
+    }
+    let actions = fire_actions(&orders(&world, "Hunter", &engage_quarry()).unwrap());
+    assert_eq!(reloads_of(&actions), Vec::<usize>::new());
+    assert_eq!(fired(&actions), vec![0], "the lasers fire");
+    let actions = fire_actions(&orders(&world, "Hunter", &Intent::default()).unwrap());
+    assert_eq!(reloads_of(&actions), vec![0]);
+  }
+
+  /// A commander that names its reloads gets them, and a mount it names
+  /// beyond the spares is left out of the fire it would otherwise join.
+  #[tokio::test]
+  async fn named_reloads_are_carried_out() {
+    let world = corvettes(50_000.0 * KM, 4).await;
+    set_racks(&world, [6, 6]);
+    let intent = Intent {
+      reload: Some(vec![3, 3, 0]),
+      ..engage_quarry()
+    };
+    let actions = fire_actions(&orders(&world, "Hunter", &intent).unwrap());
+    assert_eq!(reloads_of(&actions), vec![3], "a full laser and a repeat are dropped");
+    assert_eq!(fired(&actions), vec![2]);
+    let intent = Intent {
+      reload: Some(vec![]),
+      ..engage_quarry()
+    };
+    assert_eq!(fired(&fire_actions(&orders(&world, "Hunter", &intent).unwrap())), vec![2, 3]);
   }
 
   #[test]
@@ -1874,6 +2435,154 @@ mod tests {
     assert!(armoured > 0.0 && armoured < bare / 2.0, "{armoured} against {bare}");
   }
 
+  /// A battery is one entry worth all its mounts: the odds it carries are
+  /// the single mount's times the count, so sharing out fire assigns it
+  /// whole, with its whole weight. A missile battery's launch is every rack.
+  #[tokio::test]
+  async fn a_battery_prices_as_its_mounts() {
+    config_test_ship_templates().await;
+    let target = ship_of("Buccaneer", 5_000.0 * KM);
+    let barbette = Weapon::single(WeaponType::Particle, WeaponMount::Barbette);
+    let mut single = ship_of("Gazulin Trader", 0.0);
+    single.set_weapons(Some(vec![barbette.clone()]));
+    single.fixup_current_values();
+    let mut battery = single.clone();
+    battery.set_weapons(Some(vec![barbette.times(4)]));
+    battery.fixup_current_values();
+    let skill = |_: usize| 2;
+    let one = at(&engagement(&single, &target, &skill, 0), Range::Medium).by_mount[0].1;
+    let table = engagement(&battery, &target, &skill, 0);
+    let four = at(&table, Range::Medium);
+    assert_eq!(four.mounts, 1, "one entry");
+    assert!(
+      (four.by_mount[0].1 - 4.0 * one).abs() < 1e-9,
+      "{} against {one}",
+      four.by_mount[0].1
+    );
+
+    let racks = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3).times(4);
+    assert_eq!(launch_size(&racks, WeaponType::Missile), Some((12, 1)));
+  }
+
+  /// A spinal-armed design for these tests: a 30,000-ton monitor with a 2×
+  /// meson and one triple beam turret.
+  fn monitor() -> Arc<crate::ship::ShipDesignTemplate> {
+    Arc::new(crate::ship::ShipDesignTemplate {
+      name: "Monitor".to_string(),
+      displacement: 30_000,
+      hull: 15_000,
+      maneuver: 1,
+      power: 10_000,
+      tl: 15,
+      weapons: vec![
+        Weapon::single(WeaponType::Meson, WeaponMount::Spinal { multiple: 2, tl: None }),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+      ],
+      ..crate::ship::ShipDesignTemplate::default()
+    })
+  }
+
+  /// A spinal is priced like any gun, at ×1,000 and with its size DMs: a
+  /// cruiser takes thousands from it, and a fighter that is manoeuvring
+  /// takes nothing, since it cannot be attacked at all.
+  #[tokio::test]
+  async fn a_spinal_prices_at_a_thousand_and_not_against_a_fighter() {
+    config_test_ship_templates().await;
+    let design = monitor();
+    let attacker = Ship::new("Monitor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut cruiser = Ship::new(
+      "Cruiser".to_string(),
+      Vec3::new(5_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let skill = |_: usize| 2;
+    let medium = at(&engagement(&attacker, &cruiser, &skill, 10), Range::Medium).clone();
+    let spinal = medium.by_mount.iter().find(|(mount, _)| *mount == 0).unwrap().1;
+    assert!(spinal > 10_000.0, "12D ×1,000, through any armour: {spinal}");
+    // Past its Long reach it does not bear.
+    assert_eq!(
+      at(&engagement(&attacker, &cruiser, &skill, 10), Range::VeryLong).by_mount,
+      vec![]
+    );
+
+    let fighter = |still: bool| {
+      let mut fighter = ship_of("Light Fighter", 5_000.0 * KM);
+      fighter.held_still = still;
+      at(&engagement(&attacker, &fighter, &skill, 0), Range::Medium).clone()
+    };
+    let moving = fighter(false);
+    assert!(moving.by_mount.iter().all(|(mount, _)| *mount != 0), "{moving:?}");
+    assert_eq!(moving.mounts, 1, "only the turret can attack");
+    // Held still, she can be attacked, at DM-8: with gunner 2 at Medium it
+    // needs a 14 on two dice, so it is priced, at nothing.
+    let still = fighter(true);
+    assert!(still.by_mount.iter().any(|(mount, _)| *mount == 0), "{still:?}");
+    assert_eq!(still.mounts, 2);
+
+    // A ship of 5,000 tons or less is DM-8, so it expects less than the
+    // cruiser.
+    cruiser.design = Arc::new(crate::ship::ShipDesignTemplate {
+      displacement: 5_000,
+      ..(*design).clone()
+    });
+    let small = at(&engagement(&attacker, &cruiser, &skill, 10), Range::Medium).clone();
+    let small_spinal = small.by_mount.iter().find(|(mount, _)| *mount == 0).unwrap().1;
+    assert!(small_spinal < spinal / 4.0, "{small_spinal} against {spinal}");
+  }
+
+  /// Fire orders leave a spinal off a target it cannot attack, so it is free
+  /// for the next one.
+  #[tokio::test]
+  async fn a_spinal_is_not_wasted_on_a_fighter() {
+    config_test_ship_templates().await;
+    let design = monitor();
+    let mut world = Entities::new();
+    world.add_ship("Monitor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let fighter = get_ship_template("Light Fighter").unwrap();
+    world.add_ship(
+      "Fighter".to_string(),
+      Vec3::new(5_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &fighter,
+      None,
+      None,
+    );
+    world.add_ship(
+      "Cruiser".to_string(),
+      Vec3::new(6_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    world.ships["Monitor"].write().unwrap().contacts = vec!["Fighter".to_string(), "Cruiser".to_string()];
+    let intent = Intent {
+      fire: vec![
+        Engage {
+          target: "Fighter".to_string(),
+          ..Engage::default()
+        },
+        Engage {
+          target: "Cruiser".to_string(),
+          ..Engage::default()
+        },
+      ],
+      ..Intent::default()
+    };
+    let fired: Vec<(usize, String)> = fire_actions(&orders(&world, "Monitor", &intent).unwrap())
+      .into_iter()
+      .filter_map(|action| match action {
+        ShipAction::FireAction { weapon_id, target, .. } => Some((weapon_id, target)),
+        _ => None,
+      })
+      .collect();
+    assert!(fired.contains(&(1, "Fighter".to_string())), "{fired:?}");
+    assert!(fired.contains(&(0, "Cruiser".to_string())), "{fired:?}");
+  }
+
   #[tokio::test]
   async fn a_helm_order_naming_a_missing_ship_is_an_error() {
     let world = two_ships(5_000.0 * KM).await;
@@ -1885,5 +2594,457 @@ mod tests {
       ..Intent::default()
     };
     assert!(orders(&world, "Hunter", &intent).is_err());
+  }
+}
+
+#[cfg(test)]
+mod flight_tests {
+  use super::*;
+  use crate::ship::{
+    config_test_ship_templates, get_ship_template, FeatureKind, ShipDesignTemplate, ShipFeature, Team,
+  };
+  use crate::software::Software;
+  use cgmath::Zero;
+  use std::sync::Arc;
+
+  const KM: f64 = 1000.0;
+
+  /// A 50,000-ton carrier with thirty 50-ton docking spaces, one launch
+  /// tube and one recovery deck, and a hundred missiles in stores.
+  fn carrier_design() -> Arc<ShipDesignTemplate> {
+    let feature = |name: &str, power: u32, kind: FeatureKind| ShipFeature {
+      name: name.to_string(),
+      power,
+      default_on: true,
+      kind: Some(kind),
+    };
+    Arc::new(ShipDesignTemplate {
+      name: "Test Carrier".to_string(),
+      displacement: 50_000,
+      hull: 27_500,
+      armor: 10,
+      maneuver: 4,
+      jump: 2,
+      power: 60_000,
+      fuel: 10_000,
+      crew: 500,
+      computer: 20,
+      features: vec![
+        feature(
+          "Docking spaces",
+          0,
+          FeatureKind::DockingSpace {
+            craft_tons: 50,
+            count: 30,
+          },
+        ),
+        feature(
+          "Launch tube",
+          500,
+          FeatureKind::LaunchTube {
+            craft_tons: 50,
+            count: 1,
+          },
+        ),
+        feature(
+          "Recovery deck",
+          500,
+          FeatureKind::RecoveryDeck {
+            craft_tons: 50,
+            count: 1,
+          },
+        ),
+      ],
+      magazine: Magazine {
+        missiles: 100,
+        ..Default::default()
+      },
+      software: vec![Software::new(SoftwareKind::JumpControl, 2)],
+      ..Default::default()
+    })
+  }
+
+  /// The carrier at the origin on Blue with `craft` heavy fighters aboard,
+  /// "Fighter 1" up, the first half in "Wing B" and the rest in "Wing A";
+  /// and a Red Buccaneer, "Raider", `distance` metres off along x, in her
+  /// contacts when `seen`.
+  async fn scene(craft: usize, distance: f64, seen: bool) -> Entities {
+    config_test_ship_templates().await;
+    let mut world = Entities::new();
+    world.add_ship("Carrier".to_string(), Vec3::zero(), Vec3::zero(), &carrier_design(), None, None);
+    let fighter = get_ship_template("Heavy Fighter").unwrap();
+    {
+      let mut carrier = world.ships["Carrier"].write().unwrap();
+      carrier.team = Some(Team::Blue);
+      for n in 1..=craft {
+        let mut ship = Ship::new(format!("Fighter {n:02}"), Vec3::zero(), Vec3::zero(), &fighter, None, None);
+        ship.team = Some(Team::Blue);
+        ship.squadron = Some(if n <= craft / 2 { "Wing B" } else { "Wing A" }.to_string());
+        carrier.embark(ship);
+      }
+      if seen {
+        carrier.contacts = vec!["Raider".to_string()];
+      }
+    }
+    let raider = get_ship_template("Buccaneer").unwrap();
+    world.add_ship(
+      "Raider".to_string(),
+      Vec3::new(distance, 0.0, 0.0),
+      Vec3::zero(),
+      &raider,
+      None,
+      None,
+    );
+    world.ships["Raider"].write().unwrap().team = Some(Team::Red);
+    world
+  }
+
+  /// A heavy fighter of the carrier's on the plot, `distance` metres from
+  /// her along y, with the carrier's contacts.
+  fn put_out(world: &mut Entities, name: &str, distance: f64) {
+    let fighter = get_ship_template("Heavy Fighter").unwrap();
+    world.add_ship(
+      name.to_string(),
+      Vec3::new(0.0, distance, 0.0),
+      Vec3::zero(),
+      &fighter,
+      None,
+      None,
+    );
+    let contacts = world.ships["Carrier"].read().unwrap().contacts.clone();
+    let mut craft = world.ships[name].write().unwrap();
+    craft.team = Some(Team::Blue);
+    craft.carrier = Some("Carrier".to_string());
+    craft.contacts = contacts;
+  }
+
+  fn spend(craft: &mut Ship) {
+    for load in &mut craft.loaded {
+      *load = Magazine::default();
+    }
+    craft.magazine = Magazine::default();
+  }
+
+  fn actions_of(requests: &[RequestMsg]) -> Vec<ShipAction> {
+    requests
+      .iter()
+      .filter_map(|request| match request {
+        RequestMsg::ModifyActions(list) => Some(list[0].1.clone()),
+        _ => None,
+      })
+      .flatten()
+      .collect()
+  }
+
+  fn launched(requests: &[RequestMsg]) -> Option<Vec<String>> {
+    actions_of(requests).into_iter().find_map(|action| match action {
+      ShipAction::Launch { craft } => Some(craft),
+      _ => None,
+    })
+  }
+
+  fn has_plan(requests: &[RequestMsg]) -> bool {
+    requests.iter().any(|request| matches!(request, RequestMsg::SetPlan(_)))
+  }
+
+  fn plan_of(requests: &[RequestMsg]) -> FlightPlan {
+    requests
+      .iter()
+      .find_map(|request| match request {
+        RequestMsg::SetPlan(plan) => Some(plan.plan.clone()),
+        _ => None,
+      })
+      .unwrap_or_else(|| panic!("expected a plan, got {requests:?}"))
+  }
+
+  fn lands(requests: &[RequestMsg]) -> bool {
+    actions_of(requests)
+      .iter()
+      .any(|action| matches!(action, ShipAction::Land { .. }))
+  }
+
+  /// With an enemy in contact within Very Long the carrier launches as many
+  /// as her tube takes; at Distant, or unseen, she keeps them aboard.
+  #[tokio::test]
+  async fn a_carrier_launches_when_an_enemy_is_within_very_long() {
+    let intent = Intent::default();
+    let world = scene(12, 40_000.0 * KM, true).await;
+    let requests = orders(&world, "Carrier", &intent).unwrap();
+    let out = launched(&requests).expect("a launch order");
+    assert_eq!(out.len(), 10, "{out:?}");
+
+    let world = scene(12, 60_000.0 * KM, true).await;
+    assert_eq!(launched(&orders(&world, "Carrier", &intent).unwrap()), None, "at Distant");
+    let world = scene(12, 40_000.0 * KM, false).await;
+    assert_eq!(launched(&orders(&world, "Carrier", &intent).unwrap()), None, "not in contact");
+  }
+
+  /// A round's launches come from one wing before the next, and a craft
+  /// waiting on the stores to rearm, or with nothing to fight with, stays
+  /// aboard.
+  #[tokio::test]
+  async fn launches_come_wing_by_wing_and_rearming_craft_wait() {
+    let world = scene(12, 40_000.0 * KM, true).await;
+    {
+      let mut carrier = world.ships["Carrier"].write().unwrap();
+      // Fighter 07 (Wing A) has fired everything and will rearm next round.
+      let index = carrier.embarked.iter().position(|c| c.get_name() == "Fighter 07").unwrap();
+      spend(&mut carrier.embarked[index]);
+    }
+    let out = launched(&orders(&world, "Carrier", &Intent::default()).unwrap()).unwrap();
+    let wing_a: Vec<String> = (8..=12).map(|n| format!("Fighter {n:02}")).collect();
+    assert_eq!(out[..5], wing_a[..], "Wing A first, without the rearming craft: {out:?}");
+    let wing_b: Vec<String> = (1..=5).map(|n| format!("Fighter {n:02}")).collect();
+    assert_eq!(out[5..], wing_b[..], "then Wing B: {out:?}");
+
+    // With the stores empty as well there is nothing to rearm her with, so
+    // she is ready as she is: she still has her laser.
+    world.ships["Carrier"].write().unwrap().magazine = Magazine::default();
+    let out = launched(&orders(&world, "Carrier", &Intent::default()).unwrap()).unwrap();
+    assert!(out.contains(&"Fighter 07".to_string()), "{out:?}");
+  }
+
+  /// A craft whose missiles are all gone flies back to her carrier -- a
+  /// plan toward her, whatever helm she was given -- and gives *Land* only
+  /// once on the approach: within Short, matched, and with the carrier not
+  /// burning; then she coasts, so neither ship's thrust counts against the
+  /// check. With nothing in the carrier's stores to rearm her she stays
+  /// out: she still has her laser.
+  #[tokio::test]
+  async fn a_spent_craft_goes_home_and_lands_when_close() {
+    let mut world = scene(0, 8_000.0 * KM, true).await;
+    put_out(&mut world, "Fighter 1", 20_000.0 * KM);
+    spend(&mut world.ships["Fighter 1"].write().unwrap());
+    let intent = Intent {
+      helm: Helm::Hold,
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Fighter 1", &intent).unwrap();
+    assert!(has_plan(&requests), "she plots a course home: {requests:?}");
+    assert!(!lands(&requests), "too far to land this round: {requests:?}");
+    assert!(plan_of(&requests).0 .0.magnitude() > G, "she burns for home: {requests:?}");
+
+    // Within Short and matched: coast and land.
+    world.ships["Fighter 1"]
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(0.0, 800.0 * KM, 0.0));
+    let requests = orders(&world, "Fighter 1", &intent).unwrap();
+    assert!(lands(&requests), "{requests:?}");
+    assert_eq!(plan_of(&requests).0 .0, Vec3::zero(), "she coasts in: {requests:?}");
+    let home = Some(Flight::Land {
+      carrier: "Carrier".to_string(),
+    });
+    assert_eq!(flight(&world, &world.ships["Fighter 1"].read().unwrap(), &intent), home);
+
+    // Passing too fast, or the carrier burning: close on her, no Land yet.
+    world.ships["Fighter 1"]
+      .write()
+      .unwrap()
+      .set_velocity(Vec3::new(10_000.0, 0.0, 0.0));
+    let requests = orders(&world, "Fighter 1", &intent).unwrap();
+    assert!(!lands(&requests) && has_plan(&requests), "{requests:?}");
+    world.ships["Fighter 1"].write().unwrap().set_velocity(Vec3::zero());
+    world.ships["Carrier"].write().unwrap().plan = FlightPlan::new((Vec3::new(0.0, 3.0 * G, 0.0), 1000).into(), None);
+    assert!(
+      !lands(&orders(&world, "Fighter 1", &intent).unwrap()),
+      "the carrier is burning 3 G"
+    );
+    world.ships["Carrier"].write().unwrap().plan = FlightPlan::default();
+
+    world.ships["Carrier"].write().unwrap().magazine = Magazine::default();
+    assert_eq!(flight(&world, &world.ships["Fighter 1"].read().unwrap(), &intent), None);
+  }
+
+  /// A craft with her loads full stays out while an enemy is in contact --
+  /// withdrawing any *Land* she had standing from before -- and goes home
+  /// once none is.
+  #[tokio::test]
+  async fn a_craft_with_nothing_to_fight_goes_home() {
+    let mut world = scene(0, 8_000.0 * KM, true).await;
+    put_out(&mut world, "Fighter 1", 800.0 * KM);
+    let craft = world.ships["Fighter 1"].read().unwrap().clone();
+    assert_eq!(flight(&world, &craft, &Intent::default()), None);
+    let requests = orders(&world, "Fighter 1", &Intent::default()).unwrap();
+    assert!(actions_of(&requests).contains(&ShipAction::ClearLand), "{requests:?}");
+    world.ships["Fighter 1"].write().unwrap().contacts.clear();
+    let craft = world.ships["Fighter 1"].read().unwrap().clone();
+    assert_eq!(
+      flight(&world, &craft, &Intent::default()),
+      Some(Flight::Land {
+        carrier: "Carrier".to_string()
+      })
+    );
+    assert!(lands(&orders(&world, "Fighter 1", &Intent::default()).unwrap()));
+  }
+
+  /// A carrier about to jump launches nothing, and her craft come home
+  /// while Jump Control runs.
+  #[tokio::test]
+  async fn craft_come_home_before_the_carrier_jumps() {
+    let mut world = scene(12, 40_000.0 * KM, true).await;
+    put_out(&mut world, "Fighter 20", 5_000.0 * KM);
+    let jumping = Intent {
+      engineering: vec![EngineerVerb::Jump],
+      ..Intent::default()
+    };
+    assert_eq!(
+      launched(&orders(&world, "Carrier", &jumping).unwrap()),
+      None,
+      "no launch on the way out"
+    );
+    let craft = world.ships["Fighter 20"].read().unwrap().clone();
+    assert_eq!(
+      flight(&world, &craft, &Intent::default()),
+      None,
+      "the carrier has not started Jump Control yet"
+    );
+
+    world.ships["Carrier"].write().unwrap().software_running = vec![Software::new(SoftwareKind::JumpControl, 2)];
+    assert_eq!(launched(&orders(&world, "Carrier", &Intent::default()).unwrap()), None);
+    let craft = world.ships["Fighter 20"].read().unwrap().clone();
+    assert_eq!(
+      flight(&world, &craft, &Intent::default()),
+      Some(Flight::Land {
+        carrier: "Carrier".to_string()
+      })
+    );
+  }
+
+  /// A commander's flight order stands in place of the crews': a craft told
+  /// to hold stays out with her loads full and withdraws any *Land* she had,
+  /// but goes home once spent; a carrier launches the craft she is told to,
+  /// once each and no more than the tube takes, or none when told to hold.
+  #[tokio::test]
+  async fn a_commanders_flight_order_overrides_the_crews() {
+    let mut world = scene(12, 40_000.0 * KM, true).await;
+    put_out(&mut world, "Fighter 20", 800.0 * KM);
+    world.ships["Fighter 20"].write().unwrap().contacts.clear();
+    let hold = Intent {
+      flight: Some(Flight::Hold),
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Fighter 20", &hold).unwrap();
+    assert!(!lands(&requests) && !has_plan(&requests), "{requests:?}");
+    assert!(actions_of(&requests).contains(&ShipAction::ClearLand), "{requests:?}");
+    spend(&mut world.ships["Fighter 20"].write().unwrap());
+    assert!(
+      lands(&orders(&world, "Fighter 20", &hold).unwrap()),
+      "spent, she goes home even when told to hold"
+    );
+
+    let named = Intent {
+      flight: Some(Flight::Launch {
+        craft: ["Fighter 03", "Fighter 01", "Fighter 03", "Nobody"]
+          .iter()
+          .map(ToString::to_string)
+          .collect(),
+        count: None,
+      }),
+      ..Intent::default()
+    };
+    assert_eq!(
+      launched(&orders(&world, "Carrier", &named).unwrap()),
+      Some(vec!["Fighter 03".to_string(), "Fighter 01".to_string()])
+    );
+    let counted = Intent {
+      flight: Some(Flight::Launch {
+        craft: vec![],
+        count: Some(3),
+      }),
+      ..Intent::default()
+    };
+    assert_eq!(
+      launched(&orders(&world, "Carrier", &counted).unwrap()).map(|out| out.len()),
+      Some(3)
+    );
+    let all = Intent {
+      flight: Some(Flight::Launch {
+        craft: vec![],
+        count: Some(50),
+      }),
+      ..Intent::default()
+    };
+    assert_eq!(
+      launched(&orders(&world, "Carrier", &all).unwrap()).map(|out| out.len()),
+      Some(10),
+      "the tube's rate caps it"
+    );
+    assert_eq!(launched(&orders(&world, "Carrier", &hold).unwrap()), None, "told to hold");
+  }
+
+  /// Two wings on the approach at once land one at a time: the check loses
+  /// a point for every other craft coming in that is not of the squadron.
+  #[tokio::test]
+  async fn wings_land_one_at_a_time() {
+    let mut world = scene(0, 8_000.0 * KM, true).await;
+    for (name, wing) in [
+      ("Fighter 1", "Wing B"),
+      ("Fighter 2", "Wing A"),
+      ("Fighter 3", "Wing B"),
+    ] {
+      put_out(&mut world, name, 600.0 * KM);
+      let mut craft = world.ships[name].write().unwrap();
+      craft.squadron = Some(wing.to_string());
+      craft.contacts.clear();
+    }
+    assert!(
+      lands(&orders(&world, "Fighter 2", &Intent::default()).unwrap()),
+      "Wing A's turn"
+    );
+    assert!(
+      !lands(&orders(&world, "Fighter 1", &Intent::default()).unwrap()),
+      "Wing B waits on station"
+    );
+    assert!(!lands(&orders(&world, "Fighter 3", &Intent::default()).unwrap()));
+    // Wing A gone aboard: Wing B's turn.
+    world.ships.remove("Fighter 2");
+    assert!(lands(&orders(&world, "Fighter 1", &Intent::default()).unwrap()));
+    assert!(lands(&orders(&world, "Fighter 3", &Intent::default()).unwrap()));
+  }
+
+  /// A ship held still by a berth operation gives no flight order of her
+  /// own: she is in one.
+  #[tokio::test]
+  async fn a_pinned_ship_leaves_flight_operations_alone() {
+    let mut world = scene(12, 40_000.0 * KM, true).await;
+    put_out(&mut world, "Fighter 20", 5_000.0 * KM);
+    spend(&mut world.ships["Fighter 20"].write().unwrap());
+    world.ships["Fighter 20"].write().unwrap().pinned = true;
+    world.ships["Carrier"].write().unwrap().pinned = true;
+    assert_eq!(
+      flight(&world, &world.ships["Fighter 20"].read().unwrap(), &Intent::default()),
+      None
+    );
+    assert_eq!(
+      flight(&world, &world.ships["Carrier"].read().unwrap(), &Intent::default()),
+      None
+    );
+  }
+
+  /// Spent means the launchers have nothing left, in the mounts or the
+  /// stores; a laser fighter is never spent, nor an unarmed ship. A heavy
+  /// fighter spent still has her laser, so she is not useless.
+  #[tokio::test]
+  async fn spent_is_for_launchers_with_nothing_left() {
+    config_test_ship_templates().await;
+    let heavy = get_ship_template("Heavy Fighter").unwrap();
+    let mut fighter = Ship::new("H".to_string(), Vec3::zero(), Vec3::zero(), &heavy, None, None);
+    assert!(!loads_spent(&fighter));
+    spend(&mut fighter);
+    assert!(loads_spent(&fighter));
+    assert!(!nothing_to_fight_with(&fighter), "a beam laser beside the rack");
+    let light = get_ship_template("Light Fighter").unwrap();
+    let laser = Ship::new("L".to_string(), Vec3::zero(), Vec3::zero(), &light, None, None);
+    assert!(!loads_spent(&laser));
+    let unarmed = Ship::new(
+      "U".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &Arc::new(ShipDesignTemplate::default()),
+      None,
+      None,
+    );
+    assert!(!loads_spent(&unarmed));
   }
 }

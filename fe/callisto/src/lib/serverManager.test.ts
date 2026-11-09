@@ -240,6 +240,46 @@ describe("setShipTeam", () => {
   });
 });
 
+describe("setOrders", () => {
+  it("gives a squadron's orders through one of its ships", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Lance 1", " Fighters first. ", "Squadron");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetOrders: { ship_name: "Lance 1", orders: "Fighters first.", scope: "Squadron" } }),
+    ]);
+  });
+
+  it("leaves the scope out for a ship's own orders, and the text out to clear them", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Lance 1", "  ");
+    expect(mockSocket.sent).toEqual([JSON.stringify({ SetOrders: { ship_name: "Lance 1" } })]);
+  });
+});
+
+describe("squadrons", () => {
+  it("puts ships in a squadron", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setSquadron(["Lance 1", "Lance 2"], "Lance");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetSquadron: { ships: ["Lance 1", "Lance 2"], squadron: "Lance" } }),
+    ]);
+  });
+
+  it("omits the squadron to take ships out of theirs", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setSquadron(["Lance 1"], null);
+    expect(mockSocket.sent).toEqual([JSON.stringify({ SetSquadron: { ships: ["Lance 1"] } })]);
+  });
+
+  it("renames a team's squadron", async () => {
+    const sm = await import("lib/serverManager");
+    sm.renameSquadron("Blue", "Lance", "Spear");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ RenameSquadron: { team: "Blue", from: "Lance", to: "Spear" } }),
+    ]);
+  });
+});
+
 describe("sensor hand-off", () => {
   it("turns hand-off on without restating the other emissions", async () => {
     const sm = await import("lib/serverManager");

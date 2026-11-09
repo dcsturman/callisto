@@ -114,6 +114,19 @@ pub(crate) fn share(part: u32, whole: u32) -> f32 {
   (part as f32 / whole.max(1) as f32).min(1.0)
 }
 
+/// The largest value [`hull_size`] gives: a hull of 1,000,000 points, a
+/// ship of about 1,500,000 tons (High Guard p. 10). The largest published
+/// warship, the 500,000-ton Tigress, comes to about 1.38; every design the
+/// network was trained on is under 1.
+pub(crate) const MAX_HULL_SIZE: f64 = 1.5;
+
+/// A hull's size as the network sees it: `log10(hull) / 4`, capped at
+/// [`MAX_HULL_SIZE`] so a billion-ton station stays in range.  Below the cap
+/// the value is bit-for-bit what it always was.
+pub(crate) fn hull_size(hull: u32) -> f32 {
+  (f64::from(hull.max(1)).log10() / 4.0).min(MAX_HULL_SIZE) as f32
+}
+
 /// Where another ship is and how she moves, relative to us: direction (3), log
 /// distance, velocity direction (3), log speed, closing rate. Nine numbers.
 fn relative(out: &mut [f32], me: &Ship, position: Vec3, velocity: Vec3) {
@@ -220,7 +233,7 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     relative(&mut row[1..10], me, friend.get_position(), friend.get_velocity());
     row[10] = share(friend.current_hull, friend.design.hull);
     row[11] = f32::from(friend.max_acceleration()) / 10.0;
-    row[12] = (f64::from(friend.design.hull.max(1)).log10() / 4.0) as f32;
+    row[12] = hull_size(friend.design.hull);
     row[13] = band_index(me, friend.get_position());
     row[14] = friend.contacts.len().min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
     row[15] = f32::from(friend.get_dodge_thrust()) / 3.0;
@@ -321,14 +334,14 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   row[59] = if full == 0 {
     0.0
   } else {
-    (me.magazine.missiles as f32 / full as f32).min(1.0)
+    (me.aboard().missiles as f32 / full as f32).min(1.0)
   };
   let burn = me.plan.0 .0;
   row[60] = (burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
   row[61..64].copy_from_slice(&direction(burn));
   let inbound: Vec<&callisto::missile::Missile> =
     view.missiles.iter().filter(|missile| missile.target == name).collect();
-  row[64] = (inbound.len() as f32 / 5.0).min(1.0);
+  row[64] = (orders::missiles_in(inbound.iter().copied()) as f32 / 5.0).min(1.0);
   row[65] = inbound
     .iter()
     .map(|missile| rounds_to_reach(missile.get_position(), missile.get_velocity(), me))
@@ -336,7 +349,7 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
     .min(5.0)
     .mul_add(-0.2, 1.0)
     .max(0.0);
-  row[66] = (view.missiles.iter().filter(|missile| missile.source == name).count() as f32 / 10.0).min(1.0);
+  row[66] = (orders::missiles_in(view.missiles.iter().filter(|missile| missile.source == name)) as f32 / 10.0).min(1.0);
   // Her orders last round, and what happened to her.
   if let Some(last) = ctx.history.orders(name) {
     if let Some(verb) = last.verb {
@@ -349,10 +362,19 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   }
   row[77] = share(ctx.history.lost(name), me.design.hull);
   row[78] = ctx.history.since_hit(name).map_or(1.0, |rounds| rounds.min(10) as f32 / 10.0);
-  // The enemy's loss last round, as a share of what the side started with.
-  let enemy_loss: u32 = view.contacts.iter().map(|contact| ctx.history.lost(&contact.name)).sum();
-  let enemy_design: u32 = view.contacts.iter().map(|contact| contact.design_hull).sum();
-  row[79] = share(enemy_loss, enemy_design);
+  row[79] = enemy_loss_share(ctx, view);
+}
+
+/// The enemy's loss last round, as a share of what the side started with.
+/// Summed in u64, which a few large stations need; the ratio is unchanged.
+fn enemy_loss_share(ctx: &Context, view: &Observation) -> f32 {
+  let lost: u64 = view
+    .contacts
+    .iter()
+    .map(|contact| u64::from(ctx.history.lost(&contact.name)))
+    .sum();
+  let built: u64 = view.contacts.iter().map(|contact| u64::from(contact.design_hull)).sum();
+  (lost as f32 / built.max(1) as f32).min(1.0)
 }
 
 /// Rounds until something at `position` moving at `velocity` reaches `me`,
@@ -384,7 +406,7 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     Some(contact) => {
       row[12] = share(contact.current_hull, contact.design_hull);
       row[13] = 0.0;
-      row[14] = (f64::from(contact.design_hull.max(1)).log10() / 4.0) as f32;
+      row[14] = hull_size(contact.design_hull);
       row[15] = f32::from(contact.current_maneuver) / 10.0;
       row[20] = contact.crit_level.iter().map(|level| f32::from(*level)).sum::<f32>().min(20.0) / 20.0;
       if let Some(table) = view.engagement(name, &contact.name) {
@@ -398,7 +420,7 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
       if let Some(seen) = seen {
         row[12] = seen.hull_share;
         row[13] = (ctx.round.saturating_sub(seen.round).min(20) as f32) / 20.0;
-        row[14] = (f64::from(seen.design_hull.max(1)).log10() / 4.0) as f32;
+        row[14] = hull_size(seen.design_hull);
         row[15] = f32::from(seen.thrust) / 10.0;
       } else {
         row[13] = 1.0;
@@ -438,11 +460,12 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     row[48] = (contact.burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
     row[49..52].copy_from_slice(&direction(contact.burn));
   }
-  row[52] = (view
-    .missiles
-    .iter()
-    .filter(|missile| missile.source == enemy.name && missile.target == name)
-    .count() as f32
+  row[52] = (orders::missiles_in(
+    view
+      .missiles
+      .iter()
+      .filter(|missile| missile.source == enemy.name && missile.target == name),
+  ) as f32
     / 5.0)
     .min(1.0);
   // Last round: did I steer by her, fire at her, lock her; how much of my
@@ -509,6 +532,9 @@ fn masks(me: &Ship, view: &Observation, goal: Goal, friends: &[&Ship], enemies: 
   set(mask, Head::Target2, if operators >= 2 { &contacts } else { &none_only });
   set(mask, Head::Captain, &[true; orders::RANKINGS.len()]);
   set(mask, Head::Computer, &[true, true]);
+  // The per-ship network does not run the deck: its flight head is closed
+  // to all but "none", which leaves it to the crews' rules.
+  set(mask, Head::Flight, &[true, false, false]);
 }
 
 /// Open the choices `open` says in `head`, and the first one whatever, so a
@@ -570,5 +596,42 @@ pub fn believed_hull(memory: &Memory) -> f32 {
     left / whole
   } else {
     1.0
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{hull_size, MAX_HULL_SIZE};
+
+  /// The trained network must see exactly what it always saw for every design
+  /// we ship: the cap may only bite above them.
+  #[test]
+  fn hull_size_is_unchanged_for_every_shipped_design() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../callisto/ship_templates");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).expect("ship_templates") {
+      let path = entry.expect("entry").path();
+      if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+        continue;
+      }
+      let design: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("read")).expect("json");
+      let hull = u32::try_from(design["hull"].as_u64().expect("hull")).expect("u32 hull");
+      let before = (f64::from(hull.max(1)).log10() / 4.0) as f32;
+      assert_eq!(hull_size(hull).to_bits(), before.to_bits(), "{}", path.display());
+      checked += 1;
+    }
+    assert!(checked > 40, "only {checked} designs found");
+  }
+
+  #[test]
+  fn hull_size_is_capped_for_huge_hulls() {
+    // The Tigress (500,000 t, about 333,333 hull points) is under the cap.
+    assert!(hull_size(333_333) < MAX_HULL_SIZE as f32);
+    assert_eq!(hull_size(1_000_000), 1.5);
+    // A billion-ton highport (High Guard p. 64) and the largest u32.
+    assert_eq!(hull_size(666_666_667), 1.5);
+    assert_eq!(hull_size(u32::MAX), 1.5);
+    assert_eq!(hull_size(0), 0.0);
   }
 }
