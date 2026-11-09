@@ -2705,6 +2705,39 @@ async fn integration_new_game_hands_the_chosen_ships_to_the_ai() {
   assert_eq!(next_call(&mut calls_rx).await, None, "only Red was handed to the AI");
 }
 
+/// A game nobody is playing lets its AI crews go: when the last person's
+/// connection closes, the AI service is told to release the side, so a game
+/// left to its AI crews does not play on for ever.
+#[test_log::test(tokio::test)]
+async fn integration_the_last_person_leaving_releases_the_ai() {
+  callisto::ship::config_test_ship_templates().await;
+  let (ai_url, mut calls_rx) = fake_ai_service().await;
+  let port = get_next_port();
+  let _server = spawn_server_full(port, true, None, None, None, true, Some(&ai_url)).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "thebus_left_alone".to_string(),
+      scenario: "Thebus.json".to_string(),
+      ai_ships: Some(vec!["HMS Executor".to_string()]),
+    }),
+  )
+  .await;
+  let crew = next_call(&mut calls_rx).await.expect("the AI service was asked to crew");
+  assert!(crew.starts_with("/crew "), "{crew}");
+
+  stream.close(None).await.unwrap();
+  let release = next_call(&mut calls_rx)
+    .await
+    .expect("the AI service was told to release the side");
+  assert!(
+    release.starts_with("/release ") && release.contains(r#""side":"Red""#),
+    "{release}"
+  );
+}
+
 /// A server with no AI service offers no AI crews: the scenario list says
 /// so, and a ship chosen for the AI on the new-game screen is crewed by
 /// people instead, so cannot be handed to the AI afterwards either.
