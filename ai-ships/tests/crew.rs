@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use ai_ships::auth::Credential;
 use ai_ships::commander::Idle;
-use ai_ships::crew::{run, CrewConfig, Ending};
+use ai_ships::crew::{run, tunnel, CrewConfig, Ending, Inbound, Link, TunnelEnds};
 use callisto::entity::Entities;
 use callisto::payloads::{AuthResponse, RequestMsg, ResponseMsg};
 use futures_util::{SinkExt, StreamExt};
@@ -89,6 +89,7 @@ async fn a_crew_claims_its_side_and_says_ready_once_a_round() {
     "Red".to_string(),
     ships_rx,
     Box::new(Idle),
+    Link::DialBack,
   ));
 
   let (stream, _) = listener.accept().await.unwrap();
@@ -149,6 +150,7 @@ async fn a_crew_the_backend_closes_on_does_not_come_back() {
     "Red".to_string(),
     ships_rx,
     Box::new(Idle),
+    Link::DialBack,
   )
   .await;
   assert_eq!(ending, Ending::ClosedByBackend);
@@ -177,6 +179,7 @@ async fn a_dropped_connection_is_retried_then_given_up() {
     "Red".to_string(),
     ships_rx,
     Box::new(Idle),
+    Link::DialBack,
   )
   .await;
   assert!(matches!(ending, Ending::Dropped(_)), "{ending:?}");
@@ -196,6 +199,7 @@ async fn a_join_that_finds_no_game_is_tried_again() {
     "Red".to_string(),
     ships_rx,
     Box::new(Idle),
+    Link::DialBack,
   ));
 
   // The backend without the game: logs the crew in, refuses the join.
@@ -225,4 +229,82 @@ async fn a_join_that_finds_no_game_is_tried_again() {
 
   drop(ships_tx);
   assert_eq!(crew.await.unwrap(), Ending::Released);
+}
+
+/// The next request a tunnelled crew sent, skipping keepalives; `None` once
+/// it lets the tunnel go.
+async fn tunnelled_request(ends: &mut TunnelEnds) -> Option<RequestMsg> {
+  loop {
+    let text = tokio::time::timeout(Duration::from_secs(5), ends.outbound.recv())
+      .await
+      .ok()??;
+    match serde_json::from_str::<RequestMsg>(&text).unwrap() {
+      RequestMsg::Ping => {}
+      request => return Some(request),
+    }
+  }
+}
+
+fn tunnelled_reply(ends: &TunnelEnds, response: &ResponseMsg) {
+  ends
+    .inbound
+    .send(Inbound::Text(serde_json::to_string(response).unwrap()))
+    .unwrap();
+}
+
+/// Logs a tunnelled crew in, lets it join, and takes its claim.
+async fn admit_tunnelled(ends: &mut TunnelEnds) {
+  assert!(matches!(tunnelled_request(ends).await, Some(RequestMsg::ServiceLogin(_))));
+  tunnelled_reply(
+    ends,
+    &ResponseMsg::AuthResponse(AuthResponse {
+      email: "ai-ships@callisto.local".to_string(),
+      scenario: None,
+      roles: None,
+      ship: None,
+      ai_allowed: false,
+    }),
+  );
+  assert!(matches!(tunnelled_request(ends).await, Some(RequestMsg::JoinScenario(_))));
+  tunnelled_reply(ends, &ResponseMsg::JoinedScenario("thebus-1".to_string()));
+  assert!(matches!(tunnelled_request(ends).await, Some(RequestMsg::SetRole(_))));
+}
+
+/// A crew plays over the tunnels the backend sends it, never dialling the
+/// backend: when one drops it waits for the next and plays on over that,
+/// and when the backend closes the game's connection it is done.
+#[tokio::test]
+async fn a_tunnelled_crew_plays_on_over_the_next_tunnel() {
+  // Nothing listens here: dialling would fail.
+  let (_ships_tx, ships_rx) = watch::channel(vec!["Invigilator".to_string()]);
+  let (tunnels_tx, tunnels_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (first, mut ends) = tunnel();
+  tunnels_tx.send(first).unwrap();
+  let crew = tokio::spawn(run(
+    config(1, 0),
+    "thebus-1".to_string(),
+    "Red".to_string(),
+    ships_rx,
+    Box::new(Idle),
+    Link::Tunnels(tunnels_rx),
+  ));
+  admit_tunnelled(&mut ends).await;
+  tunnelled_reply(&ends, &world(1));
+  assert!(matches!(tunnelled_request(&mut ends).await, Some(RequestMsg::SetReady(true))));
+
+  // The side's connection drops: the backend holds the side again, with a
+  // new tunnel, and the crew logs in afresh over it.
+  drop(ends);
+  let (second, mut ends) = tunnel();
+  tunnels_tx.send(second).unwrap();
+  admit_tunnelled(&mut ends).await;
+  tunnelled_reply(&ends, &world(2));
+  assert!(matches!(tunnelled_request(&mut ends).await, Some(RequestMsg::SetReady(true))));
+
+  // The backend closes the game's connection: the crew is done.
+  ends.inbound.send(Inbound::Closed).unwrap();
+  assert_eq!(
+    tokio::time::timeout(Duration::from_secs(5), crew).await.unwrap().unwrap(),
+    Ending::ClosedByBackend
+  );
 }
