@@ -853,8 +853,8 @@ async fn integration_add_ship() {
 }
 
 /*
-* Test that we can add a ship, a planet, and a missile to the server and get them back.
-*/
+ * Test that we can add a ship, a planet, and a missile to the server and get them back.
+ */
 #[test_log::test(tokio::test)]
 async fn integration_add_planet_ship() {
   let port = get_next_port();

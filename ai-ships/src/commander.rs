@@ -478,11 +478,7 @@ impl Replay {
 #[async_trait]
 impl Commander for Replay {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
-    self
-      .by_round
-      .get(&view.round)
-      .map(|record| record.intents.clone())
-      .unwrap_or_default()
+    self.by_round.get(&view.round).map_or_default(|record| record.intents.clone())
   }
 
   fn plan(&self) -> Option<&str> {

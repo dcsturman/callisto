@@ -148,8 +148,8 @@ async fn test_add_ship() {
 }
 
 /*
-* Test that we can add a ship, a planet, and a missile to the server and get them back.
-*/
+ * Test that we can add a ship, a planet, and a missile to the server and get them back.
+ */
 #[test(tokio::test)]
 async fn test_add_planet_ship() {
   let authenticator = setup_authenticator();

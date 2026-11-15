@@ -202,7 +202,7 @@ pub async fn run(extra: &Extra<'_>) -> Result<(), Box<dyn std::error::Error>> {
 pub fn summarise(outcomes: &[Outcome]) {
   println!("\n{} games:", outcomes.len());
   let draws = outcomes.iter().filter(|outcome| outcome.winner.is_none()).count();
-  let sides: Vec<String> = outcomes.first().map(|o| o.sides.keys().cloned().collect()).unwrap_or_default();
+  let sides: Vec<String> = outcomes.first().map_or_default(|o| o.sides.keys().cloned().collect());
   for side in &sides {
     let wins = outcomes.iter().filter(|o| o.winner.as_deref() == Some(side)).count();
     #[allow(clippy::cast_precision_loss)]

@@ -509,7 +509,7 @@ pub async fn play_recorded(
         }
       }
     }
-    let round = player.get_entities().map(|world| world.round).unwrap_or_default();
+    let round = player.get_entities().map_or_default(|world| world.round);
     let (effects, summary) = player.play_round();
     if let Some(events) = events.as_mut() {
       let line = serde_json::to_string(&RoundEvents {
