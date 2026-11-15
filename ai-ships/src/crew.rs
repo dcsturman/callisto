@@ -4,14 +4,19 @@
 //! messages: log in, join the scenario, claim the side's ships, and then once a
 //! round decide, give the orders, and say Ready.
 //!
-//! **When to reconnect.** The backend closes every socket after half an hour
-//! with nobody doing anything, so Cloud Run can scale to zero. A crew that
-//! reconnected after that would keep an abandoned game alive for ever. So the
-//! rule is: if the backend *closed* the connection, the crew is done until the
-//! backend states the side again on `/crew`. If the connection merely *dropped* -- a
-//! redeploy, a network blip -- the crew reconnects a few times with backoff,
-//! and then gives up. A join that finds no such scenario is retried the same
-//! way, since Cloud Run can briefly run a second backend that has no game.
+//! **How a crew reaches the game.** Over a [`Tunnel`]: the game's messages
+//! ride on the side's own `/crew` connection, which the backend relays to
+//! itself, so the crew always reaches the instance that holds the game. Cloud
+//! Run may run several backends, and a crew that dialled the backend's public
+//! URL could land on any of them.
+//!
+//! **When it ends.** The backend closes every socket after half an hour with
+//! nobody doing anything, so Cloud Run can scale to zero, and a crew that came
+//! back after that would keep an abandoned game alive for ever. So if the
+//! backend *closes* the game's connection, the crew is done until the backend
+//! states the side again on `/crew`. If the `/crew` connection merely *drops*
+//! -- a redeploy, Cloud Run's hour-long request limit -- the backend holds the
+//! side again, with a new tunnel, and the crew plays on over that.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,9 +24,7 @@ use std::time::Duration;
 
 use callisto::payloads::{ChangeRole, JoinScenarioMsg, RequestMsg, ResponseMsg, Role, ServiceLoginMsg, SetAiReport};
 use callisto::ship::{merge_ship_templates, AiReport, AiStatus, ShipDesignTemplate};
-use futures_util::{SinkExt, StreamExt};
-use tokio::sync::watch;
-use tokio_tungstenite::tungstenite::Message;
+use tokio::sync::{mpsc, watch};
 use tracing::{info, warn};
 
 use crate::auth::Credential;
@@ -36,16 +39,55 @@ const MIN_ROUND: std::time::Duration = std::time::Duration::from_secs(2);
 /// the backend, so they keep the socket open without keeping a game alive.
 const PING_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Where the backend is and how to log in to it, shared by every crew.
+/// How to log in to the backend, shared by every crew.
 #[derive(Debug, Clone)]
 pub struct CrewConfig {
-  /// `ws://` or `wss://` URL of the backend.
-  pub backend: String,
   pub credential: Credential,
-  /// Reconnects allowed after a dropped connection before the crew gives up.
-  pub reconnect_attempts: u32,
-  /// Wait before the first reconnect; doubled for each after.
-  pub reconnect_backoff: Duration,
+}
+
+/// How long a crew waits for the backend to hold its side again after the
+/// connection carrying its game drops.
+const TUNNEL_WAIT: Duration = Duration::from_secs(120);
+
+/// What arrives over a tunnel from the backend's game connection.
+#[derive(Debug)]
+pub enum Inbound {
+  /// One message, as the backend sent it.
+  Text(String),
+  /// The backend closed the game connection.
+  Closed,
+}
+
+/// A game connection carried on a side's `/crew` connection. Dropping it
+/// is the crew's end of the connection going away.
+#[derive(Debug)]
+pub struct Tunnel {
+  /// From the game. The sender going away means the `/crew` connection
+  /// dropped.
+  pub inbound: mpsc::UnboundedReceiver<Inbound>,
+  /// To the game.
+  pub outbound: mpsc::UnboundedSender<String>,
+}
+
+/// The other ends of a [`Tunnel`], for whoever carries it.
+#[derive(Debug)]
+pub struct TunnelEnds {
+  pub inbound: mpsc::UnboundedSender<Inbound>,
+  pub outbound: mpsc::UnboundedReceiver<String>,
+}
+
+/// A tunnel and the ends that carry it.
+#[must_use]
+pub fn tunnel() -> (Tunnel, TunnelEnds) {
+  let (to_crew, inbound) = mpsc::unbounded_channel();
+  let (outbound, from_crew) = mpsc::unbounded_channel();
+  (
+    Tunnel { inbound, outbound },
+    TunnelEnds {
+      inbound: to_crew,
+      outbound: from_crew,
+    },
+  )
 }
 
 /// How a crew's time with the backend ended.
@@ -59,37 +101,33 @@ pub enum Ending {
   ScenarioGone,
   /// The backend would not log us in.
   Refused(String),
-  /// The connection dropped or failed; worth trying again.
+  /// The connection dropped, and the backend did not hold the side again.
   Dropped(String),
 }
 
 /// Crew one side until it is released, the backend closes on us, or the
-/// connection cannot be kept.
+/// backend stops holding the side. Each tunnel that arrives on `tunnels` is a
+/// connection to the game: the first, and a new one each time the backend
+/// holds the side again.
 pub async fn run(
   config: Arc<CrewConfig>, scenario_id: String, side: String, mut ships: watch::Receiver<Vec<String>>,
-  mut commander: Box<dyn Commander>,
+  mut commander: Box<dyn Commander>, mut tunnels: mpsc::UnboundedReceiver<Tunnel>,
 ) -> Ending {
-  let mut attempts = 0;
   loop {
-    let ending = session(&config, &scenario_id, &mut ships, commander.as_mut()).await;
-    match ending {
-      // A scenario missing at the join is retried too: Cloud Run can briefly
-      // run a second backend, and a connection that lands there finds no game.
-      Ending::Dropped(_) | Ending::ScenarioGone if attempts < config.reconnect_attempts => {
-        let wait = config.reconnect_backoff * 2u32.pow(attempts);
-        attempts += 1;
-        warn!("(crew {scenario_id}/{side}) {ending:?}; reconnecting in {wait:?}.");
-        tokio::time::sleep(wait).await;
-      }
-      ending => {
-        info!("(crew {scenario_id}/{side}) Finished: {ending:?}.");
-        return ending;
-      }
-    }
+    let ending = match next_tunnel(&mut tunnels, &mut ships).await {
+      Ok(tunnel) => match session(tunnel, &config, &scenario_id, &mut ships, commander.as_mut()).await {
+        Ending::Dropped(why) => {
+          warn!("(crew {scenario_id}/{side}) {why}; waiting for the backend to hold the side again.");
+          continue;
+        }
+        ending => ending,
+      },
+      Err(ending) => ending,
+    };
+    info!("(crew {scenario_id}/{side}) Finished: {ending:?}.");
+    return ending;
   }
 }
-
-type Socket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// What the next frame from the backend was.
 enum Frame {
@@ -98,24 +136,55 @@ enum Frame {
   Dropped(String),
 }
 
-async fn next_frame(socket: &mut Socket) -> Frame {
-  loop {
-    match socket.next().await {
-      Some(Ok(Message::Text(text))) => match serde_json::from_str::<ResponseMsg>(&text) {
-        Ok(response) => return Frame::Response(Box::new(response)),
-        Err(e) => warn!("(crew) Could not read a message from the backend: {e}"),
-      },
-      Some(Ok(Message::Close(_))) => return Frame::Closed,
-      Some(Ok(_)) => {}
-      Some(Err(e)) => return Frame::Dropped(e.to_string()),
-      None => return Frame::Dropped("connection ended".to_string()),
+fn read(text: &str) -> Option<Frame> {
+  match serde_json::from_str::<ResponseMsg>(text) {
+    Ok(response) => Some(Frame::Response(Box::new(response))),
+    Err(e) => {
+      warn!("(crew) Could not read a message from the backend: {e}");
+      None
     }
   }
 }
 
-async fn send(socket: &mut Socket, request: &RequestMsg) -> Result<(), String> {
-  let text = serde_json::to_string(request).map_err(|e| e.to_string())?;
-  socket.send(Message::text(text)).await.map_err(|e| e.to_string())
+impl Tunnel {
+  async fn next_frame(&mut self) -> Frame {
+    loop {
+      match self.inbound.recv().await {
+        Some(Inbound::Text(text)) => {
+          if let Some(frame) = read(&text) {
+            return frame;
+          }
+        }
+        Some(Inbound::Closed) => return Frame::Closed,
+        None => return Frame::Dropped("the side's connection dropped".to_string()),
+      }
+    }
+  }
+
+  fn send(&self, request: &RequestMsg) -> Result<(), String> {
+    let text = serde_json::to_string(request).map_err(|e| e.to_string())?;
+    self
+      .outbound
+      .send(text)
+      .map_err(|_| "the side's connection dropped".to_string())
+  }
+}
+
+/// The next tunnel the backend sends, waiting a while for it.
+async fn next_tunnel(
+  tunnels: &mut mpsc::UnboundedReceiver<Tunnel>, ships: &mut watch::Receiver<Vec<String>>,
+) -> Result<Tunnel, Ending> {
+  let deadline = tokio::time::sleep(TUNNEL_WAIT);
+  tokio::pin!(deadline);
+  loop {
+    tokio::select! {
+      tunnel = tunnels.recv() => return tunnel.ok_or(Ending::Released),
+      changed = ships.changed() => if changed.is_err() {
+        return Err(Ending::Released);
+      },
+      () = &mut deadline => return Err(Ending::Dropped("the backend did not hold the side again".to_string())),
+    }
+  }
 }
 
 /// The backend's designs, so its entity updates can be read.
@@ -186,23 +255,21 @@ fn claim(ships: &[String]) -> RequestMsg {
 
 /// One connection's worth of crewing.
 async fn session(
-  config: &CrewConfig, scenario_id: &str, ships: &mut watch::Receiver<Vec<String>>, commander: &mut dyn Commander,
+  mut tunnel: Tunnel, config: &CrewConfig, scenario_id: &str, ships: &mut watch::Receiver<Vec<String>>,
+  commander: &mut dyn Commander,
 ) -> Ending {
   let token = match config.credential.token().await {
     Ok(token) => token,
     Err(e) => return Ending::Dropped(format!("no credential: {e}")),
   };
-  let mut socket = match tokio_tungstenite::connect_async(config.backend.as_str()).await {
-    Ok((socket, _)) => socket,
-    Err(e) => return Ending::Dropped(e.to_string()),
-  };
+  let socket = &mut tunnel;
 
   // Log in.
-  if let Err(e) = send(&mut socket, &RequestMsg::ServiceLogin(ServiceLoginMsg { token })).await {
+  if let Err(e) = socket.send(&RequestMsg::ServiceLogin(ServiceLoginMsg { token })) {
     return Ending::Dropped(e);
   }
   loop {
-    match next_frame(&mut socket).await {
+    match socket.next_frame().await {
       Frame::Response(response) => match *response {
         ResponseMsg::AuthResponse(_) => break,
         ResponseMsg::Error(tag) => return Ending::Refused(tag),
@@ -217,11 +284,11 @@ async fn session(
   let join = RequestMsg::JoinScenario(JoinScenarioMsg {
     scenario_name: scenario_id.to_string(),
   });
-  if let Err(e) = send(&mut socket, &join).await {
+  if let Err(e) = socket.send(&join) {
     return Ending::Dropped(e);
   }
   loop {
-    match next_frame(&mut socket).await {
+    match socket.next_frame().await {
       Frame::Response(response) => match *response {
         ResponseMsg::DesignTemplateResponse(designs) => learn_designs(designs),
         ResponseMsg::JoinedScenario(_) => break,
@@ -237,7 +304,7 @@ async fn session(
   // has the claim before this connection ever says Ready -- a connection
   // holding no ships would count as a referee.
   let mut claimed = ships.borrow_and_update().clone();
-  if let Err(e) = send(&mut socket, &claim(&claimed)).await {
+  if let Err(e) = socket.send(&claim(&claimed)) {
     return Ending::Dropped(e);
   }
   info!("(crew {scenario_id}) Crewing {claimed:?}.");
@@ -247,7 +314,7 @@ async fn session(
   ping.tick().await;
   loop {
     tokio::select! {
-      frame = next_frame(&mut socket) => match frame {
+      frame = socket.next_frame() => match frame {
         Frame::Response(response) => match *response {
           ResponseMsg::DesignTemplateResponse(designs) => learn_designs(designs),
           ResponseMsg::EntityResponse(world) if last_round != Some(world.round) => {
@@ -259,13 +326,13 @@ async fn session(
             // Say so first: a model can take half a minute, and the table
             // should see the AI thinking, not a game that has stopped.
             for ship in claimed.iter().filter(|ship| world.ships.contains_key(*ship)) {
-              if let Err(e) = send(&mut socket, &report(ship, world.round, AiStatus::Deciding, commander.plan(), None)).await {
+              if let Err(e) = socket.send(&report(ship, world.round, AiStatus::Deciding, commander.plan(), None)) {
                 return Ending::Dropped(e);
               }
             }
             let orders = decide(commander, &world, &claimed).await;
             for order in &orders {
-              if let Err(e) = send(&mut socket, order).await {
+              if let Err(e) = socket.send(order) {
                 return Ending::Dropped(e);
               }
             }
@@ -273,7 +340,7 @@ async fn session(
             // else to wait on, an AI side would otherwise run the rounds as
             // fast as it decides, too fast to watch.
             tokio::time::sleep_until(began + MIN_ROUND).await;
-            if let Err(e) = send(&mut socket, &RequestMsg::SetReady(true)).await {
+            if let Err(e) = socket.send(&RequestMsg::SetReady(true)) {
               return Ending::Dropped(e);
             }
           }
@@ -286,17 +353,16 @@ async fn session(
       changed = ships.changed() => {
         if changed.is_err() {
           // Released: the sender is gone.
-          let _ = socket.close(None).await;
           return Ending::Released;
         }
         claimed.clone_from(&ships.borrow_and_update());
-        if let Err(e) = send(&mut socket, &claim(&claimed)).await {
+        if let Err(e) = socket.send(&claim(&claimed)) {
           return Ending::Dropped(e);
         }
         info!("(crew {scenario_id}) Now crewing {claimed:?}.");
       },
       _ = ping.tick() => {
-        if let Err(e) = send(&mut socket, &RequestMsg::Ping).await {
+        if let Err(e) = socket.send(&RequestMsg::Ping) {
           return Ending::Dropped(e);
         }
       },

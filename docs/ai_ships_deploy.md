@@ -83,12 +83,11 @@ with the built-in network, so it needs no Vertex AI.
 ## Running costs
 
 The service scales to zero (`--min-instances=0`, CPU throttled, as Cloud Run
-does by default) and costs nothing while no game has AI ships. A crew is not
-a request: it is a WebSocket the service opened to the backend and a loop
-waiting on it, and Cloud Run gives an instance CPU, and keeps it, only while
-a request is open. So the backend supplies the requests: for each AI side it
-holds a WebSocket open to the service's `/crew`, carrying the side's ship
-list, and closes it to release the side. While any side is held the instance
+does by default) and costs nothing while no game has AI ships. Cloud Run gives
+an instance CPU, and keeps it, only while a request is open, so the backend
+supplies the requests: for each AI side it holds a WebSocket open to the
+service's `/crew`, carrying the side's ship list and the crew's game, and
+closes it to release the side. While any side is held the instance
 runs and bills; when none is, it stops.
 
 A request lasts an hour at most (`--timeout=3600`). When one is cut, or a
@@ -96,6 +95,18 @@ redeploy drops it, the backend opens the side again and the service carries
 on with the crew it was running; a crew whose connection is not back within
 90 seconds is released. If the instance itself was stopped, the side is
 crewed afresh when the backend reconnects.
+
+**The crews play over those same connections.** A crew's game messages
+travel on its side's `/crew` connection as binary frames, which the backend
+relays to a connection it opens to its own port (with TLS, trusting only its
+own certificate). A crew therefore always plays on the backend instance that
+holds its game, and the AI service needs no address for the backend, only
+`CALLISTO_BACKEND_AUDIENCE` for the identity token it logs in with. Before
+2026-11-15 a crew dialled the backend's public URL instead, and whenever
+Cloud Run was running a second backend instance -- after a deploy, or one it
+started for a crawler's request, max instances notwithstanding -- the crew
+could land on the instance without the game and never find it ("no report"
+on every AI ship).
 
 Until 2026-11-05 the service ran with `--min-instances=1
 --no-cpu-throttling`, an always-on instance in each of canary and

@@ -54,7 +54,6 @@ services:
       dockerfile: ai-ships/Dockerfile
     environment:
       RUST_LOG: info,ai_ships=debug
-      CALLISTO_BACKEND: ws://be:30000
       CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
       # Who decides: `admiral:gemini` by default -- Gemini reads the orders
       # given to fleets, squadrons and ships and writes the squadrons'
