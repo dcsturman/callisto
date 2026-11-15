@@ -261,9 +261,11 @@ async fn open_socket_once(port: u16) -> Result<MyWebSocket, Box<Error>> {
     let socket_url = format!("wss://{SERVER_ADDRESS}:{port}/");
     debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
 
+    // An error goes back to `open_socket`, which retries while the server
+    // is still starting.
     let (ws_stream, _) = connect_async_tls_with_config(socket_url, None, false, Some(connector))
       .await
-      .unwrap_or_else(|e| panic!("Client_async_tls failed with {e:?}"));
+      .map_err(Box::new)?;
 
     debug!("(webservers.open_socket) WebSocket stream established.");
     Ok(ws_stream)
@@ -2974,15 +2976,11 @@ async fn integration_reload_action() {
   assert!(entities.actions.is_empty(), "a Reload is one round's work");
 }
 
-/// A stand-in AI service that plays its crew over the tunnel the backend
-/// offers: it logs in and joins the game with binary frames on the `/crew`
-/// connection, as the real crew does, and reports how far it got.
-// The handshake callback's error type is tungstenite's own.
-#[allow(clippy::result_large_err)]
-#[cfg(feature = "no_tls_upgrade")]
+/// A stand-in AI service that plays its crew over the backend's `/crew`
+/// connection: it logs in and joins the game with binary frames, as the real
+/// crew does, and reports how far it got.
 async fn tunnelling_ai_service() -> (String, tokio::sync::mpsc::UnboundedReceiver<String>) {
   use callisto::payloads::ServiceLoginMsg;
-  use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
   use tokio_tungstenite::tungstenite::Message;
   let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
   let ai_url = format!("http://{}", listener.local_addr().unwrap());
@@ -2991,16 +2989,9 @@ async fn tunnelling_ai_service() -> (String, tokio::sync::mpsc::UnboundedReceive
     let Ok((stream, _)) = listener.accept().await else {
       return;
     };
-    let mut offered = false;
-    let Ok(mut socket) = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response: Response| {
-      offered = request.headers().contains_key(callisto::ai_service::TUNNEL_HEADER);
-      Ok(response)
-    })
-    .await
-    else {
+    let Ok(mut socket) = tokio_tungstenite::accept_async(stream).await else {
       return;
     };
-    let _ = report.send(format!("offered {offered}"));
     let mut scenario = String::new();
     let send = |request: &RequestMsg| Message::Binary(serde_json::to_vec(request).unwrap().into());
     while let Some(Ok(message)) = socket.next().await {
@@ -3038,9 +3029,8 @@ async fn tunnelling_ai_service() -> (String, tokio::sync::mpsc::UnboundedReceive
 }
 
 /// The AI's crew plays over the connection the backend holds to the AI
-/// service, which the backend relays to itself: it reaches the game without
-/// dialling the backend, so it cannot land on another instance.
-#[cfg(feature = "no_tls_upgrade")]
+/// service, which the backend relays to itself -- with TLS or without -- so
+/// it cannot land on another instance.
 #[test_log::test(tokio::test)]
 async fn integration_a_crew_plays_over_the_tunnel() {
   callisto::ship::config_test_ship_templates().await;
@@ -3058,7 +3048,6 @@ async fn integration_a_crew_plays_over_the_tunnel() {
     }),
   )
   .await;
-  assert_eq!(next_call(&mut reports).await.as_deref(), Some("offered true"));
   assert_eq!(next_call(&mut reports).await.as_deref(), Some("logged in"));
   assert_eq!(
     next_call(&mut reports).await.as_deref(),

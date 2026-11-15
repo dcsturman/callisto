@@ -305,6 +305,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   #[cfg(not(feature = "no_tls_upgrade"))]
   event!(target: LOG_FILE_USE, Level::INFO, file_name = &args.tls_keys_public, use = "Load certs and key.");
 
+  // Our own certificate, for the AI crews' connection to this backend.
+  #[cfg(not(feature = "no_tls_upgrade"))]
+  let own_certificate = certs
+    .first()
+    .cloned()
+    .expect("(main) The TLS certificate file holds no certificate");
   #[cfg(not(feature = "no_tls_upgrade"))]
   let config = rustls::ServerConfig::builder()
     .with_no_client_auth()
@@ -490,24 +496,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   } else {
     Some(GoogleAuthenticator::fetch_google_public_keys().await)
   };
+  // Crews play over the connection the backend holds to the AI service,
+  // relayed here to this process, so they reach the instance that holds
+  // their game.
+  #[cfg(feature = "no_tls_upgrade")]
+  let local_backend = callisto::ai_service::LocalBackend::plain(addr);
+  #[cfg(not(feature = "no_tls_upgrade"))]
+  let local_backend = callisto::ai_service::LocalBackend::tls(addr, own_certificate);
   let ai_service = args
     .ai_service
     .as_deref()
     .filter(|url| !url.is_empty())
-    .map(|url| AiServiceClient::new(url, args.service_token.clone()));
-  // Crews play over the connection the backend holds to the AI service,
-  // relayed here to this process, so they reach the instance that holds
-  // their game. Only without TLS: a crew relayed through TLS would have to
-  // trust our own certificate.
-  #[cfg(feature = "no_tls_upgrade")]
-  let ai_service = ai_service.map(|client| {
-    let host = if addr.ip().is_unspecified() {
-      std::net::IpAddr::from([127, 0, 0, 1])
-    } else {
-      addr.ip()
-    };
-    client.with_local_backend(&format!("ws://{}/", std::net::SocketAddr::new(host, addr.port())))
-  });
+    .map(|url| AiServiceClient::new(url, args.service_token.clone(), local_backend));
   info!("(main) AI service: {ai_service:?}");
   let service_auth = ServiceAuth::new(args.service_token.clone(), args.service_audience.clone(), google_keys.clone());
   info!("(main) Service login: {service_auth:?}");

@@ -7,9 +7,9 @@
 //! each side, so a side whose connection dropped can be let go once nothing
 //! has held it again for a while.
 //!
-//! A side held by a backend that offers tunnels plays over them: each
-//! connection that holds it brings a [`Tunnel`], which goes to the crew, and
-//! a crew whose tunnel drops waits for the next.
+//! Each connection that holds a side brings a [`Tunnel`], the crew's
+//! connection to the game, which goes to the crew; a crew whose tunnel drops
+//! waits for the next.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -19,7 +19,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::commander::Commander;
-use crate::crew::{self, CrewConfig, Ending, Link, Tunnel};
+use crate::crew::{self, CrewConfig, Ending, Tunnel};
 
 /// A scenario and a side within it.
 pub type SideKey = (String, String);
@@ -31,8 +31,8 @@ pub type CommanderFactory = Arc<dyn Fn(&str, &str) -> Box<dyn Commander> + Send 
 struct Running {
   ships: watch::Sender<Vec<String>>,
   task: JoinHandle<Ending>,
-  /// Where its tunnels go; `None` for a crew that dials back.
-  tunnels: Option<mpsc::UnboundedSender<Tunnel>>,
+  /// Where its tunnels go.
+  tunnels: mpsc::UnboundedSender<Tunnel>,
   /// Becomes true when the crew finishes.
   done: watch::Receiver<bool>,
 }
@@ -66,8 +66,8 @@ impl Crews {
   }
 
   /// Crew this side with these ships: start it, update it, or restart it.
-  /// A `tunnel` is a new connection to the game for the crew, and a new crew
-  /// given one plays over tunnels from then on; without one it dials back.
+  /// A `tunnel` is a new connection to the game for the crew: a connection
+  /// that holds the side brings one with its first request.
   /// What comes back becomes true when the crew finishes.
   ///
   /// # Panics
@@ -79,28 +79,24 @@ impl Crews {
     let mut running = self.running.lock().unwrap();
     if let Some(crew) = running.get(&key).filter(|crew| !crew.task.is_finished()) {
       crew.ships.send_replace(ships);
-      if let (Some(tunnels), Some(tunnel)) = (&crew.tunnels, tunnel) {
-        let _ = tunnels.send(tunnel);
+      if let Some(tunnel) = tunnel {
+        let _ = crew.tunnels.send(tunnel);
       }
       return crew.done.clone();
     }
     let (sender, receiver) = watch::channel(ships);
     let (finished, done) = watch::channel(false);
-    let (tunnels, link) = match tunnel {
-      Some(tunnel) => {
-        let (tunnels, arriving) = mpsc::unbounded_channel();
-        let _ = tunnels.send(tunnel);
-        (Some(tunnels), Link::Tunnels(arriving))
-      }
-      None => (None, Link::DialBack),
-    };
+    let (tunnels, arriving) = mpsc::unbounded_channel();
+    if let Some(tunnel) = tunnel {
+      let _ = tunnels.send(tunnel);
+    }
     let crew = crew::run(
       self.config.clone(),
       scenario_id.to_string(),
       side.to_string(),
       receiver,
       (self.commander)(scenario_id, side),
-      link,
+      arriving,
     );
     let task = tokio::spawn(async move {
       let ending = crew.await;

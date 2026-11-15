@@ -18,7 +18,6 @@ env:
   REGION: us-central1
   APP: callisto-ai
   # The backend it crews ships on, and the audience its login token names.
-  BACKEND_WS: wss://callisto-be-niqkqove5a-uc.a.run.app
   BACKEND_URL: https://callisto-be-niqkqove5a-uc.a.run.app
   # This service's own URL: the audience the backend's calls must name.
   AI_URL: https://callisto-ai-niqkqove5a-uc.a.run.app
@@ -81,7 +80,7 @@ jobs:
             --service-account=${{ env.SERVICE_ACCOUNT }}
             --no-allow-unauthenticated
             --min-instances=0 --max-instances=1 --cpu-throttling --timeout=3600
-            --update-env-vars=CALLISTO_BACKEND=${{ env.BACKEND_WS }},CALLISTO_BACKEND_AUDIENCE=${{ env.BACKEND_URL }},CALLISTO_AI_AUDIENCE=${{ env.AI_URL }},CALLISTO_AI_ALLOWED_CALLERS=${{ env.ALLOWED_CALLERS }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},CALLISTO_AI_MODEL=${{ env.MODEL }},RUST_LOG=info
+            --update-env-vars=CALLISTO_BACKEND_AUDIENCE=${{ env.BACKEND_URL }},CALLISTO_AI_AUDIENCE=${{ env.AI_URL }},CALLISTO_AI_ALLOWED_CALLERS=${{ env.ALLOWED_CALLERS }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},CALLISTO_AI_MODEL=${{ env.MODEL }},RUST_LOG=info
       - name: 'Retire the previous revision'
         run: |
           latest=$(gcloud run services describe ${{ env.APP }} --region=${{ env.REGION }} --format='value(status.latestReadyRevisionName)')

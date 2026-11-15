@@ -17,10 +17,13 @@
 //! repeated one is harmless, and a connection opened again after a drop
 //! restates the side in full.
 //!
-//! The crews play over the same connections when the backend can reach
-//! itself (see [`TUNNEL_HEADER`]): each one is relayed to a connection the
-//! backend opens to its own port, so a crew always plays on the instance that
-//! holds its game.
+//! The crews play over the same connections: a crew's game messages travel
+//! on its side's connection as binary frames, one message each, and the
+//! backend relays them to a connection it opens to its own port (see
+//! [`LocalBackend`]). So a crew always plays on the instance that holds its
+//! game; Cloud Run may run more than one backend, and a crew that dialled
+//! the public URL could land on any of them. An empty binary frame to the
+//! service says the game closed the crew's connection.
 //!
 //! The connections run on their own tasks and never hold up the game. If the
 //! service is down the failure is logged, the connection is retried, and the
@@ -127,15 +130,93 @@ pub fn plan_calls(scenario_id: &str, before: &Sides, after: &Sides) -> Vec<AiCal
 /// the side open again until something about it changes.
 pub const CREW_ENDED: &str = "crew ended";
 
-/// The header a backend sends when it opens `/crew` to say it will carry the
-/// side's game over that connection: a **tunnel**. The crew's game messages
-/// then travel on it as binary frames, each one message, and the backend
-/// relays them to a connection of its own to itself, so they reach the
-/// instance that holds the game. Cloud Run may run more than one backend, and
-/// a crew dialling the backend's public URL can land on any of them. An empty
-/// binary frame from the backend says the game closed that connection.
-/// Without the header the service dials the backend itself, as it used to.
-pub const TUNNEL_HEADER: &str = "x-callisto-tunnel";
+/// How the relay reaches this backend for a crew: plain `ws://`, or `wss://`
+/// trusting nothing but this backend's own certificate.
+#[derive(Clone)]
+pub struct LocalBackend {
+  url: String,
+  connector: Option<tokio_tungstenite::Connector>,
+}
+
+impl LocalBackend {
+  /// This backend, listening on `addr` without TLS.
+  #[must_use]
+  pub fn plain(addr: std::net::SocketAddr) -> Self {
+    LocalBackend {
+      url: format!("ws://{}/", loopback(addr)),
+      connector: None,
+    }
+  }
+
+  /// This backend, listening on `addr` with TLS and presenting `own`.
+  ///
+  /// # Panics
+  /// Panics if the TLS library offers no protocol version, which only a
+  /// broken build can cause.
+  #[must_use]
+  pub fn tls(addr: std::net::SocketAddr, own: rustls::pki_types::CertificateDer<'static>) -> Self {
+    let provider = rustls::crypto::CryptoProvider::get_default()
+      .cloned()
+      .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
+    let config = rustls::ClientConfig::builder_with_provider(provider.clone())
+      .with_safe_default_protocol_versions()
+      .expect("(LocalBackend::tls) No TLS protocol versions")
+      .dangerous()
+      .with_custom_certificate_verifier(Arc::new(OwnCertificate { own, provider }))
+      .with_no_client_auth();
+    LocalBackend {
+      url: format!("wss://{}/", loopback(addr)),
+      connector: Some(tokio_tungstenite::Connector::Rustls(Arc::new(config))),
+    }
+  }
+}
+
+/// Where to reach a server listening on `addr` from the same machine.
+fn loopback(addr: std::net::SocketAddr) -> std::net::SocketAddr {
+  if addr.ip().is_unspecified() {
+    std::net::SocketAddr::new(std::net::IpAddr::from([127, 0, 0, 1]), addr.port())
+  } else {
+    addr
+  }
+}
+
+/// Trusts one certificate, this backend's own, for its connection to itself:
+/// the backend's certificate is for its public name, not for 127.0.0.1.
+#[derive(Debug)]
+struct OwnCertificate {
+  own: rustls::pki_types::CertificateDer<'static>,
+  provider: Arc<rustls::crypto::CryptoProvider>,
+}
+
+impl rustls::client::danger::ServerCertVerifier for OwnCertificate {
+  fn verify_server_cert(
+    &self, end_entity: &rustls::pki_types::CertificateDer<'_>,
+    _intermediates: &[rustls::pki_types::CertificateDer<'_>], _server_name: &rustls::pki_types::ServerName<'_>,
+    _ocsp_response: &[u8], _now: rustls::pki_types::UnixTime,
+  ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+    if end_entity.as_ref() == self.own.as_ref() {
+      Ok(rustls::client::danger::ServerCertVerified::assertion())
+    } else {
+      Err(rustls::Error::General("not this backend's own certificate".to_string()))
+    }
+  }
+
+  fn verify_tls12_signature(
+    &self, message: &[u8], cert: &rustls::pki_types::CertificateDer<'_>, dss: &rustls::DigitallySignedStruct,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+    rustls::crypto::verify_tls12_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+  }
+
+  fn verify_tls13_signature(
+    &self, message: &[u8], cert: &rustls::pki_types::CertificateDer<'_>, dss: &rustls::DigitallySignedStruct,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+    rustls::crypto::verify_tls13_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+  }
+
+  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+    self.provider.signature_verification_algorithms.supported_schemes()
+  }
+}
 
 /// Keepalive on a held side, and how a dead connection is noticed.
 const HOLD_PING: Duration = Duration::from_secs(30);
@@ -171,9 +252,8 @@ pub struct AiServiceClient {
   shared_secret: Option<String>,
   http: reqwest::Client,
   held: Arc<Mutex<BTreeMap<(String, String), Held>>>,
-  /// This backend's own `ws://` address, for relaying tunnelled crews.
-  /// Without it no tunnel is offered and the crews dial the public URL.
-  local: Option<String>,
+  /// This backend, for relaying crews to.
+  local: LocalBackend,
 }
 
 type ClientSocket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
@@ -194,7 +274,7 @@ impl std::fmt::Debug for AiServiceClient {
     f.debug_struct("AiServiceClient")
       .field("url", &self.url)
       .field("shared_secret", &self.shared_secret.as_ref().map(|_| "<set>"))
-      .field("local", &self.local)
+      .field("local", &self.local.url)
       .finish_non_exhaustive()
   }
 }
@@ -204,7 +284,7 @@ impl AiServiceClient {
   /// Panics if the HTTP client cannot be built, which only a broken TLS setup
   /// at startup can cause.
   #[must_use]
-  pub fn new(url: &str, shared_secret: Option<String>) -> Self {
+  pub fn new(url: &str, shared_secret: Option<String>, local: LocalBackend) -> Self {
     AiServiceClient {
       url: url.trim_end_matches('/').to_string(),
       shared_secret: shared_secret.filter(|secret| !secret.is_empty()),
@@ -213,16 +293,8 @@ impl AiServiceClient {
         .build()
         .expect("(AiServiceClient::new) Unable to build an HTTP client"),
       held: Arc::new(Mutex::new(BTreeMap::new())),
-      local: None,
+      local,
     }
-  }
-
-  /// Offer the service a tunnel on every side, relayed to this backend at
-  /// `url` (`ws://127.0.0.1:<port>`).
-  #[must_use]
-  pub fn with_local_backend(mut self, url: &str) -> Self {
-    self.local = Some(url.to_string());
-    self
   }
 
   /// Act on a call without waiting for it: hold the side open, tell a held
@@ -293,8 +365,8 @@ impl AiServiceClient {
     info!("(AiServiceClient) Holding {call:?}.");
     let mut ping = tokio::time::interval(HOLD_PING);
     ping.tick().await;
-    // The tunnelled crew's connection to this backend, opened when the crew
-    // first speaks.
+    // The crew's connection to this backend, opened when the crew first
+    // speaks.
     let mut local: Option<ClientSocket> = None;
     loop {
       tokio::select! {
@@ -382,17 +454,15 @@ impl AiServiceClient {
     request
       .headers_mut()
       .insert("authorization", format!("Bearer {bearer}").parse()?);
-    if self.local.is_some() {
-      request.headers_mut().insert(TUNNEL_HEADER, "1".parse()?);
-    }
     let (socket, _) = tokio::time::timeout(CALL_TIMEOUT, tokio_tungstenite::connect_async(request)).await??;
     Ok(socket)
   }
 
-  /// A connection to this backend itself, for a tunnelled crew's game.
+  /// A connection to this backend itself, for a crew's game.
   async fn open_local(&self) -> Option<ClientSocket> {
-    let url = self.local.as_deref()?;
-    match tokio::time::timeout(CALL_TIMEOUT, tokio_tungstenite::connect_async(url)).await {
+    let url = self.local.url.as_str();
+    let connect = tokio_tungstenite::connect_async_tls_with_config(url, None, false, self.local.connector.clone());
+    match tokio::time::timeout(CALL_TIMEOUT, connect).await {
       Ok(Ok((socket, _))) => Some(socket),
       Ok(Err(e)) => {
         warn!("(AiServiceClient) Could not reach this backend at {url} for a crew: {e}");
@@ -578,7 +648,7 @@ mod tests {
   #[tokio::test]
   async fn the_client_holds_a_side_open_until_it_is_released() {
     let (url, mut rx) = fake_service().await;
-    let client = AiServiceClient::new(&url, Some("local-secret".to_string()));
+    let client = AiServiceClient::new(&url, Some("local-secret".to_string()), nowhere());
     client.send(crew(&["Invigilator"]));
     assert_eq!(next(&mut rx).await.as_deref(), Some("/crew Bearer local-secret"));
     assert_eq!(
@@ -606,7 +676,7 @@ mod tests {
   async fn a_dropped_side_is_held_again() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
-    let client = AiServiceClient::new(&url, Some("local-secret".to_string()));
+    let client = AiServiceClient::new(&url, Some("local-secret".to_string()), nowhere());
     client.send(crew(&["Invigilator"]));
     for _ in 0..2 {
       let (stream, _) = listener.accept().await.unwrap();
@@ -620,30 +690,28 @@ mod tests {
     }
   }
 
-  /// With a local backend the client offers a tunnel, and relays it: the
-  /// crew's binary frames reach this backend as messages on a connection of
-  /// its own, its replies go back as binary frames, and its closing that
-  /// connection reaches the crew as an empty frame.
-  // The handshake callback's error type is tungstenite's own.
-  #[allow(clippy::result_large_err)]
+  /// A local backend for tests that never reach it.
+  fn nowhere() -> LocalBackend {
+    LocalBackend::plain("127.0.0.1:1".parse().unwrap())
+  }
+
+  /// The client relays a crew's game: the crew's binary frames reach this
+  /// backend as messages on a connection of its own, its replies go back as
+  /// binary frames, and its closing that connection reaches the crew as an
+  /// empty frame.
   #[tokio::test]
-  async fn a_tunnel_is_offered_and_relayed_to_this_backend() {
-    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+  async fn a_crews_game_is_relayed_to_this_backend() {
     let service = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let backend = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let client = AiServiceClient::new(&format!("http://{}", service.local_addr().unwrap()), Some("s".to_string()))
-      .with_local_backend(&format!("ws://{}/", backend.local_addr().unwrap()));
+    let client = AiServiceClient::new(
+      &format!("http://{}", service.local_addr().unwrap()),
+      Some("s".to_string()),
+      LocalBackend::plain(backend.local_addr().unwrap()),
+    );
     client.send(crew(&["Invigilator"]));
 
     let (stream, _) = service.accept().await.unwrap();
-    let mut offered = false;
-    let mut ai = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response: Response| {
-      offered = request.headers().contains_key(TUNNEL_HEADER);
-      Ok(response)
-    })
-    .await
-    .unwrap();
-    assert!(offered, "a backend that can reach itself offers a tunnel");
+    let mut ai = tokio_tungstenite::accept_async(stream).await.unwrap();
     let Some(Ok(Message::Text(side))) = ai.next().await else {
       panic!("the side was not stated");
     };
@@ -684,6 +752,56 @@ mod tests {
     }
   }
 
+  /// With TLS the relay reaches this backend over `wss://`, trusting its own
+  /// certificate and no other.
+  #[tokio::test]
+  async fn the_relay_trusts_this_backends_own_certificate() {
+    use rustls::pki_types::pem::PemObject;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter("localhost.crt")
+      .unwrap()
+      .collect::<Result<_, _>>()
+      .unwrap();
+    let key = PrivateKeyDer::from_pem_file("localhost.key").unwrap();
+    let own = certs[0].clone();
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let config = rustls::ServerConfig::builder_with_provider(provider)
+      .with_safe_default_protocol_versions()
+      .unwrap()
+      .with_no_client_auth()
+      .with_single_cert(certs, key)
+      .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+    let backend = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = backend.local_addr().unwrap();
+    tokio::spawn(async move {
+      while let Ok((stream, _)) = backend.accept().await {
+        let acceptor = acceptor.clone();
+        tokio::spawn(async move {
+          if let Ok(stream) = acceptor.accept(stream).await {
+            if let Ok(mut socket) = tokio_tungstenite::accept_async(stream).await {
+              while socket.next().await.is_some() {}
+            }
+          }
+        });
+      }
+    });
+
+    let ours = AiServiceClient::new("http://127.0.0.1:1", None, LocalBackend::tls(addr, own));
+    assert!(ours.open_local().await.is_some(), "the backend's own certificate is trusted");
+
+    let mut other = CertificateDer::pem_file_iter("localhost.crt")
+      .unwrap()
+      .next()
+      .unwrap()
+      .unwrap()
+      .to_vec();
+    let last = other.len() - 1;
+    other[last] ^= 1;
+    let theirs = AiServiceClient::new("http://127.0.0.1:1", None, LocalBackend::tls(addr, other.into()));
+    assert!(theirs.open_local().await.is_none(), "any other certificate is refused");
+  }
+
   /// A side whose crew has ended is not held again.
   #[tokio::test]
   async fn a_side_whose_crew_ended_is_left_alone() {
@@ -691,7 +809,7 @@ mod tests {
     use tokio_tungstenite::tungstenite::protocol::CloseFrame;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
-    let client = AiServiceClient::new(&url, Some("local-secret".to_string()));
+    let client = AiServiceClient::new(&url, Some("local-secret".to_string()), nowhere());
     client.send(crew(&["Invigilator"]));
     let (stream, _) = listener.accept().await.unwrap();
     let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
