@@ -299,7 +299,7 @@ impl ServerMembersTable {
     let ready = existing.is_some_and(|entry| entry.ready);
     let holding = existing.is_some_and(|entry| entry.holding);
     // Nor is it giving up the other ships you answer for; `set_ships` does that.
-    let ships = existing.map(|entry| entry.ships.clone()).unwrap_or_default();
+    let ships = existing.map_or_default(|entry| entry.ships.clone());
     server_table.table.insert(
       session_key.to_string(),
       MemberEntry {

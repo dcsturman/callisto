@@ -569,13 +569,9 @@ pub fn describe(step: &Step) -> String {
     )),
     Mode::Arrive => parts.push(format!(
       "arrive at {}{}{}",
-      step.movement.band.map(|band| format!("{band:?} of ")).unwrap_or_default(),
+      step.movement.band.map_or_default(|band| format!("{band:?} of ")),
       step.movement.at.as_ref().map_or_else(|| "a point".to_string(), place),
-      step
-        .movement
-        .round
-        .map(|round| format!(" by round {round}"))
-        .unwrap_or_default()
+      step.movement.round.map_or_default(|round| format!(" by round {round}"))
     )),
   }
   if let Some(until) = &step.until {
@@ -849,7 +845,7 @@ impl Commander for FleetCommander {
     for (name, members) in &groups {
       let ships = ships_of(view, members);
       let hull: u64 = ships.iter().map(|ship| u64::from(ship.current_hull)).sum();
-      let steps = self.script(name).map(|script| script.steps.clone()).unwrap_or_default();
+      let steps = self.script(name).map_or_default(|script| script.steps.clone());
       let progress = self.progress.entry(name.clone()).or_insert_with(|| Progress {
         step: 0,
         hull_at_step: hull,

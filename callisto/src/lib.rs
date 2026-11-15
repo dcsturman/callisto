@@ -164,9 +164,7 @@ pub fn extract_scenario_owner(scenario_contents: &[u8]) -> String {
     #[serde(default)]
     owner: String,
   }
-  serde_json::from_slice::<OwnerOnly>(scenario_contents)
-    .map(|o| o.metadata.owner)
-    .unwrap_or_default()
+  serde_json::from_slice::<OwnerOnly>(scenario_contents).map_or_default(|o| o.metadata.owner)
 }
 
 /// Process-wide GCS client, built once and shared by every caller.

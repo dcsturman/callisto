@@ -223,10 +223,7 @@ fn describe_design(design: &Arc<ShipDesignTemplate>) -> String {
     .into_iter()
     .map(|(label, count)| if count > 1 { format!("{count} x {label}") } else { label })
     .collect();
-  let stealth = design
-    .stealth
-    .map(|stealth| format!(", {stealth:?} stealth"))
-    .unwrap_or_default();
+  let stealth = design.stealth.map_or_default(|stealth| format!(", {stealth:?} stealth"));
   format!(
     "{}: {} t, {} G, hull {}, armour {}{stealth}; {}{}",
     design.name,
@@ -340,15 +337,14 @@ fn write_squadrons(
           .magnitude()
           .total_cmp(&(group_middle(b) - at).magnitude())
       })
-      .map(|group| {
+      .map_or_default(|group| {
         format!(
           "; nearest enemy {} at {}, {}",
           group.name,
           how_far((group_middle(group) - at).magnitude()),
           motion(closing(at, velocity, group_middle(group), group_velocity(group)))
         )
-      })
-      .unwrap_or_default();
+      });
     let script = match steps(&name) {
       Some((step, of)) => format!("; on step {} of {of}", step + 1),
       None => "; no script: the crews fight freely".to_string(),
@@ -514,7 +510,7 @@ pub fn situation(
 /// The same schema, with what it is for where it is used put first.
 fn described(schema: &Value, what: &str) -> Value {
   let mut schema = schema.clone();
-  let also = schema["description"].as_str().map(|d| format!(" {d}")).unwrap_or_default();
+  let also = schema["description"].as_str().map_or_default(|d| format!(" {d}"));
   schema["description"] = json!(format!("{what}{also}"));
   schema
 }

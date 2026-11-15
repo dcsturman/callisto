@@ -8259,13 +8259,9 @@ mod tests {
       |json: String| Entities::parse_bytes_with_ship_templates(json.as_bytes(), "t", get_ship_templates_snapshot());
     let missing = load(scenario("Nobody", "Strike Carrier - Wind"))
       .err()
-      .map(|e| e.to_string())
-      .unwrap_or_default();
+      .map_or_default(|e| e.to_string());
     assert!(missing.contains("Flea is aboard Nobody"), "{missing}");
-    let no_berth = load(scenario("Host", "Buccaneer"))
-      .err()
-      .map(|e| e.to_string())
-      .unwrap_or_default();
+    let no_berth = load(scenario("Host", "Buccaneer")).err().map_or_default(|e| e.to_string());
     assert!(no_berth.contains("no docking space or hangar"), "{no_berth}");
     let fine = load(scenario("Host", "Strike Carrier - Wind")).unwrap();
     assert_eq!(fine.ships.len(), 1);
