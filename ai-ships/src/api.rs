@@ -6,19 +6,20 @@
 //!   releases the side. When the crew ends by itself we close it, with
 //!   [`CREW_ENDED`] as the reason, and the backend leaves the side alone until
 //!   something about it changes.
-//!   A backend that sends [`TUNNEL_HEADER`] also carries the crew's game on
-//!   this connection, as binary frames: see [`TUNNEL_HEADER`].
+//!   The connection also carries the crew's game, as binary frames, one
+//!   message each; the backend relays them to itself. An empty binary frame
+//!   from the backend says the game closed the crew's connection.
 //! * `GET /status` -- what is being crewed.
 //! * `GET /healthz` -- for Cloud Run.
 //!
 //! **Why a held connection.** Cloud Run keeps an instance, and gives it CPU,
-//! only while a request is open, and a crew is not a request: it is a
-//! connection this service opens to the backend, and a loop waiting on it.
-//! The backend's held connections are the requests that keep the service
-//! running while there are sides to crew; with none open it scales to zero.
-//! A connection that drops without being closed -- a redeploy, Cloud Run's
-//! hour-long limit on a request -- leaves its crew playing for
-//! [`DROPPED_GRACE`], long enough for the backend to hold the side again.
+//! only while a request is open. The backend's held connections are the
+//! requests that keep the service running while there are sides to crew;
+//! with none open it scales to zero. They also carry the crews' games, so a
+//! crew plays on the backend instance that holds its game. A connection that
+//! drops without being closed -- a redeploy, Cloud Run's hour-long limit on a
+//! request -- leaves its crew waiting for [`DROPPED_GRACE`], long enough for
+//! the backend to hold the side again.
 //!
 //! `/crew` and `/status` need a bearer token: the shared secret locally, or
 //! on Cloud Run a Google identity token naming this service as audience from
@@ -34,7 +35,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-pub use callisto::ai_service::{CREW_ENDED, TUNNEL_HEADER};
+pub use callisto::ai_service::CREW_ENDED;
 use callisto::authentication::UserDirectory;
 use callisto::service_auth::ServiceAuth;
 use serde::Deserialize;
@@ -82,9 +83,8 @@ pub struct CrewRequest {
 pub const DROPPED_GRACE: Duration = Duration::from_secs(90);
 
 async fn crew(State(app): State<Arc<App>>, headers: HeaderMap, upgrade: WebSocketUpgrade) -> Response {
-  let tunnelled = headers.contains_key(TUNNEL_HEADER);
   match app.callers.admit(&headers) {
-    Ok(caller) => upgrade.on_upgrade(move |socket| hold(app, caller, socket, tunnelled)),
+    Ok(caller) => upgrade.on_upgrade(move |socket| hold(app, caller, socket)),
     Err(status) => status.into_response(),
   }
 }
@@ -117,19 +117,15 @@ async fn from_crew(ends: &mut Option<TunnelEnds>) -> Option<String> {
   }
 }
 
-/// Crew the side this connection states, for as long as it is held. A
-/// tunnelled connection carries the crew's game too: its binary frames to
-/// and from the crew.
-async fn hold(app: Arc<App>, caller: String, mut socket: WebSocket, tunnelled: bool) {
+/// Crew the side this connection states, for as long as it is held. The
+/// connection carries the crew's game too: its binary frames to and from the
+/// crew.
+async fn hold(app: Arc<App>, caller: String, mut socket: WebSocket) {
   let mut side: Option<(String, String)> = None;
   let mut done = None;
   // The crew's end goes with the first request; ours stays here.
-  let (mut tunnel, mut ends) = if tunnelled {
-    let (tunnel, ends) = crew::tunnel();
-    (Some(tunnel), Some(ends))
-  } else {
-    (None, None)
-  };
+  let (tunnel, ends) = crew::tunnel();
+  let (mut tunnel, mut ends) = (Some(tunnel), Some(ends));
   let ending = loop {
     tokio::select! {
       outbound = from_crew(&mut ends) => match outbound {

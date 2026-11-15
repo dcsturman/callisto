@@ -17,13 +17,10 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tower::ServiceExt;
 
-/// The app, with crews pointed at `backend`.
-fn app(backend: &str) -> Arc<App> {
+/// The app.
+fn app() -> Arc<App> {
   let config = CrewConfig {
-    backend: backend.to_string(),
     credential: Credential::SharedSecret("local-secret".to_string()),
-    reconnect_attempts: 0,
-    reconnect_backoff: Duration::from_millis(1),
   };
   Arc::new(App {
     crews: Crews::new(config, Arc::new(|_: &str, _: &str| Box::new(Idle) as Box<dyn Commander>)),
@@ -32,22 +29,6 @@ fn app(backend: &str) -> Arc<App> {
       allowed: UserDirectory::default(),
     },
   })
-}
-
-/// A backend that takes a crew's connection and keeps it, saying nothing, so
-/// the crew runs until it is released.
-async fn quiet_backend() -> String {
-  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let url = format!("ws://{}", listener.local_addr().unwrap());
-  tokio::spawn(async move {
-    while let Ok((stream, _)) = listener.accept().await {
-      tokio::spawn(async move {
-        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-        while socket.next().await.is_some() {}
-      });
-    }
-  });
-  url
 }
 
 /// Serve the app; its `ws://` URL.
@@ -88,7 +69,7 @@ async fn crewing(app: &App, want: usize) -> Vec<CrewStatus> {
 
 #[tokio::test]
 async fn only_a_caller_with_the_credential_is_heard() {
-  let app = app("ws://127.0.0.1:9");
+  let app = app();
   let url = serve(app.clone()).await;
   for token in [None, Some("guess")] {
     match hold(&url, token).await.map_err(|e| *e) {
@@ -111,7 +92,7 @@ async fn only_a_caller_with_the_credential_is_heard() {
 /// the connection releases it.
 #[tokio::test]
 async fn a_side_is_crewed_while_it_is_held() {
-  let app = app(&quiet_backend().await);
+  let app = app();
   let url = serve(app.clone()).await;
   let mut socket = hold(&url, Some("local-secret")).await.unwrap();
   socket.send(Message::text(CREW)).await.unwrap();
@@ -141,7 +122,7 @@ async fn a_side_is_crewed_while_it_is_held() {
 /// it again.
 #[tokio::test]
 async fn a_dropped_side_is_crewed_on() {
-  let app = app(&quiet_backend().await);
+  let app = app();
   let url = serve(app.clone()).await;
   let mut socket = hold(&url, Some("local-secret")).await.unwrap();
   socket.send(Message::text(CREW)).await.unwrap();
@@ -155,11 +136,12 @@ async fn a_dropped_side_is_crewed_on() {
 /// A crew that ends by itself closes its side's connection, saying so.
 #[tokio::test]
 async fn a_crew_that_ends_says_so() {
-  // Nothing listens on port 9, so the crew fails at once.
-  let app = app("ws://127.0.0.1:9");
+  let app = app();
   let url = serve(app.clone()).await;
   let mut socket = hold(&url, Some("local-secret")).await.unwrap();
   socket.send(Message::text(CREW)).await.unwrap();
+  // The game closes the crew's connection: an empty binary frame.
+  socket.send(Message::Binary(Vec::new().into())).await.unwrap();
   let closed = tokio::time::timeout(Duration::from_secs(5), async {
     loop {
       match socket.next().await {
@@ -174,19 +156,17 @@ async fn a_crew_that_ends_says_so() {
   assert_eq!(closed.map(|frame| frame.reason.to_string()).as_deref(), Some(CREW_ENDED));
 }
 
-/// A connection that offers a tunnel carries its crew's game: the crew logs
-/// in with a binary frame on it, and never dials the backend.
+/// A side's connection carries its crew's game: the crew logs in with a
+/// binary frame on it.
 #[tokio::test]
-async fn a_tunnelled_side_plays_over_its_own_connection() {
+async fn a_side_plays_over_its_own_connection() {
   use callisto::payloads::RequestMsg;
-  // Nothing listens here: a crew that dialled back would find no backend.
-  let app = app("ws://127.0.0.1:1");
+  let app = app();
   let url = serve(app.clone()).await;
   let mut request = format!("{url}/crew").into_client_request().unwrap();
   request
     .headers_mut()
     .insert("authorization", "Bearer local-secret".parse().unwrap());
-  request.headers_mut().insert(ai_ships::api::TUNNEL_HEADER, "1".parse().unwrap());
   let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
   socket.send(Message::text(CREW)).await.unwrap();
   let login = loop {

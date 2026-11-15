@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
 
 use ai_ships::api::{router, App, Callers};
 use ai_ships::auth::Credential;
@@ -23,17 +22,15 @@ struct Args {
   #[arg(long, env = "PORT", default_value_t = 8080)]
   port: u16,
 
-  /// The backend's WebSocket URL.
-  #[arg(long, env = "CALLISTO_BACKEND", default_value = "ws://localhost:30000")]
-  backend: String,
-
   /// Shared secret for local Compose, both to log in to the backend and to
   /// admit its calls. Unset on Cloud Run, which uses identity tokens.
   #[arg(long, env = "CALLISTO_SERVICE_TOKEN", hide_env_values = true)]
   service_token: Option<String>,
 
   /// The audience our identity token names when logging in to the backend:
-  /// its URL. Defaults to the backend URL with `ws` read as `http`.
+  /// its `https://` URL. Needed unless the shared secret is set. Crews reach
+  /// the backend over the `/crew` connection it holds open to us, so this is
+  /// the only thing we need to know about it.
   #[arg(long, env = "CALLISTO_BACKEND_AUDIENCE")]
   backend_audience: Option<String>,
 
@@ -93,14 +90,6 @@ fn call_log(dir: &str, game: &str, side: &str) -> Option<std::fs::File> {
     .ok()
 }
 
-fn http_audience(backend: &str) -> String {
-  backend
-    .strip_prefix("wss://")
-    .map(|rest| format!("https://{rest}"))
-    .or_else(|| backend.strip_prefix("ws://").map(|rest| format!("http://{rest}")))
-    .unwrap_or_else(|| backend.to_string())
-}
-
 #[tokio::main]
 async fn main() {
   tracing_subscriber::fmt()
@@ -111,7 +100,10 @@ async fn main() {
   let secret = args.service_token.clone().filter(|secret| !secret.is_empty());
   let credential = secret.clone().map_or_else(
     || Credential::CloudRun {
-      audience: args.backend_audience.clone().unwrap_or_else(|| http_audience(&args.backend)),
+      audience: args
+        .backend_audience
+        .clone()
+        .expect("(main) Set CALLISTO_BACKEND_AUDIENCE, or CALLISTO_SERVICE_TOKEN for local use."),
     },
     Credential::SharedSecret,
   );
@@ -130,13 +122,8 @@ async fn main() {
       ..UserDirectory::default()
     },
   };
-  let config = CrewConfig {
-    backend: args.backend.clone(),
-    credential,
-    reconnect_attempts: 5,
-    reconnect_backoff: Duration::from_secs(2),
-  };
-  info!("(main) Backend {}, logging in with {:?}.", config.backend, config.credential);
+  let config = CrewConfig { credential };
+  info!("(main) Logging in to the backend with {:?}.", config.credential);
 
   let vertex = match llm::model_of(&args.model) {
     Some(_) => Some(Arc::new(
