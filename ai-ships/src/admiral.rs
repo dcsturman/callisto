@@ -598,6 +598,8 @@ pub fn schema() -> Value {
       "threats": {"type": "integer", "description": "Enemies that can hit the squadron it may also engage. Default 8."},
       "movement": movement,
       "dodge": {"type": "integer", "description": "G of thrust each ship keeps back to dodge, at least; the rest of her drive is for moving. Leave it out to let the crews choose."},
+      "weapons": {"type": "string", "enum": ["crews", "defend", "hold_fire"],
+        "description": "crews: the crews choose (default). defend: while missiles are coming at a ship, all her laser turrets are on point defence; otherwise she fires. hold_fire: no attacks; point defence and sand still work."},
       "flight": flight_schema(),
       "until": until
     }

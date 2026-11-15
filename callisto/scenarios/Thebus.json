@@ -178,15 +178,15 @@
       "design": "Star Ray Interceptor",
       "weapons": [
         {
-          "kind": "Pulse",
+          "kind": "Beam",
           "mount": {
-            "Turret": 3
+            "Turret": 2
           }
         },
         {
-          "kind": "Pulse",
+          "kind": "Beam",
           "mount": {
-            "Turret": 3
+            "Turret": 2
           }
         }
       ],

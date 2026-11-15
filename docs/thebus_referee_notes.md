@@ -15,8 +15,8 @@ are committed.
 
 The ships carry their own fit rather than what our designs carry as
 standard: three double pulse turrets on the Vulture and a pop-up triple pulse
-turret on the yacht. Invigilator keeps the fleet list's two double beam
-turrets; Death's Actuary, Yang's escort, carries two triple pulse turrets. The fleet list gave the Vulture a single pulse turret; she was
+turret on the yacht. The Star Rays keep the fleet list's two double beam
+turrets each. The fleet list gave the Vulture a single pulse turret; she was
 up-gunned because the Executor won too easily, and her crew kept at skill 1 so
 the ambush does not overmatch her. She also has a Computer/10 refit running
 Evade/1.
