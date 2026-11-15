@@ -97,6 +97,18 @@ on with the crew it was running; a crew whose connection is not back within
 90 seconds is released. If the instance itself was stopped, the side is
 crewed afresh when the backend reconnects.
 
+**The crews play over those same connections.** The backend sends
+`x-callisto-tunnel` when it opens `/crew`, and the crew's game messages then
+travel on that connection as binary frames, which the backend relays to a
+connection it opens to its own port. A crew therefore always plays on the
+backend instance that holds its game. Before 2026-11-15 a crew dialled the
+backend's public URL instead, and whenever Cloud Run was running a second
+backend instance -- after a deploy, or one it started for a crawler's
+request, max instances notwithstanding -- the crew could land on the
+instance without the game and never find it ("no report" on every AI ship).
+A backend built with TLS (local, without the Compose override) offers no
+tunnel, and the crews dial back as before.
+
 Until 2026-11-05 the service ran with `--min-instances=1
 --no-cpu-throttling`, an always-on instance in each of canary and
 production, about $45-50 a month apiece whether or not anyone played.

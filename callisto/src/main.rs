@@ -159,6 +159,12 @@ async fn handle_connection(
   stream: TcpStream, #[cfg(not(feature = "no_tls_upgrade"))] acceptor: Arc<TlsAcceptor>,
   session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Result<(WebSocketStream<SubStream>, String, Option<String>), String> {
+  #[cfg(feature = "no_tls_upgrade")]
+  let mut stream = stream;
+  #[cfg(feature = "no_tls_upgrade")]
+  if answer_if_not_websocket(&mut stream).await {
+    return Err("(handle_connection) Not a WebSocket request; answered it and closed.".to_string());
+  }
   #[cfg(not(feature = "no_tls_upgrade"))]
   // First, upgrade the stream to be TLS
   let stream: SubStream = match acceptor.accept(stream).await {
@@ -194,6 +200,60 @@ async fn handle_connection(
 
   let auth_info = auth_info.lock().unwrap();
   Ok((ws_stream, auth_info.0.clone(), auth_info.1.clone()))
+}
+
+/// The reply to a plain HTTP request: we only speak WebSocket.
+#[cfg(feature = "no_tls_upgrade")]
+const NOT_A_WEBSOCKET: &[u8] = b"HTTP/1.1 426 Upgrade Required\r\nUpgrade: websocket\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 39\r\n\r\nThe Callisto backend speaks WebSocket.\n";
+
+/// Whether these request headers ask to become a WebSocket.
+#[cfg(feature = "no_tls_upgrade")]
+fn asks_for_websocket(head: &[u8]) -> bool {
+  String::from_utf8_lossy(head).lines().any(|line| {
+    line.split_once(':').is_some_and(|(name, value)| {
+      name.trim().eq_ignore_ascii_case("upgrade") && value.to_ascii_lowercase().contains("websocket")
+    })
+  })
+}
+
+/// Answer a request that is not a WebSocket handshake -- a crawler, a
+/// browser opening the URL, a probe -- with a short HTTP reply instead of
+/// dropping it, and say whether we did. Cloud Run takes a request dropped
+/// without a reply for a failing instance and starts another, and every
+/// extra backend is one a crew or a second player can land on, away from the
+/// game. Looks at the request without consuming it, so a handshake goes on
+/// as before; anything unclear is left to the handshake.
+#[cfg(feature = "no_tls_upgrade")]
+async fn answer_if_not_websocket(stream: &mut TcpStream) -> bool {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  let mut buf = [0u8; 8192];
+  let started = tokio::time::Instant::now();
+  while started.elapsed() < Duration::from_secs(5) {
+    let Ok(Ok(read)) = tokio::time::timeout(Duration::from_secs(5), stream.peek(&mut buf)).await else {
+      return false;
+    };
+    if read == 0 {
+      return false;
+    }
+    let head = &buf[..read];
+    if let Some(end) = head.windows(4).position(|window| window == b"\r\n\r\n") {
+      if asks_for_websocket(&head[..end]) {
+        return false;
+      }
+      // Take the request off the socket first: closing one with unread
+      // bytes resets it, and the reply would be lost.
+      let _ = stream.read_exact(&mut buf[..end + 4]).await;
+      let _ = stream.write_all(NOT_A_WEBSOCKET).await;
+      let _ = stream.shutdown().await;
+      return true;
+    }
+    if read == buf.len() {
+      return false;
+    }
+    // The headers are still arriving.
+    tokio::time::sleep(Duration::from_millis(10)).await;
+  }
+  false
 }
 
 #[tokio::main]
@@ -397,7 +457,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     callisto::sessions::init(&callisto::sessions::file_beside(&args.users_file)).await;
   }
 
-  let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
+  let (connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
 
   // Shared user directory + register lock. Both must be created BEFORE the
   // authenticator so the GoogleAuthenticator constructor can seed the cell
@@ -435,6 +495,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .as_deref()
     .filter(|url| !url.is_empty())
     .map(|url| AiServiceClient::new(url, args.service_token.clone()));
+  // Crews play over the connection the backend holds to the AI service,
+  // relayed here to this process, so they reach the instance that holds
+  // their game. Only without TLS: a crew relayed through TLS would have to
+  // trust our own certificate.
+  #[cfg(feature = "no_tls_upgrade")]
+  let ai_service = ai_service.map(|client| {
+    let host = if addr.ip().is_unspecified() {
+      std::net::IpAddr::from([127, 0, 0, 1])
+    } else {
+      addr.ip()
+    };
+    client.with_local_backend(&format!("ws://{}/", std::net::SocketAddr::new(host, addr.port())))
+  });
   info!("(main) AI service: {ai_service:?}");
   let service_auth = ServiceAuth::new(args.service_token.clone(), args.service_audience.clone(), google_keys.clone());
   info!("(main) Service login: {service_auth:?}");
@@ -509,32 +582,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let (stream, peer_addr) = listener.accept().await?;
 
     debug!("(main) Accepted connection from {peer_addr}.");
-    // Upgrade will be built differently depending on the feature `no_tls_upgrade`.
-    #[cfg(feature = "no_tls_upgrade")]
-    let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> = handle_connection(stream, session_keys.clone()).await;
-
+    // Each handshake on its own task, so one slow client holds up nobody.
+    let mut connection_sender = connection_sender.clone();
+    let session_keys = session_keys.clone();
     #[cfg(not(feature = "no_tls_upgrade"))]
-    let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> =
-      handle_connection(stream, acceptor.clone(), session_keys.clone()).await;
+    let acceptor = acceptor.clone();
+    tokio::spawn(async move {
+      // Upgrade will be built differently depending on the feature `no_tls_upgrade`.
+      #[cfg(feature = "no_tls_upgrade")]
+      let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> = handle_connection(stream, session_keys).await;
 
-    match upgrade {
-      Ok((ws_stream, session_key, email)) => {
-        info!("(main) Successfully established websocket connection to {peer_addr}.");
-        // Hardened: never unwrap here. If the processor task has died (or
-        // the channel is full and the receive side is wedged), an `unwrap`
-        // would crash the main accept loop too — turning a single worker
-        // panic into a full container crash. Log and continue instead so
-        // Cloud Run's healthcheck still sees a live process.
-        if let Err(e) = connection_sender.try_send((ws_stream, session_key, email)) {
-          error!(
+      #[cfg(not(feature = "no_tls_upgrade"))]
+      let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> =
+        handle_connection(stream, acceptor, session_keys).await;
+
+      match upgrade {
+        Ok((ws_stream, session_key, email)) => {
+          info!("(main) Successfully established websocket connection to {peer_addr}.");
+          // Hardened: never unwrap here. If the processor task has died (or
+          // the channel is full and the receive side is wedged), an `unwrap`
+          // would crash the main accept loop too — turning a single worker
+          // panic into a full container crash. Log and continue instead so
+          // Cloud Run's healthcheck still sees a live process.
+          if let Err(e) = connection_sender.try_send((ws_stream, session_key, email)) {
+            error!(
             "(main) Could not hand websocket from {peer_addr} to processor (channel full or closed): {e}. Dropping connection."
           );
+          }
+        }
+        Err(e) => {
+          warn!("(main) Server at {addr} failed to establish websocket connection from {peer_addr}: {e}");
         }
       }
-      Err(e) => {
-        warn!("(main) Server at {addr} failed to establish websocket connection from {peer_addr}: {e}");
-      }
-    }
+    });
   }
 }
 

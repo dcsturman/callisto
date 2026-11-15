@@ -17,6 +17,11 @@
 //! repeated one is harmless, and a connection opened again after a drop
 //! restates the side in full.
 //!
+//! The crews play over the same connections when the backend can reach
+//! itself (see [`TUNNEL_HEADER`]): each one is relayed to a connection the
+//! backend opens to its own port, so a crew always plays on the instance that
+//! holds its game.
+//!
 //! The connections run on their own tasks and never hold up the game. If the
 //! service is down the failure is logged, the connection is retried, and the
 //! ships sit there meanwhile, as a ship with no crew does.
@@ -122,6 +127,16 @@ pub fn plan_calls(scenario_id: &str, before: &Sides, after: &Sides) -> Vec<AiCal
 /// the side open again until something about it changes.
 pub const CREW_ENDED: &str = "crew ended";
 
+/// The header a backend sends when it opens `/crew` to say it will carry the
+/// side's game over that connection: a **tunnel**. The crew's game messages
+/// then travel on it as binary frames, each one message, and the backend
+/// relays them to a connection of its own to itself, so they reach the
+/// instance that holds the game. Cloud Run may run more than one backend, and
+/// a crew dialling the backend's public URL can land on any of them. An empty
+/// binary frame from the backend says the game closed that connection.
+/// Without the header the service dials the backend itself, as it used to.
+pub const TUNNEL_HEADER: &str = "x-callisto-tunnel";
+
 /// Keepalive on a held side, and how a dead connection is noticed.
 const HOLD_PING: Duration = Duration::from_secs(30);
 /// Wait before retrying a side that could not be held; doubled up to
@@ -156,6 +171,22 @@ pub struct AiServiceClient {
   shared_secret: Option<String>,
   http: reqwest::Client,
   held: Arc<Mutex<BTreeMap<(String, String), Held>>>,
+  /// This backend's own `ws://` address, for relaying tunnelled crews.
+  /// Without it no tunnel is offered and the crews dial the public URL.
+  local: Option<String>,
+}
+
+type ClientSocket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// The next frame from this backend's own connection for a tunnel, or never
+/// while there is none.
+async fn next_local(
+  local: &mut Option<ClientSocket>,
+) -> Option<Result<Message, tokio_tungstenite::tungstenite::Error>> {
+  match local {
+    Some(local) => local.next().await,
+    None => std::future::pending().await,
+  }
 }
 
 impl std::fmt::Debug for AiServiceClient {
@@ -163,6 +194,7 @@ impl std::fmt::Debug for AiServiceClient {
     f.debug_struct("AiServiceClient")
       .field("url", &self.url)
       .field("shared_secret", &self.shared_secret.as_ref().map(|_| "<set>"))
+      .field("local", &self.local)
       .finish_non_exhaustive()
   }
 }
@@ -181,7 +213,16 @@ impl AiServiceClient {
         .build()
         .expect("(AiServiceClient::new) Unable to build an HTTP client"),
       held: Arc::new(Mutex::new(BTreeMap::new())),
+      local: None,
     }
+  }
+
+  /// Offer the service a tunnel on every side, relayed to this backend at
+  /// `url` (`ws://127.0.0.1:<port>`).
+  #[must_use]
+  pub fn with_local_backend(mut self, url: &str) -> Self {
+    self.local = Some(url.to_string());
+    self
   }
 
   /// Act on a call without waiting for it: hold the side open, tell a held
@@ -252,8 +293,25 @@ impl AiServiceClient {
     info!("(AiServiceClient) Holding {call:?}.");
     let mut ping = tokio::time::interval(HOLD_PING);
     ping.tick().await;
+    // The tunnelled crew's connection to this backend, opened when the crew
+    // first speaks.
+    let mut local: Option<ClientSocket> = None;
     loop {
       tokio::select! {
+        frame = next_local(&mut local) => {
+          let relayed = match frame {
+            Some(Ok(Message::Text(text))) => Message::Binary(text.as_bytes().to_vec().into()),
+            Some(Ok(Message::Close(_)) | Err(_)) | None => {
+              // The game closed the crew's connection: tell the crew.
+              local = None;
+              Message::Binary(Vec::new().into())
+            }
+            Some(Ok(_)) => continue,
+          };
+          if let Err(e) = socket.send(relayed).await {
+            return dropped(true, e.to_string());
+          }
+        }
         changed = side.changed() => {
           if changed.is_err() {
             let _ = socket.close(None).await;
@@ -271,6 +329,27 @@ impl AiServiceClient {
             return HoldEnding::CrewEnded;
           }
           Some(Ok(Message::Close(close))) => return dropped(true, format!("closed: {close:?}")),
+          Some(Ok(Message::Binary(bytes))) => {
+            if local.is_none() {
+              local = self.open_local().await;
+              if local.is_none() {
+                // Nowhere to play: say the game closed, and the crew ends.
+                if let Err(e) = socket.send(Message::Binary(Vec::new().into())).await {
+                  return dropped(true, e.to_string());
+                }
+                continue;
+              }
+            }
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            if let Some(open) = local.as_mut() {
+              if open.send(Message::text(text)).await.is_err() {
+                local = None;
+                if let Err(e) = socket.send(Message::Binary(Vec::new().into())).await {
+                  return dropped(true, e.to_string());
+                }
+              }
+            }
+          }
           Some(Ok(_)) => {}
           Some(Err(e)) => return dropped(true, e.to_string()),
           None => return dropped(true, "connection ended".to_string()),
@@ -303,8 +382,27 @@ impl AiServiceClient {
     request
       .headers_mut()
       .insert("authorization", format!("Bearer {bearer}").parse()?);
+    if self.local.is_some() {
+      request.headers_mut().insert(TUNNEL_HEADER, "1".parse()?);
+    }
     let (socket, _) = tokio::time::timeout(CALL_TIMEOUT, tokio_tungstenite::connect_async(request)).await??;
     Ok(socket)
+  }
+
+  /// A connection to this backend itself, for a tunnelled crew's game.
+  async fn open_local(&self) -> Option<ClientSocket> {
+    let url = self.local.as_deref()?;
+    match tokio::time::timeout(CALL_TIMEOUT, tokio_tungstenite::connect_async(url)).await {
+      Ok(Ok((socket, _))) => Some(socket),
+      Ok(Err(e)) => {
+        warn!("(AiServiceClient) Could not reach this backend at {url} for a crew: {e}");
+        None
+      }
+      Err(_) => {
+        warn!("(AiServiceClient) Timed out reaching this backend at {url} for a crew.");
+        None
+      }
+    }
   }
 
   /// A Google identity token for this backend's service account, naming the
@@ -519,6 +617,70 @@ mod tests {
       assert!(text.contains(r#""ships":["Invigilator"]"#), "{text}");
       // Drop the connection without closing it, as a redeploy would.
       drop(socket);
+    }
+  }
+
+  /// With a local backend the client offers a tunnel, and relays it: the
+  /// crew's binary frames reach this backend as messages on a connection of
+  /// its own, its replies go back as binary frames, and its closing that
+  /// connection reaches the crew as an empty frame.
+  // The handshake callback's error type is tungstenite's own.
+  #[allow(clippy::result_large_err)]
+  #[tokio::test]
+  async fn a_tunnel_is_offered_and_relayed_to_this_backend() {
+    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+    let service = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let backend = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let client = AiServiceClient::new(&format!("http://{}", service.local_addr().unwrap()), Some("s".to_string()))
+      .with_local_backend(&format!("ws://{}/", backend.local_addr().unwrap()));
+    client.send(crew(&["Invigilator"]));
+
+    let (stream, _) = service.accept().await.unwrap();
+    let mut offered = false;
+    let mut ai = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response: Response| {
+      offered = request.headers().contains_key(TUNNEL_HEADER);
+      Ok(response)
+    })
+    .await
+    .unwrap();
+    assert!(offered, "a backend that can reach itself offers a tunnel");
+    let Some(Ok(Message::Text(side))) = ai.next().await else {
+      panic!("the side was not stated");
+    };
+    assert!(side.contains("Invigilator"), "{side}");
+
+    // The crew speaks: the backend opens a connection to itself and passes it on.
+    ai.send(Message::Binary(br#"{"hello":1}"#.to_vec().into())).await.unwrap();
+    let (stream, _) = tokio::time::timeout(Duration::from_secs(5), backend.accept())
+      .await
+      .expect("the backend did not reach itself")
+      .unwrap();
+    let mut game = tokio_tungstenite::accept_async(stream).await.unwrap();
+    let Some(Ok(Message::Text(heard))) = game.next().await else {
+      panic!("the crew's message did not arrive");
+    };
+    assert_eq!(heard.as_str(), r#"{"hello":1}"#);
+
+    // The game answers, and the crew hears it.
+    game.send(Message::text(r#"{"reply":2}"#)).await.unwrap();
+    assert_eq!(next_binary(&mut ai).await, br#"{"reply":2}"#.to_vec());
+
+    // The game closes the crew's connection: the crew is told.
+    game.close(None).await.unwrap();
+    assert!(next_binary(&mut ai).await.is_empty(), "an empty frame says the game closed");
+  }
+
+  /// The next binary frame the AI service is sent.
+  async fn next_binary(ai: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>) -> Vec<u8> {
+    loop {
+      match tokio::time::timeout(Duration::from_secs(5), ai.next())
+        .await
+        .expect("nothing relayed")
+      {
+        Some(Ok(Message::Binary(bytes))) => return bytes.to_vec(),
+        Some(Ok(_)) => {}
+        other => panic!("the side's connection ended: {other:?}"),
+      }
     }
   }
 

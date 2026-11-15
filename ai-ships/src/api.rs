@@ -6,6 +6,8 @@
 //!   releases the side. When the crew ends by itself we close it, with
 //!   [`CREW_ENDED`] as the reason, and the backend leaves the side alone until
 //!   something about it changes.
+//!   A backend that sends [`TUNNEL_HEADER`] also carries the crew's game on
+//!   this connection, as binary frames: see [`TUNNEL_HEADER`].
 //! * `GET /status` -- what is being crewed.
 //! * `GET /healthz` -- for Cloud Run.
 //!
@@ -32,13 +34,14 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-pub use callisto::ai_service::CREW_ENDED;
+pub use callisto::ai_service::{CREW_ENDED, TUNNEL_HEADER};
 use callisto::authentication::UserDirectory;
 use callisto::service_auth::ServiceAuth;
 use serde::Deserialize;
 use tokio::sync::watch;
 use tracing::{info, warn};
 
+use crate::crew::{self, Inbound, TunnelEnds};
 use crate::crews::{CrewStatus, Crews};
 
 /// Who may call this service.
@@ -79,8 +82,9 @@ pub struct CrewRequest {
 pub const DROPPED_GRACE: Duration = Duration::from_secs(90);
 
 async fn crew(State(app): State<Arc<App>>, headers: HeaderMap, upgrade: WebSocketUpgrade) -> Response {
+  let tunnelled = headers.contains_key(TUNNEL_HEADER);
   match app.callers.admit(&headers) {
-    Ok(caller) => upgrade.on_upgrade(move |socket| hold(app, caller, socket)),
+    Ok(caller) => upgrade.on_upgrade(move |socket| hold(app, caller, socket, tunnelled)),
     Err(status) => status.into_response(),
   }
 }
@@ -105,13 +109,49 @@ async fn finished(done: &mut Option<watch::Receiver<bool>>) {
   }
 }
 
-/// Crew the side this connection states, for as long as it is held.
-async fn hold(app: Arc<App>, caller: String, mut socket: WebSocket) {
+/// The next message a crew sends its game, or never, once it has stopped.
+async fn from_crew(ends: &mut Option<TunnelEnds>) -> Option<String> {
+  match ends {
+    Some(ends) => ends.outbound.recv().await,
+    None => std::future::pending().await,
+  }
+}
+
+/// Crew the side this connection states, for as long as it is held. A
+/// tunnelled connection carries the crew's game too: its binary frames to
+/// and from the crew.
+async fn hold(app: Arc<App>, caller: String, mut socket: WebSocket, tunnelled: bool) {
   let mut side: Option<(String, String)> = None;
   let mut done = None;
+  // The crew's end goes with the first request; ours stays here.
+  let (mut tunnel, mut ends) = if tunnelled {
+    let (tunnel, ends) = crew::tunnel();
+    (Some(tunnel), Some(ends))
+  } else {
+    (None, None)
+  };
   let ending = loop {
     tokio::select! {
+      outbound = from_crew(&mut ends) => match outbound {
+        Some(text) => {
+          if socket.send(Message::Binary(text.into_bytes().into())).await.is_err() {
+            break Hold::Dropped;
+          }
+        }
+        // The crew let this connection's game go; the side is still held.
+        None => ends = None,
+      },
       message = socket.recv() => match message {
+        Some(Ok(Message::Binary(bytes))) => {
+          if let Some(ends) = &ends {
+            let inbound = if bytes.is_empty() {
+              Inbound::Closed
+            } else {
+              Inbound::Text(String::from_utf8_lossy(&bytes).into_owned())
+            };
+            let _ = ends.inbound.send(inbound);
+          }
+        }
         Some(Ok(Message::Text(text))) => match serde_json::from_str::<CrewRequest>(&text) {
           Ok(request) => {
             let key = (request.scenario_id.clone(), request.side.clone());
@@ -123,7 +163,7 @@ async fn hold(app: Arc<App>, caller: String, mut socket: WebSocket) {
               side = Some(key);
             }
             info!("(api) {caller} asks us to crew {}/{} with {:?}.", request.scenario_id, request.side, request.ships);
-            done = Some(app.crews.crew(&request.scenario_id, &request.side, request.ships));
+            done = Some(app.crews.crew(&request.scenario_id, &request.side, request.ships, tunnel.take()));
           }
           Err(e) => warn!("(api) Could not read a side from {caller}: {e}"),
         },

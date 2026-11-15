@@ -173,3 +173,29 @@ async fn a_crew_that_ends_says_so() {
   .expect("the service never closed the side");
   assert_eq!(closed.map(|frame| frame.reason.to_string()).as_deref(), Some(CREW_ENDED));
 }
+
+/// A connection that offers a tunnel carries its crew's game: the crew logs
+/// in with a binary frame on it, and never dials the backend.
+#[tokio::test]
+async fn a_tunnelled_side_plays_over_its_own_connection() {
+  use callisto::payloads::RequestMsg;
+  // Nothing listens here: a crew that dialled back would find no backend.
+  let app = app("ws://127.0.0.1:1");
+  let url = serve(app.clone()).await;
+  let mut request = format!("{url}/crew").into_client_request().unwrap();
+  request
+    .headers_mut()
+    .insert("authorization", "Bearer local-secret".parse().unwrap());
+  request.headers_mut().insert(ai_ships::api::TUNNEL_HEADER, "1".parse().unwrap());
+  let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+  socket.send(Message::text(CREW)).await.unwrap();
+  let login = loop {
+    match tokio::time::timeout(Duration::from_secs(5), socket.next()).await.unwrap() {
+      Some(Ok(Message::Binary(bytes))) => break serde_json::from_slice::<RequestMsg>(&bytes).unwrap(),
+      Some(Ok(_)) => {}
+      other => panic!("the side's connection ended: {other:?}"),
+    }
+  };
+  assert!(matches!(login, RequestMsg::ServiceLogin(_)), "{login:?}");
+  assert!(crewing(&app, 1).await[0].running);
+}

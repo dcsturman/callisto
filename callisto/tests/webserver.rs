@@ -2973,3 +2973,120 @@ async fn integration_reload_action() {
   };
   assert!(entities.actions.is_empty(), "a Reload is one round's work");
 }
+
+/// A stand-in AI service that plays its crew over the tunnel the backend
+/// offers: it logs in and joins the game with binary frames on the `/crew`
+/// connection, as the real crew does, and reports how far it got.
+// The handshake callback's error type is tungstenite's own.
+#[allow(clippy::result_large_err)]
+#[cfg(feature = "no_tls_upgrade")]
+async fn tunnelling_ai_service() -> (String, tokio::sync::mpsc::UnboundedReceiver<String>) {
+  use callisto::payloads::ServiceLoginMsg;
+  use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+  use tokio_tungstenite::tungstenite::Message;
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let ai_url = format!("http://{}", listener.local_addr().unwrap());
+  let (report, reports) = tokio::sync::mpsc::unbounded_channel::<String>();
+  tokio::spawn(async move {
+    let Ok((stream, _)) = listener.accept().await else {
+      return;
+    };
+    let mut offered = false;
+    let Ok(mut socket) = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response: Response| {
+      offered = request.headers().contains_key(callisto::ai_service::TUNNEL_HEADER);
+      Ok(response)
+    })
+    .await
+    else {
+      return;
+    };
+    let _ = report.send(format!("offered {offered}"));
+    let mut scenario = String::new();
+    let send = |request: &RequestMsg| Message::Binary(serde_json::to_vec(request).unwrap().into());
+    while let Some(Ok(message)) = socket.next().await {
+      match message {
+        Message::Text(side) => {
+          let side: serde_json::Value = serde_json::from_str(&side).unwrap();
+          scenario = side["scenario_id"].as_str().unwrap_or_default().to_string();
+          let login = RequestMsg::ServiceLogin(ServiceLoginMsg {
+            token: TEST_SERVICE_TOKEN.to_string(),
+          });
+          let _ = socket.send(send(&login)).await;
+        }
+        Message::Binary(bytes) => match serde_json::from_slice::<ResponseMsg>(&bytes) {
+          Ok(ResponseMsg::AuthResponse(_)) => {
+            let _ = report.send("logged in".to_string());
+            let join = RequestMsg::JoinScenario(JoinScenarioMsg {
+              scenario_name: scenario.clone(),
+            });
+            let _ = socket.send(send(&join)).await;
+          }
+          Ok(ResponseMsg::JoinedScenario(_)) => {
+            let _ = report.send("joined".to_string());
+          }
+          Ok(ResponseMsg::Error(error)) => {
+            let _ = report.send(format!("error {error}"));
+          }
+          _ => {}
+        },
+        Message::Close(_) => break,
+        _ => {}
+      }
+    }
+  });
+  (ai_url, reports)
+}
+
+/// The AI's crew plays over the connection the backend holds to the AI
+/// service, which the backend relays to itself: it reaches the game without
+/// dialling the backend, so it cannot land on another instance.
+#[cfg(feature = "no_tls_upgrade")]
+#[test_log::test(tokio::test)]
+async fn integration_a_crew_plays_over_the_tunnel() {
+  callisto::ship::config_test_ship_templates().await;
+  let (ai_url, mut reports) = tunnelling_ai_service().await;
+  let port = get_next_port();
+  let _server = spawn_server_full(port, true, None, None, None, true, Some(&ai_url)).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "thebus_tunnelled".to_string(),
+      scenario: "Thebus.json".to_string(),
+      ai_ships: Some(vec!["HMS Executor".to_string()]),
+    }),
+  )
+  .await;
+  assert_eq!(next_call(&mut reports).await.as_deref(), Some("offered true"));
+  assert_eq!(next_call(&mut reports).await.as_deref(), Some("logged in"));
+  assert_eq!(
+    next_call(&mut reports).await.as_deref(),
+    Some("joined"),
+    "the crew joined the game over the tunnel"
+  );
+}
+
+/// A plain HTTP request -- a crawler, a browser opening the URL -- gets a
+/// reply rather than a dropped connection, which Cloud Run would count as a
+/// failing instance.
+#[cfg(feature = "no_tls_upgrade")]
+#[test_log::test(tokio::test)]
+async fn integration_a_plain_http_request_is_answered() {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  let port = get_next_port();
+  let _server = spawn_server(port, true, None, None, true).await;
+  // Waits for the server to be up.
+  let _ = open_socket(port).await.unwrap();
+  let mut plain = TcpStream::connect((SERVER_ADDRESS, port)).await.unwrap();
+  plain
+    .write_all(b"GET / HTTP/1.1\r\nHost: callisto\r\nUser-Agent: crawler\r\n\r\n")
+    .await
+    .unwrap();
+  let mut reply = String::new();
+  timeout(Duration::from_secs(5), plain.read_to_string(&mut reply))
+    .await
+    .expect("no reply")
+    .unwrap();
+  assert!(reply.starts_with("HTTP/1.1 426"), "{reply}");
+}
