@@ -76,7 +76,7 @@
       "current_jump": 0,
       "transmitting": true,
       "crew": {
-        "pilot": 4,
+        "pilot": 3,
         "engineering_jump": 0,
         "engineering_power": 1,
         "engineering_maneuver": 1,
