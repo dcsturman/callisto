@@ -11,6 +11,8 @@
 //!   the assigned ones and those threats;
 //! - how it moves: as the network chooses, a burn toward or away from a
 //!   place, or an arrival at a place (or a range band of it) by a round;
+//! - what its guns are for: as the crews choose, point defence first, or
+//!   holding fire;
 //! - when it ends: a round, a range band reached, being fired on, losses.
 //!
 //! Each squadron's pass also sees the rest of the side, nearest first, as
@@ -88,12 +90,29 @@ pub struct Step {
   /// her drive is for moving. The crews choose when this is not given.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dodge: Option<u8>,
+  /// What the guns are for. The crews choose when this is not given.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub weapons: Option<WeaponsOrder>,
   /// Flight operations for the squadron's carriers and craft. The crews
   /// run them when this is not given (see [`FlightOrder`]).
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub flight: Option<FlightOrder>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub until: Option<Until>,
+}
+
+/// What a step says about the guns.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WeaponsOrder {
+  /// As the crews judge.
+  #[default]
+  Crews,
+  /// While missiles are coming at a ship, every laser turret of hers goes on
+  /// point defence; otherwise she fires as the crews judge.
+  Defend,
+  /// No attacks. Point defence and sand still protect the ship.
+  HoldFire,
 }
 
 /// What a step says about flight operations. `launch` has the squadron's
@@ -533,21 +552,13 @@ pub fn describe(step: &Step) -> String {
   if let Some(dodge) = step.dodge {
     parts.push(format!("dodge {dodge} G"));
   }
+  match step.weapons {
+    Some(WeaponsOrder::Defend) => parts.push("turrets on point defence against missiles".to_string()),
+    Some(WeaponsOrder::HoldFire) => parts.push("hold fire".to_string()),
+    Some(WeaponsOrder::Crews) | None => {}
+  }
   if let Some(flight) = &step.flight {
-    parts.push(match flight.op {
-      FlightOp::Launch => {
-        let what = if !flight.wings.is_empty() {
-          flight.wings.join(", ")
-        } else if let Some(count) = flight.count {
-          format!("{count} craft")
-        } else {
-          "every craft".to_string()
-        };
-        format!("launch {what}")
-      }
-      FlightOp::Recover => "recover the craft".to_string(),
-      FlightOp::Hold => "hold the craft".to_string(),
-    });
+    parts.push(describe_flight(flight));
   }
   match step.movement.mode {
     Mode::Network => {}
@@ -558,13 +569,9 @@ pub fn describe(step: &Step) -> String {
     )),
     Mode::Arrive => parts.push(format!(
       "arrive at {}{}{}",
-      step.movement.band.map(|band| format!("{band:?} of ")).unwrap_or_default(),
+      step.movement.band.map_or_default(|band| format!("{band:?} of ")),
       step.movement.at.as_ref().map_or_else(|| "a point".to_string(), place),
-      step
-        .movement
-        .round
-        .map(|round| format!(" by round {round}"))
-        .unwrap_or_default()
+      step.movement.round.map_or_default(|round| format!(" by round {round}"))
     )),
   }
   if let Some(until) = &step.until {
@@ -587,6 +594,24 @@ pub fn describe(step: &Step) -> String {
     "fight as the crews judge".to_string()
   } else {
     parts.join("; ")
+  }
+}
+
+/// A flight order in words, for a ship's report.
+fn describe_flight(flight: &FlightOrder) -> String {
+  match flight.op {
+    FlightOp::Launch => {
+      let what = if !flight.wings.is_empty() {
+        flight.wings.join(", ")
+      } else if let Some(count) = flight.count {
+        format!("{count} craft")
+      } else {
+        "every craft".to_string()
+      };
+      format!("launch {what}")
+    }
+    FlightOp::Recover => "recover the craft".to_string(),
+    FlightOp::Hold => "hold the craft".to_string(),
   }
 }
 
@@ -619,6 +644,36 @@ fn hold_back(decided: &mut [(String, Intent)], ships: &[&Ship], dodge: u8) {
     }
     let left = f64::from(drive - reserve);
     intent.max_thrust = Some(intent.max_thrust.map_or(left, |cap| cap.min(left)));
+  }
+}
+
+/// Set the guns as `order` says. `Defend` puts every laser turret of a ship
+/// with missiles coming at her on point defence, which takes those turrets
+/// off any attack; `HoldFire` drops every attack and leaves defence alone.
+fn set_guns(decided: &mut [(String, Intent)], ships: &[&Ship], view: &Observation, order: WeaponsOrder) {
+  for (name, intent) in decided.iter_mut() {
+    match order {
+      WeaponsOrder::Crews => {}
+      WeaponsOrder::Defend => {
+        let Some(ship) = ships.iter().find(|ship| ship.get_name() == name) else {
+          continue;
+        };
+        if !view.missiles.iter().any(|missile| missile.target == *name) {
+          continue;
+        }
+        intent.defend = ship
+          .weapons()
+          .iter()
+          .enumerate()
+          .filter(|(_, weapon)| {
+            let card = tactics::mount_card(weapon);
+            card.point_defence && !card.battery
+          })
+          .map(|(index, _)| index)
+          .collect();
+      }
+      WeaponsOrder::HoldFire => intent.fire.clear(),
+    }
   }
 }
 
@@ -790,7 +845,7 @@ impl Commander for FleetCommander {
     for (name, members) in &groups {
       let ships = ships_of(view, members);
       let hull: u64 = ships.iter().map(|ship| u64::from(ship.current_hull)).sum();
-      let steps = self.script(name).map(|script| script.steps.clone()).unwrap_or_default();
+      let steps = self.script(name).map_or_default(|script| script.steps.clone());
       let progress = self.progress.entry(name.clone()).or_insert_with(|| Progress {
         step: 0,
         hull_at_step: hull,
@@ -834,6 +889,9 @@ impl Commander for FleetCommander {
       }
       if let Some(dodge) = step.dodge {
         hold_back(&mut decided, &ships, dodge);
+      }
+      if let Some(order) = step.weapons {
+        set_guns(&mut decided, &ships, view, order);
       }
       if let Some(order) = &step.flight {
         flights.extend(flight_intents(order, members, view));
@@ -917,6 +975,85 @@ mod tests {
     let plain: Step = serde_json::from_str("{}").unwrap();
     assert_eq!(plain.flight, None);
     assert_eq!(describe(&plain), "fight as the crews judge");
+  }
+
+  #[test]
+  fn a_weapons_order_round_trips_and_is_described() {
+    let cases = [
+      (r#"{"weapons": "defend"}"#, "turrets on point defence against missiles"),
+      (r#"{"weapons": "hold_fire"}"#, "hold fire"),
+      (r#"{"weapons": "crews"}"#, "fight as the crews judge"),
+    ];
+    for (json, words) in cases {
+      let step: Step = serde_json::from_str(json).unwrap();
+      assert_eq!(describe(&step), words);
+      let back: Step = serde_json::from_value(serde_json::to_value(&step).unwrap()).unwrap();
+      assert_eq!(back, step);
+    }
+  }
+
+  /// `defend` puts a ship's laser turrets on point defence only while
+  /// missiles are coming at her, and never a launcher; `hold_fire` drops her
+  /// attacks and leaves her defence as the crews chose it.
+  #[test]
+  fn a_weapons_order_sets_the_guns() {
+    use callisto::ship::{ShipDesignTemplate, Weapon, WeaponMount, WeaponType};
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Yacht".to_string(),
+      displacement: 200,
+      weapons: vec![
+        Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 3),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2),
+      ],
+      ..Default::default()
+    });
+    let ship = |name: &str| {
+      Ship::new(
+        name.to_string(),
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 0.0),
+        &design,
+        None,
+        None,
+      )
+    };
+    let missile: callisto::missile::Missile = serde_json::from_value(serde_json::json!({
+      "name": "Executor::1", "position": [1.0e7, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0],
+      "source": "Executor", "target": "Bait", "acceleration": [0.0, 0.0, 0.0], "burns": 3
+    }))
+    .unwrap();
+    let view = Observation {
+      own: vec![ship("Bait"), ship("Bystander")],
+      missiles: vec![missile],
+      ..Observation::default()
+    };
+    let ships: Vec<&Ship> = view.own.iter().collect();
+    let attacking = || Intent {
+      fire: vec![tactics::Engage {
+        target: "Executor".to_string(),
+        ..tactics::Engage::default()
+      }],
+      ..Intent::default()
+    };
+    let decided = || {
+      vec![
+        ("Bait".to_string(), attacking()),
+        ("Bystander".to_string(), attacking()),
+      ]
+    };
+
+    let mut defend = decided();
+    set_guns(&mut defend, &ships, &view, WeaponsOrder::Defend);
+    assert_eq!(defend[0].1.defend, vec![0, 2], "both laser turrets, not the launcher");
+    assert_eq!(defend[0].1.fire, attacking().fire, "the launcher may still fire");
+    assert!(defend[1].1.defend.is_empty(), "nothing is coming at the bystander");
+
+    let mut hold = decided();
+    hold[0].1.defend = vec![2];
+    set_guns(&mut hold, &ships, &view, WeaponsOrder::HoldFire);
+    assert!(hold.iter().all(|(_, intent)| intent.fire.is_empty()), "no attacks");
+    assert_eq!(hold[0].1.defend, vec![2], "defence as the crews chose");
   }
 
   fn carrier_and_craft() -> Observation {

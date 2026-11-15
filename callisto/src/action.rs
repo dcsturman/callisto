@@ -804,8 +804,7 @@ mod tests {
         .actions
         .iter()
         .find(|(ship, _)| ship == "Exec")
-        .map(|(_, actions)| actions.clone())
-        .unwrap_or_default()
+        .map_or_default(|(_, actions)| actions.clone())
     };
     let inspire = ShipAction::LeadershipCheck {
       boosts: vec![BoostTarget::Evade {
@@ -893,8 +892,7 @@ mod tests {
         .actions
         .iter()
         .find(|(ship, _)| ship == "Wind")
-        .map(|(_, actions)| actions.clone())
-        .unwrap_or_default()
+        .map_or_default(|(_, actions)| actions.clone())
     };
     let launch = |names: &[&str]| ShipAction::Launch {
       craft: names.iter().map(ToString::to_string).collect(),
@@ -933,8 +931,7 @@ mod tests {
         .actions
         .iter()
         .find(|(ship, _)| ship == "Gale")
-        .map(|(_, actions)| actions.clone())
-        .unwrap_or_default()
+        .map_or_default(|(_, actions)| actions.clone())
     };
     let land = |carrier: &str| ShipAction::Land {
       carrier: carrier.to_string(),

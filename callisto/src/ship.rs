@@ -1336,7 +1336,7 @@ impl Serialize for Weapon {
       WeaponUniformOut {
         kind: first.map_or(WeaponType::Beam, |gun| gun.kind),
         mount,
-        modifiers: first.map(|gun| gun.modifiers.clone()).unwrap_or_default(),
+        modifiers: first.map_or_default(|gun| gun.modifiers.clone()),
         count: self.count,
       }
       .serialize(serializer)
@@ -2488,8 +2488,7 @@ impl Ship {
     self
       .weapons()
       .get(weapon_id)
-      .map(|weapon| mount_capacity(weapon, self.design.displacement))
-      .unwrap_or_default()
+      .map_or_default(|weapon| mount_capacity(weapon, self.design.displacement))
   }
 
   /// Everything aboard: every mount's load and the stores.

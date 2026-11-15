@@ -182,9 +182,8 @@ fn steps_for(directive: &Directive, view: &Observation, who: &str) -> Vec<Value>
   } else {
     named_script(directive, who)
   };
-  let steps: Vec<Value> = script
-    .map(|script| script.steps.iter().filter_map(|step| serde_json::to_value(step).ok()).collect())
-    .unwrap_or_default();
+  let steps: Vec<Value> =
+    script.map_or_default(|script| script.steps.iter().filter_map(|step| serde_json::to_value(step).ok()).collect());
   if steps.is_empty() {
     vec![serde_json::to_value(ai_ships::fleet::Step::default()).unwrap_or_default()]
   } else {

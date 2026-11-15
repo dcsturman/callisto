@@ -522,7 +522,7 @@ impl Volley {
         .collect();
     };
     if fired.last().is_some_and(|one| one.shot.rolled.is_none()) {
-      return fired.pop().map(|one| one.said).unwrap_or_default();
+      return fired.pop().map_or_default(|one| one.said);
     }
 
     // One explosion or beam for the whole volley: the plot shows where it
@@ -6993,7 +6993,7 @@ mod spinal_tests {
       &BoostMap::default(),
       &mut rng,
     );
-    let line = effects.first().map(EffectMsg::rendered).unwrap_or_default();
+    let line = effects.first().map_or_default(EffectMsg::rendered);
     let effect: i32 = line.split("effect ").nth(1)?.split(['.', ' ']).next()?.parse().ok()?;
     let critical = effects.iter().any(|e| {
       matches!(

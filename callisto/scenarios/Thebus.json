@@ -76,7 +76,7 @@
       "current_jump": 0,
       "transmitting": true,
       "crew": {
-        "pilot": 4,
+        "pilot": 3,
         "engineering_jump": 0,
         "engineering_power": 1,
         "engineering_maneuver": 1,
@@ -178,15 +178,15 @@
       "design": "Star Ray Interceptor",
       "weapons": [
         {
-          "kind": "Pulse",
+          "kind": "Beam",
           "mount": {
-            "Turret": 3
+            "Turret": 2
           }
         },
         {
-          "kind": "Pulse",
+          "kind": "Beam",
           "mount": {
-            "Turret": 3
+            "Turret": 2
           }
         }
       ],

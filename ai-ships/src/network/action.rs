@@ -435,7 +435,7 @@ fn share_fire(
       view
         .engagement(name, target)
         .and_then(|table| table.we_hit.iter().find(|odds| odds.band == band))
-        .map(|odds| {
+        .map_or_default(|odds| {
           odds
             .by_mount
             .iter()
@@ -443,7 +443,6 @@ fn share_fire(
             .filter(|(mount, damage)| *damage > 0.0 && !launchers.contains(mount))
             .collect()
         })
-        .unwrap_or_default()
     };
     let room = |target: &str, sent: &HashMap<String, f64>| {
       (ENOUGH * hull(target) - sent.get(target).copied().unwrap_or(0.0)).max(0.0)
