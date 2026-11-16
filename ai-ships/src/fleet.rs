@@ -108,8 +108,9 @@ pub enum WeaponsOrder {
   /// As the crews judge.
   #[default]
   Crews,
-  /// While missiles are coming at a ship, every laser turret of hers goes on
-  /// point defence; otherwise she fires as the crews judge.
+  /// Every laser turret stays on point defence and off attacks, ready for
+  /// missiles whether or not any are coming yet; other guns fire as the
+  /// crews judge.
   Defend,
   /// No attacks. Point defence and sand still protect the ship.
   HoldFire,
@@ -639,6 +640,7 @@ fn hold_back(decided: &mut [(String, Intent)], ships: &[&Ship], dodge: u8) {
         .replace(&format!("{chosen} G kept to dodge"), &format!("{reserve} G kept to dodge"));
     }
     intent.evade = Some(reserve);
+    intent.keep_dodge = true;
     if matches!(intent.helm, Helm::OpenRange { .. }) {
       intent.helm = Helm::Hold;
     }
@@ -647,10 +649,12 @@ fn hold_back(decided: &mut [(String, Intent)], ships: &[&Ship], dodge: u8) {
   }
 }
 
-/// Set the guns as `order` says. `Defend` puts every laser turret of a ship
-/// with missiles coming at her on point defence, which takes those turrets
-/// off any attack; `HoldFire` drops every attack and leaves defence alone.
-fn set_guns(decided: &mut [(String, Intent)], ships: &[&Ship], view: &Observation, order: WeaponsOrder) {
+/// Set the guns as `order` says. `Defend` keeps every laser turret on point
+/// defence, which takes those turrets off any attack: missiles launched at
+/// Medium arrive the round they are launched, so a turret that waited to see
+/// them coming would be too late. `HoldFire` drops every attack and leaves
+/// defence alone.
+fn set_guns(decided: &mut [(String, Intent)], ships: &[&Ship], order: WeaponsOrder) {
   for (name, intent) in decided.iter_mut() {
     match order {
       WeaponsOrder::Crews => {}
@@ -658,9 +662,6 @@ fn set_guns(decided: &mut [(String, Intent)], ships: &[&Ship], view: &Observatio
         let Some(ship) = ships.iter().find(|ship| ship.get_name() == name) else {
           continue;
         };
-        if !view.missiles.iter().any(|missile| missile.target == *name) {
-          continue;
-        }
         intent.defend = ship
           .weapons()
           .iter()
@@ -891,7 +892,7 @@ impl Commander for FleetCommander {
         hold_back(&mut decided, &ships, dodge);
       }
       if let Some(order) = step.weapons {
-        set_guns(&mut decided, &ships, view, order);
+        set_guns(&mut decided, &ships, order);
       }
       if let Some(order) = &step.flight {
         flights.extend(flight_intents(order, members, view));
@@ -992,8 +993,8 @@ mod tests {
     }
   }
 
-  /// `defend` puts a ship's laser turrets on point defence only while
-  /// missiles are coming at her, and never a launcher; `hold_fire` drops her
+  /// `defend` puts a ship's laser turrets on point defence whether or not
+  /// missiles are coming yet, and never a launcher; `hold_fire` drops her
   /// attacks and leaves her defence as the crews chose it.
   #[test]
   fn a_weapons_order_sets_the_guns() {
@@ -1044,14 +1045,18 @@ mod tests {
     };
 
     let mut defend = decided();
-    set_guns(&mut defend, &ships, &view, WeaponsOrder::Defend);
+    set_guns(&mut defend, &ships, WeaponsOrder::Defend);
     assert_eq!(defend[0].1.defend, vec![0, 2], "both laser turrets, not the launcher");
     assert_eq!(defend[0].1.fire, attacking().fire, "the launcher may still fire");
-    assert!(defend[1].1.defend.is_empty(), "nothing is coming at the bystander");
+    assert_eq!(
+      defend[1].1.defend,
+      vec![0, 2],
+      "with nothing coming yet: missiles at Medium arrive as they are launched"
+    );
 
     let mut hold = decided();
     hold[0].1.defend = vec![2];
-    set_guns(&mut hold, &ships, &view, WeaponsOrder::HoldFire);
+    set_guns(&mut hold, &ships, WeaponsOrder::HoldFire);
     assert!(hold.iter().all(|(_, intent)| intent.fire.is_empty()), "no attacks");
     assert_eq!(hold[0].1.defend, vec![2], "defence as the crews chose");
   }
