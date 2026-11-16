@@ -663,6 +663,7 @@ fn intent_of(order: &ShipOrder, view: &Observation, notes: &mut Vec<String>) -> 
     max_thrust: order.helm.as_ref().and_then(|helm| helm.max_thrust),
     helm,
     evade: order.evade,
+    keep_dodge: false,
     fire,
     defend: order.defend.clone(),
     // Reloading is left to tactics: spare gunners first, a mount's own gunner

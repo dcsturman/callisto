@@ -182,6 +182,10 @@ pub struct Intent {
   /// Thrust to hold back for dodging. `None` leaves it as it is.
   #[serde(default)]
   pub evade: Option<u8>,
+  /// Keep `evade` even when running. A pilot getting away uses the whole
+  /// drive, but an order to dodge outranks that habit.
+  #[serde(default)]
+  pub keep_dodge: bool,
   #[serde(default)]
   pub fire: Vec<Engage>,
   /// Mounts to put on point defence this round, by index: laser turrets,
@@ -951,7 +955,7 @@ fn helm_requests(world: &Entities, own: &Ship, ship_name: &str, intent: &Intent)
   // Running means the whole drive: a pilot told to get away does not keep
   // a G back to dodge or to steady the guns. Sent before the plan, which the
   // drive less any reserve would otherwise refuse.
-  let run = running(world, own, &intent.helm);
+  let run = !intent.keep_dodge && running(world, own, &intent.helm);
   if run {
     let mut pilot = SetPilotActions::new(ship_name);
     pilot.dodge_thrust = Some(0);
@@ -966,9 +970,17 @@ fn helm_requests(world: &Entities, own: &Ship, ship_name: &str, intent: &Intent)
   }
   requests.extend(software_requests(own, ship_name, &intent.software));
   if !run && (intent.evade.is_some() || intent.assist_gunners.is_some()) {
+    // The pilot's thrust is the whole drive, counting what she holds back
+    // now: the game frees it before setting the new reserve.
+    let drive = own.max_acceleration() + own.get_dodge_thrust() + u8::from(own.get_assist_gunners());
+    let dodge = intent.evade.map(|thrust| thrust.min(drive));
+    // Assisting the gunners takes a G of its own. A dodge that keeps the
+    // whole drive leaves none, and the game would refuse the pair and keep
+    // the old dodge, so the dodge wins.
+    let dodging = dodge.unwrap_or_else(|| own.get_dodge_thrust());
     let mut pilot = SetPilotActions::new(ship_name);
-    pilot.dodge_thrust = intent.evade.map(|thrust| thrust.min(own.max_acceleration()));
-    pilot.assist_gunners = intent.assist_gunners;
+    pilot.dodge_thrust = dodge;
+    pilot.assist_gunners = intent.assist_gunners.map(|assist| assist && dodging < drive);
     requests.push(RequestMsg::SetPilotActions(pilot));
   }
 
@@ -2076,6 +2088,66 @@ mod tests {
       }
       other => panic!("expected a release then a plan, got {other:?}"),
     }
+  }
+
+  /// A dodge that keeps the whole drive back is not lost to the gunner
+  /// assist: the assist, which needs a G of its own, is dropped instead. The
+  /// drive counted is the whole of it, with what the pilot holds back now.
+  #[tokio::test]
+  async fn a_dodge_with_the_whole_drive_drops_the_assist() {
+    let world = two_ships(5_000.0 * KM).await;
+    world.ships["Hunter"]
+      .write()
+      .unwrap()
+      .set_pilot_actions(Some(0), Some(true))
+      .unwrap();
+    let drive = hunter(&world).max_acceleration() + 1;
+    let intent = Intent {
+      evade: Some(drive),
+      assist_gunners: Some(true),
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Hunter", &intent).unwrap();
+    let pilot = requests
+      .iter()
+      .find_map(|request| match request {
+        RequestMsg::SetPilotActions(pilot) => Some(pilot),
+        _ => None,
+      })
+      .expect("a pilot order");
+    assert_eq!((pilot.dodge_thrust, pilot.assist_gunners), (Some(drive), Some(false)));
+    // And the game takes it.
+    let mut hunter = world.ships["Hunter"].write().unwrap();
+    hunter.set_pilot_actions(pilot.dodge_thrust, pilot.assist_gunners).unwrap();
+    assert_eq!(hunter.get_dodge_thrust(), drive);
+  }
+
+  /// A ship told to keep her dodge keeps it when she runs: the reserve is
+  /// set, not released, and the burn stays within her cap.
+  #[tokio::test]
+  async fn running_keeps_a_dodge_it_was_told_to_keep() {
+    let world = two_ships(5_000.0 * KM).await;
+    let drive = hunter(&world).max_acceleration();
+    let intent = Intent {
+      helm: Helm::OpenRange {
+        target: "Quarry".to_string(),
+      },
+      max_thrust: Some(0.0),
+      evade: Some(drive),
+      keep_dodge: true,
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Hunter", &intent).unwrap();
+    let pilots: Vec<_> = requests
+      .iter()
+      .filter_map(|request| match request {
+        RequestMsg::SetPilotActions(pilot) => Some(pilot.dodge_thrust),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(pilots, vec![Some(drive)], "one pilot order, keeping the dodge");
+    let burn = plan_of(&requests).0 .0.magnitude();
+    assert!(burn < 1e-9, "no thrust left to burn, burns {burn}");
   }
 
   /// An intercept on a ship burning hard away still brakes: the course is
