@@ -2,7 +2,8 @@
 //!
 //! A crew plays the way a human crew does, over the same WebSocket and the same
 //! messages: log in, join the scenario, claim the side's ships, and then once a
-//! round decide, give the orders, and say Ready.
+//! round -- and again when someone gives its ships new orders mid-round --
+//! decide, give the orders, and say Ready.
 //!
 //! **How a crew reaches the game.** Over a [`Tunnel`]: the game's messages
 //! ride on the side's own `/crew` connection, which the backend relays to
@@ -245,6 +246,45 @@ async fn decide(commander: &mut dyn Commander, world: &Entities, ships: &[String
   requests
 }
 
+/// The standing orders each of `ships` carries -- the fleet's, her
+/// squadron's and her own -- by ship, to tell when someone gives new ones.
+fn standing_orders(world: &Entities, ships: &[String]) -> Vec<(String, [Option<String>; 3])> {
+  ships
+    .iter()
+    .filter_map(|name| {
+      let ship = world.ships.get(name)?.read().unwrap();
+      Some((
+        name.clone(),
+        [
+          ship.fleet_orders.clone(),
+          ship.squadron_orders.clone(),
+          ship.orders.clone(),
+        ],
+      ))
+    })
+    .collect()
+}
+
+/// Decide the round and give the orders, then say Ready.
+async fn play_round(
+  socket: &mut Tunnel, commander: &mut dyn Commander, world: &Entities, claimed: &[String],
+) -> Result<(), String> {
+  let began = tokio::time::Instant::now();
+  // Say so first: a model can take half a minute, and the table should see the
+  // AI thinking, not a game that has stopped.
+  for ship in claimed.iter().filter(|ship| world.ships.contains_key(*ship)) {
+    socket.send(&report(ship, world.round, AiStatus::Deciding, commander.plan(), None))?;
+  }
+  for order in &decide(commander, world, claimed).await {
+    socket.send(order)?;
+  }
+  // Not Ready before a round has lasted MIN_ROUND: with nobody else to wait
+  // on, an AI side would otherwise run the rounds as fast as it decides, too
+  // fast to watch.
+  tokio::time::sleep_until(began + MIN_ROUND).await;
+  socket.send(&RequestMsg::SetReady(true))
+}
+
 fn claim(ships: &[String]) -> RequestMsg {
   RequestMsg::SetRole(ChangeRole {
     roles: vec![Role::General],
@@ -310,6 +350,7 @@ async fn session(
   info!("(crew {scenario_id}) Crewing {claimed:?}.");
 
   let mut last_round = None;
+  let mut last_orders = Vec::new();
   let mut ping = tokio::time::interval(PING_INTERVAL);
   ping.tick().await;
   loop {
@@ -317,30 +358,28 @@ async fn session(
       frame = socket.next_frame() => match frame {
         Frame::Response(response) => match *response {
           ResponseMsg::DesignTemplateResponse(designs) => learn_designs(designs),
-          ResponseMsg::EntityResponse(world) if last_round != Some(world.round) => {
-            // A new round, or the first we have seen: decide, then say Ready.
-            // Updates within a round (someone changed a plan) are not a new
+          ResponseMsg::EntityResponse(world) => {
+            // Decide at a new round, or the first we have seen, and again when
+            // someone gives the side's ships new orders mid-round, so the
+            // orders take effect this round rather than the next. Other
+            // updates within a round (someone changed a plan) are not a new
             // decision.
+            let orders_now = standing_orders(&world, &claimed);
+            let new_round = last_round != Some(world.round);
+            if !new_round && orders_now == last_orders {
+              continue;
+            }
+            if !new_round {
+              info!("(crew {scenario_id}) New orders in round {}: deciding again.", world.round);
+              // Take back Ready while deciding again, so the round cannot end
+              // on the old orders.
+              if let Err(e) = socket.send(&RequestMsg::SetReady(false)) {
+                return Ending::Dropped(e);
+              }
+            }
             last_round = Some(world.round);
-            let began = tokio::time::Instant::now();
-            // Say so first: a model can take half a minute, and the table
-            // should see the AI thinking, not a game that has stopped.
-            for ship in claimed.iter().filter(|ship| world.ships.contains_key(*ship)) {
-              if let Err(e) = socket.send(&report(ship, world.round, AiStatus::Deciding, commander.plan(), None)) {
-                return Ending::Dropped(e);
-              }
-            }
-            let orders = decide(commander, &world, &claimed).await;
-            for order in &orders {
-              if let Err(e) = socket.send(order) {
-                return Ending::Dropped(e);
-              }
-            }
-            // Not Ready before a round has lasted MIN_ROUND: with nobody
-            // else to wait on, an AI side would otherwise run the rounds as
-            // fast as it decides, too fast to watch.
-            tokio::time::sleep_until(began + MIN_ROUND).await;
-            if let Err(e) = socket.send(&RequestMsg::SetReady(true)) {
+            last_orders = orders_now;
+            if let Err(e) = play_round(socket, commander, &world, &claimed).await {
               return Ending::Dropped(e);
             }
           }
