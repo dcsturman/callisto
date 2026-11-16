@@ -8,7 +8,10 @@ use ai_ships::auth::Credential;
 use ai_ships::commander::Idle;
 use ai_ships::crew::{run, tunnel, CrewConfig, Ending, Inbound, Tunnel, TunnelEnds};
 use callisto::entity::Entities;
+use callisto::entity::Vec3;
 use callisto::payloads::{AuthResponse, RequestMsg, ResponseMsg};
+use callisto::ship::ShipDesignTemplate;
+use cgmath::Zero;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
@@ -16,6 +19,33 @@ fn config() -> Arc<CrewConfig> {
   Arc::new(CrewConfig {
     credential: Credential::SharedSecret("local-secret".to_string()),
   })
+}
+
+/// A world with Invigilator in it, carrying `orders`.
+fn world_with_orders(round: u32, orders: Option<&str>) -> ResponseMsg {
+  let mut world = Entities::new();
+  world.round = round;
+  world.add_ship(
+    "Invigilator".to_string(),
+    Vec3::zero(),
+    Vec3::zero(),
+    &Arc::new(ShipDesignTemplate::default()),
+    None,
+    None,
+  );
+  world.ships["Invigilator"].write().unwrap().orders = orders.map(str::to_string);
+  ResponseMsg::EntityResponse(Box::new(world))
+}
+
+/// The next Ready or not-Ready the crew says, past its reports.
+async fn next_ready(ends: &mut TunnelEnds) -> bool {
+  loop {
+    match request(ends).await {
+      Some(RequestMsg::SetReady(ready)) => return ready,
+      Some(RequestMsg::SetAiReport(_)) => {}
+      other => panic!("expected Ready, got {other:?}"),
+    }
+  }
 }
 
 fn world(round: u32) -> ResponseMsg {
@@ -124,6 +154,32 @@ async fn a_crew_claims_its_side_and_says_ready_once_a_round() {
   // Released.
   drop(ships_tx);
   assert_eq!(ending(crew).await, Ending::Released);
+}
+
+/// New orders mid-round are decided on at once, not at the next round: the
+/// crew takes back its Ready, decides again and says Ready again. An update
+/// that leaves the orders alone is not a new decision.
+#[tokio::test]
+async fn new_orders_mid_round_are_decided_on_at_once() {
+  let (_ships_tx, ships_rx) = watch::channel(vec!["Invigilator".to_string()]);
+  let (_crew, mut ends, _tunnels) = crew(ships_rx);
+  admit(&mut ends).await;
+  // The design Invigilator is built to, so the crew can read her.
+  let design = ShipDesignTemplate::default();
+  reply(
+    &ends,
+    &ResponseMsg::DesignTemplateResponse(std::collections::HashMap::from([(design.name.clone(), design)])),
+  );
+  reply(&ends, &world_with_orders(3, None));
+  assert!(matches!(request(&mut ends).await, Some(RequestMsg::SetRole(_))));
+  assert!(next_ready(&mut ends).await);
+
+  // Someone changes a plan: the orders are the same, so nothing is said.
+  reply(&ends, &world_with_orders(3, None));
+  // New orders in the same round.
+  reply(&ends, &world_with_orders(3, Some("Withdraw.")));
+  assert!(!next_ready(&mut ends).await, "Ready is taken back first");
+  assert!(next_ready(&mut ends).await, "and given again once decided");
 }
 
 /// A backend that closes the game's connection -- idle, or ending the game --
