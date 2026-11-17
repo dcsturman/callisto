@@ -250,9 +250,10 @@ fn lenient_indices<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<usi
 pub fn schema() -> Value {
   let name = |what: &str| json!({"type": "string", "description": what});
   let bands = json!({"type": "string", "enum": ["Short", "Medium", "Long", "VeryLong"]});
+  // What a repair can fix: the house rule's systems (ShipSystem::repairable).
   let systems = json!({
     "type": "string",
-    "enum": ["Maneuver", "Weapon", "Powerplant", "Sensors", "Bridge", "Jump", "Fuel"]
+    "enum": ["Maneuver", "Weapon", "Powerplant", "Sensors", "Bridge", "Jump"]
   });
   let mut schema = json!({
     "type": "object",

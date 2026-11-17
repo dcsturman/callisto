@@ -830,6 +830,23 @@ drive or power plant, with its full effect. We use the ordinary Critical Hit
 Effects table for this: a first failure costs the manoeuvre drive 1 Thrust, or
 the power plant 10% of its Power.
 
+#### House rule — only equipment can be repaired in a fight
+An engineer, or the repair drones, can repair six systems: the manoeuvre
+drive, the jump drive, the power plant, weapons, sensors and the bridge. A
+repair there gives back what the critical took: thrust, jump, power, a mount,
+the sensor grade, a station or Bandwidth.
+
+Hull, armour, fuel, cargo and crew criticals cannot be repaired. Hull was
+already excluded by the rules (CRB p. 171). Lost armour plate, fuel and cargo
+stay lost until a yard or a refuelling replaces them; there is nothing for an
+engineer to put back. Crew criticals are wounds and failing life support:
+that is a medic's work, not an engineer's, and Callisto has no medic yet.
+
+The Core Rulebook lets any critical but Hull take a quick repair. Applied to
+these four, a "repair" would lower the severity number and give back nothing,
+which only makes the next hit on that system land lighter. It also cost the
+AI's engineers whole rounds patching crew while their drive was down.
+
 ---
 
 ### Engineering and power

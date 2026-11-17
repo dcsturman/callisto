@@ -682,6 +682,8 @@ fn aim(
   // dodging, i.e. has dodge_thrust remaining). Decrement happens via the
   // standard `decrement_dodge_thrust` path below; this just sets the
   // already-consumed flag so subsequent attacks this turn don't get the +1.
+  // A drive hit earlier this round takes the dodge with it.
+  defender.fit_pilot_reserve();
   let evade_boost = if defender.get_dodge_thrust() > 0
     && boost_for_evade(boost_map, defender.get_name()) > 0
     && !defender.has_evade_boost_used()

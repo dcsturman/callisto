@@ -52,6 +52,23 @@ export type PowerSystem =
   | {Weapon: number}
   | {Feature: number};
 
+/**
+ * A queued power switch in words, for the engineer who will make it:
+ * "Power: sensors off", "Power: basic systems to half".
+ */
+export const powerOrderLabel = (system: PowerSystem, online: boolean): string => {
+  if (system === "Basic") {
+    return `Power: basic systems to ${online ? "full" : "half"}`;
+  }
+  const name =
+    typeof system === "string"
+      ? {Sensors: "sensors", Maneuver: "M-drive", Jump: "J-drive"}[system]
+      : "Weapon" in system
+        ? `weapon ${system.Weapon + 1}`
+        : `feature ${system.Feature + 1}`;
+  return `Power: ${name} ${online ? "on" : "off"}`;
+};
+
 /** A stable key for a system, for React lists and lookups. */
 export const powerSystemKey = (system: PowerSystem): string =>
   typeof system === "string"

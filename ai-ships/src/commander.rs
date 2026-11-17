@@ -72,17 +72,14 @@ impl Commander for Idle {
 }
 
 /// The order an engineer repairs in: what keeps a ship fighting and moving
-/// first.
-pub const REPAIR_PRIORITY: [ShipSystem; 9] = [
+/// first. Only the systems a repair can fix ([`ShipSystem::repairable`]).
+pub const REPAIR_PRIORITY: [ShipSystem; 6] = [
   ShipSystem::Maneuver,
   ShipSystem::Powerplant,
   ShipSystem::Weapon,
   ShipSystem::Sensors,
   ShipSystem::Bridge,
-  ShipSystem::Fuel,
   ShipSystem::Jump,
-  ShipSystem::Crew,
-  ShipSystem::Cargo,
 ];
 
 /// Fight the nearest enemy with everything that reaches, lock it, defend, and
