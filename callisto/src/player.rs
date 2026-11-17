@@ -1402,6 +1402,13 @@ impl PlayerManager {
     // existing Effects channel.
     effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
 
+    // The round's damage, power switching and overloads running out can leave
+    // a standing dodge more thrust than the drive now gives: cut it to fit, so
+    // next round's orders start from the drive she really has.
+    for ship in entities.ships.values() {
+      ship.write().unwrap().fit_pilot_reserve();
+    }
+
     // The frozen watch comes out of the berths for next round.
     effects.append(&mut entities.revive_watch_pass(&revives));
 

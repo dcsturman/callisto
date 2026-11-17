@@ -926,6 +926,7 @@ fn engineer_action(own: &Ship, verb: &EngineerVerb, engineer: usize) -> Option<S
       // The worst-damaged system on the list; ties go to the earlier one.
       let worst = priority
         .iter()
+        .filter(|system| system.repairable())
         .map(|system| (own.crit_level[*system as usize], *system))
         .filter(|(level, _)| *level > 0)
         .fold(None::<(u8, ShipSystem)>, |best, candidate| match best {
@@ -1093,7 +1094,7 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
     intent
       .computer_repair
       .iter()
-      .filter(|system| own.crit_level[**system as usize] > 0)
+      .filter(|system| system.repairable() && own.crit_level[**system as usize] > 0)
       .map(|system| ShipAction::ComputerRepair { system: *system }),
   );
   if !intent.boosts.is_empty() && own.get_crew().get_leadership() > 0 {
@@ -2000,6 +2001,33 @@ mod tests {
       fire_actions(&orders(&world, "Hunter", &intent).unwrap()),
       vec![ShipAction::Repair {
         system: ShipSystem::Weapon,
+        engineer: 0
+      }]
+    );
+  }
+
+  /// A system no repair can fix is passed over even when it is the worst
+  /// and on the list: a crew critical does not keep the drive waiting.
+  #[tokio::test]
+  async fn repair_passes_over_what_cannot_be_repaired() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      engineering: vec![EngineerVerb::Repair {
+        priority: vec![ShipSystem::Crew, ShipSystem::Fuel, ShipSystem::Maneuver],
+      }],
+      computer_repair: vec![ShipSystem::Crew],
+      ..Intent::default()
+    };
+    {
+      let mut own = world.ships["Hunter"].write().unwrap();
+      own.crit_level[ShipSystem::Crew as usize] = 2;
+      own.crit_level[ShipSystem::Fuel as usize] = 2;
+      own.crit_level[ShipSystem::Maneuver as usize] = 1;
+    }
+    assert_eq!(
+      fire_actions(&orders(&world, "Hunter", &intent).unwrap()),
+      vec![ShipAction::Repair {
+        system: ShipSystem::Maneuver,
         engineer: 0
       }]
     );

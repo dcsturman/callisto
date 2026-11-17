@@ -292,6 +292,20 @@ export enum ShipSystem {
   Bridge = 10,
 }
 
+// What an engineer or the drones can fix in a fight: the equipment a repair
+// gives back. House rule (FAQ.md): lost hull, armour, fuel and cargo stay lost,
+// and hurt crew are a medic's work. Matches ShipSystem::repairable.
+export const REPAIRABLE_SYSTEMS: readonly ShipSystem[] = [
+  ShipSystem.Maneuver,
+  ShipSystem.Powerplant,
+  ShipSystem.Weapon,
+  ShipSystem.Sensors,
+  ShipSystem.Bridge,
+  ShipSystem.Jump,
+];
+
+export const isRepairable = (system: ShipSystem): boolean => REPAIRABLE_SYSTEMS.includes(system);
+
 // Convert ShipSystem enum value to its string representation (for serialization)
 export function shipSystemToString(system: ShipSystem): string {
   const names: Record<ShipSystem, string> = {
