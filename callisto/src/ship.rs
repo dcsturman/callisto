@@ -23,7 +23,7 @@ use crate::computer::MAX_ACCEL_WIGGLE_ROOM;
 use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
-use crate::{debug, error, warn};
+use crate::{debug, error, info, warn};
 use crate::{list_local_or_cloud_dir, read_local_or_cloud_file, MAX_CONCURRENT_DIR_FILE_READS};
 
 /// Directory holding one ship-design JSON file per design. Mirrors the
@@ -1821,6 +1821,26 @@ pub enum ShipSystem {
   Bridge,
 }
 
+impl ShipSystem {
+  /// Whether an engineer, or the repair drones, can fix this system in a
+  /// fight. House rule (see FAQ.md): only the equipment a repair gives back --
+  /// the drives, the plant, the guns, the sensors and the bridge. Lost hull,
+  /// armour plate, fuel and cargo are gone until a yard replaces them, and
+  /// hurt crew are a medic's work, not an engineer's.
+  #[must_use]
+  pub fn repairable(self) -> bool {
+    matches!(
+      self,
+      ShipSystem::Maneuver
+        | ShipSystem::Powerplant
+        | ShipSystem::Jump
+        | ShipSystem::Weapon
+        | ShipSystem::Sensors
+        | ShipSystem::Bridge
+    )
+  }
+}
+
 /// A station on the bridge that a bridge critical hit can knock out.
 ///
 /// The Core Rulebook (p. 170) says "random bridge station" and never lists them,
@@ -3216,8 +3236,11 @@ impl Ship {
           "(Ship.set_agility_thrust) {}: thrust {} exceeds max acceleration {}",
           self.name, thrust, old_max_acceleration
         );
+        // Back to the old order, but never to more than the drive can now
+        // give: a refusal must not leave a dodge she cannot power.
         self.dodge_thrust = old_agility;
         self.assist_gunners = old_assist;
+        self.fit_pilot_reserve();
         Err(InvalidThrustError(format!(
           "Thrust {thrust} exceeds max acceleration {old_max_acceleration}."
         )))
@@ -3235,6 +3258,7 @@ impl Ship {
               self.name
             );
             self.dodge_thrust = old_agility;
+            self.fit_pilot_reserve();
             Err(InvalidThrustError(
               "No thrust available to reserve for assisting gunners".to_string(),
             ))
@@ -3248,6 +3272,30 @@ impl Ship {
         }
       }
     }
+  }
+
+  /// Cut the pilot's dodge and gunner assist down to the drive she has left.
+  ///
+  /// A standing dodge is thrust held back from the drive. A critical, a power
+  /// shortfall or an overload running out can take that thrust away, and the
+  /// game used to keep the old dodge anyway: a ship with a dead drive still
+  /// made every attacker pay for a dodge. The dodge is kept before the
+  /// assist, as when they are ordered. Returns whether anything was cut.
+  pub fn fit_pilot_reserve(&mut self) -> bool {
+    let drive =
+      u8::min(self.design.thrust_from_power(self.power_for_drive()), self.current_maneuver) + self.temporary_maneuver;
+    let dodge = self.dodge_thrust.min(drive);
+    let assist = self.assist_gunners && dodge < drive;
+    let cut = dodge != self.dodge_thrust || assist != self.assist_gunners;
+    if cut {
+      info!(
+        "(Ship.fit_pilot_reserve) {}: drive down to {drive}, so dodge {} -> {dodge} and assist {} -> {assist}.",
+        self.name, self.dodge_thrust, self.assist_gunners
+      );
+      self.dodge_thrust = dodge;
+      self.assist_gunners = assist;
+    }
+    cut
   }
 
   /// Spend one point of the pilot's dodge on an attack.
@@ -6354,6 +6402,33 @@ mod tests {
     // Test resetting agility
     ship.reset_pilot_actions();
     assert_eq!(ship.get_dodge_thrust(), 0);
+  }
+
+  /// A drive knocked out under a standing dodge takes the dodge with it, and
+  /// asking for the old dodge again is refused without bringing it back.
+  #[test_log::test]
+  fn a_dead_drive_takes_the_dodge_with_it() {
+    let mut ship = Ship::new(
+      "TestShip".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &Arc::new(ShipDesignTemplate::default()),
+      None,
+      None,
+    );
+    ship.set_pilot_actions(Some(1), Some(true)).unwrap();
+    ship.current_maneuver = 1;
+    assert!(ship.fit_pilot_reserve(), "a 1 G drive cannot hold a dodge and an assist");
+    assert_eq!(
+      (ship.get_dodge_thrust(), ship.assist_gunners),
+      (1, false),
+      "the dodge is kept first"
+    );
+
+    ship.current_maneuver = 0;
+    assert!(ship.set_pilot_actions(Some(1), None).is_err());
+    assert_eq!(ship.get_dodge_thrust(), 0, "the refusal leaves no dodge she cannot power");
+    assert!(!ship.fit_pilot_reserve(), "nothing left to cut");
   }
 
   #[test_log::test]

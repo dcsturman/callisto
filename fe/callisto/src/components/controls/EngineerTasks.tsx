@@ -1,11 +1,13 @@
 import * as React from "react";
 import { useMemo } from "react";
 import {
+  isRepairable,
   Ship,
   ShipSystem,
   shipSystemToString,
   stringToShipSystem,
 } from "lib/entities";
+import { powerOrderLabel } from "lib/power";
 import { useAppDispatch, useAppSelector } from "state/hooks";
 import { setEngineerAction } from "state/actionsSlice";
 
@@ -42,18 +44,12 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship, engineer = 0
     (state) => state.actions[ship.name]?.engineers[engineer] ?? null,
   );
 
-  // Get list of damaged systems (excluding Hull, Armor, and Crew which cannot be repaired)
+  // The damaged systems a repair can fix (house rule: see isRepairable).
   const damagedSystems = useMemo(() => {
     if (!ship.crit_level) return [];
     return ship.crit_level
       .map((level, index) => ({ system: index as ShipSystem, level }))
-      .filter(
-        (s) =>
-          s.level > 0 &&
-          s.system !== ShipSystem.Hull &&
-          s.system !== ShipSystem.Armor &&
-          s.system !== ShipSystem.Crew,
-      );
+      .filter((s) => s.level > 0 && isRepairable(s.system));
   }, [ship.crit_level]);
 
   // Calculate repair bonus for display
@@ -84,7 +80,13 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship, engineer = 0
   } else if (queuedEngineer?.kind === "Repair") {
     const sys = stringToShipSystem(queuedEngineer.system);
     if (sys != null) selectedValue = `repair-${sys}`;
+  } else if (queuedEngineer?.kind === "SetPower") {
+    selectedValue = "power";
   }
+  // A power switch is this engineer's one task for the round, ordered from
+  // the Power board: the menu shows it and is locked until it is changed
+  // there. Another engineer's menu stays open.
+  const switchingPower = queuedEngineer?.kind === "SetPower";
 
   const handleEngineerChange = (
     e: React.ChangeEvent<HTMLSelectElement>,
@@ -138,9 +140,14 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship, engineer = 0
         className="control-input"
         value={selectedValue}
         onChange={handleEngineerChange}
+        disabled={switchingPower}
+        title={switchingPower ? "Busy switching power. Change it on the Power board." : undefined}
         style={{ width: "100%", boxSizing: "border-box" }}
       >
         <option value="none"></option>
+        {queuedEngineer?.kind === "SetPower" && (
+          <option value="power">{powerOrderLabel(queuedEngineer.system, queuedEngineer.online)}</option>
+        )}
         {/* Overload bonuses last only one turn — always allow re-queueing
             the action even when a bonus is currently active. The queued
             action evaluates at end-of-turn AFTER reset_temporary_bonuses

@@ -3962,15 +3962,15 @@ impl Entities {
       engineer,
     });
 
-    // Cannot repair Hull
-    if system == ShipSystem::Hull {
+    // Only equipment can be fixed in a fight (house rule, FAQ.md).
+    if !system.repairable() {
       return EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: false,
         check: 0,
         target: 0,
-        message: "%s cannot repair hull damage.".to_string(),
+        message: format!("%s cannot repair {} damage in a fight.", format!("{system:?}").to_lowercase()),
         roll: None,
         critical_failure: false,
       };
@@ -8050,6 +8050,33 @@ mod tests {
       format!("{effects:?}").contains("roll 2 DM +2 (mechanic +3, damage -1)"),
       "{effects:?}"
     );
+  }
+
+  /// House rule: hull, armour, fuel, cargo and crew are not repaired in a
+  /// fight. The attempt is refused without a roll and the critical stands.
+  #[test]
+  fn crew_fuel_cargo_and_armour_cannot_be_repaired() {
+    for system in [ShipSystem::Crew, ShipSystem::Fuel, ShipSystem::Cargo, ShipSystem::Armor] {
+      let mut entities = bridge_board();
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::Mechanic, 3);
+      crew.set_skill(Skills::EngineeringManeuver, 3);
+      entities.ships.get("Dragon").unwrap().write().unwrap().set_crew(crew);
+      entities.ships.get("Dragon").unwrap().write().unwrap().crit_level[system as usize] = 1;
+
+      let mut rng = StepRng::new(u64::MAX, 0);
+      let effects = entities.engineer_actions(
+        &[("Dragon".to_string(), vec![ShipAction::Repair { system, engineer: 0 }])],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      assert!(format!("{effects:?}").contains("cannot repair"), "{system:?}: {effects:?}");
+      assert_eq!(
+        entities.ships["Dragon"].read().unwrap().crit_level[system as usize],
+        1,
+        "{system:?} stays damaged"
+      );
+    }
   }
 
   /// A ship that jumps out is recorded as departed, with whether it got away

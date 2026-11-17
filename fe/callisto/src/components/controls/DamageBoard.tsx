@@ -1,7 +1,7 @@
 import * as React from "react";
 import {useMemo} from "react";
 
-import {Ship, ShipSystem, stringToShipSystem} from "lib/entities";
+import {isRepairable, Ship, ShipSystem, stringToShipSystem} from "lib/entities";
 import {SYSTEM_NAMES} from "components/controls/EngineerTasks";
 import {DamageDiagram} from "components/controls/DamageDiagram";
 import {useAppDispatch, useAppSelector} from "state/hooks";
@@ -109,15 +109,21 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
               <li key={row.system} className="damage-row">
                 <span className="damage-system">{SYSTEM_NAMES[row.system]}</span>
                 <SeverityPips level={row.level} />
-                <span
-                  className={dm >= 0 ? "damage-dm" : "damage-dm damage-dm-poor"}
-                  title={`A repair rolls 2D ${dm >= 0 ? "+" : ""}${dm} against 8`}>
-                  {dm >= 0 ? `+${dm}` : dm}
-                </span>
+                {isRepairable(row.system) ? (
+                  <span
+                    className={dm >= 0 ? "damage-dm" : "damage-dm damage-dm-poor"}
+                    title={`A repair rolls 2D ${dm >= 0 ? "+" : ""}${dm} against 8`}>
+                    {dm >= 0 ? `+${dm}` : dm}
+                  </span>
+                ) : (
+                  <span className="damage-dm" title="Cannot be repaired in a fight.">
+                    —
+                  </span>
+                )}
                 {/* The computer can work a system itself when the ship has
                     Auto-Repair running and drones to send out -- which is
                     how a ship with no engineer to spare still gets fixed. */}
-                {autoRepairPool > 0 && row.system !== ShipSystem.Hull && (
+                {autoRepairPool > 0 && isRepairable(row.system) && (
                   <label
                     className="damage-drones"
                     title={
