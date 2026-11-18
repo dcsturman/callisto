@@ -2723,10 +2723,10 @@ async fn integration_new_game_hands_the_chosen_ships_to_the_ai() {
   .await;
   let crew = next_call(&mut calls_rx).await.expect("the AI service was asked to crew");
   assert!(
-    crew.starts_with("/crew ") && crew.contains(r#""side":"Red""#) && crew.contains(r#""ships":["HMS Executor"]"#),
+    crew.starts_with("/crew ") && crew.contains(r#""side":"Blue""#) && crew.contains(r#""ships":["HMS Executor"]"#),
     "{crew}"
   );
-  assert_eq!(next_call(&mut calls_rx).await, None, "only Red was handed to the AI");
+  assert_eq!(next_call(&mut calls_rx).await, None, "only Blue was handed to the AI");
 }
 
 /// A game nobody is playing lets its AI crews go: when the last person's
@@ -2757,7 +2757,7 @@ async fn integration_the_last_person_leaving_releases_the_ai() {
     .await
     .expect("the AI service was told to release the side");
   assert!(
-    release.starts_with("/release ") && release.contains(r#""side":"Red""#),
+    release.starts_with("/release ") && release.contains(r#""side":"Blue""#),
     "{release}"
   );
 }

@@ -63,7 +63,7 @@
         ]
       ],
       "design": "Yacht - Type Y",
-      "team": "Blue",
+      "team": "Red",
       "goal": "destroy",
       "weapons": [
         {
@@ -93,7 +93,7 @@
         "Death's Actuary",
         "Cicada"
       ],
-      "orders": "You are the bait. Keep the Executor close and interested: hold at Medium of her and do not run. Once the interceptors have opened fire, close to Short and fire on her there; get right on top of her to board if you can."
+      "orders": "You are the bait. Your job is to stay alive. Dodge every round, and use your pulse laser turret for point defence against HMS Executor's missiles."
     },
     {
       "name": "Invigilator",
@@ -132,7 +132,7 @@
           }
         }
       ],
-      "team": "Blue",
+      "team": "Red",
       "goal": "destroy",
       "active_sensors": false,
       "crew": {
@@ -151,7 +151,7 @@
       "contacts": [
         "Lyonesse II"
       ],
-      "orders": "President Yang is aboard. Lyonesse II is our bait and HMS Executor has taken it. Stay dark until the Executor is committed to the yacht, then close to Short with Death's Actuary and cripple her drive and her particle barbette. We want her taken, not destroyed: once she cannot manoeuvre, stop shooting. If the battle is going against you, flee or jump: do not fight to the death unless you are cornered and cannot escape."
+      "orders": "President Yang is aboard. Go after HMS Executor if you can reach her, but if Lucky Misjump is closer, take her out first. Close to Short range with the other interceptors and fire all the way in with every gun you have."
     },
     {
       "name": "Death's Actuary",
@@ -190,7 +190,7 @@
           }
         }
       ],
-      "team": "Blue",
+      "team": "Red",
       "goal": "destroy",
       "active_sensors": false,
       "crew": {
@@ -209,7 +209,7 @@
       "contacts": [
         "Lyonesse II"
       ],
-      "orders": "Protect Invigilator at all costs: President Yang is aboard. Otherwise fight alongside her, and when she closes on HMS Executor, close with her and shoot the Executor's weapons."
+      "orders": "Go after HMS Executor if you can reach her, but if Lucky Misjump is closer, take her out first. Close to Short range with the other interceptors and fire all the way in with every gun you have."
     },
     {
       "name": "Cicada",
@@ -254,7 +254,7 @@
           }
         }
       ],
-      "team": "Blue",
+      "team": "Red",
       "goal": "destroy",
       "active_sensors": false,
       "crew": {
@@ -274,7 +274,7 @@
       "contacts": [
         "Lyonesse II"
       ],
-      "orders": "Slow and unarmoured. Stay out of the Executor's reach; launch missiles at her once the interceptors engage.",
+      "orders": "Go after HMS Executor if you can reach her, but if Lucky Misjump is closer, take her out first. Close to Short range with Invigilator and Death's Actuary and fire all the way in with all your pulse lasers.",
       "current_computer": 10,
       "software": [
         {
@@ -313,7 +313,7 @@
       "name": "HMS Executor",
       "position": [
         600000000.0,
-        11000000.0,
+        7500000.0,
         0.0
       ],
       "velocity": [
@@ -332,12 +332,58 @@
         ]
       ],
       "design": "HMS Executor",
-      "team": "Red",
+      "team": "Blue",
       "goal": "destroy",
       "contacts": [
         "Lyonesse II"
       ],
       "orders": "Answer the yacht's distress call, but something is wrong. Keep your stealth: stay silent and do not transmit. If pirates appear, use your reach: hold at Very Long, where your particle barbette hits and their lasers cannot, and finish them with missiles. Never let a lighter ship get to Short of you."
+    },
+    {
+      "name": "Lucky Misjump",
+      "position": [
+        600000000.0,
+        9500000.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        11553
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Scout/Courier",
+      "team": "Blue",
+      "goal": "destroy",
+      "weapons": [
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 3
+          }
+        }
+      ],
+      "contacts": [
+        "Lyonesse II"
+      ],
+      "orders": "Follow HMS Executor. Keep an eye out with active sensors. Engage any hostiles that attack you or HMS Executor.",
+      "crew": {
+        "pilot": 4,
+        "sensors": 1,
+        "mechanic": 1,
+        "gunnery": [
+          1
+        ]
+      }
     }
   ]
 }
