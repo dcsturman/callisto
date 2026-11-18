@@ -1138,21 +1138,21 @@ system_defense_boat sloan vs 2e7 a9b1f6e8f5d6d8a5
 system_defense_boat itself 4e7 ae70fad7d2eab78c
 system_defense_boat vs sloan 4e7 83d1f38b68528b73
 system_defense_boat sloan vs 4e7 05ac000841a33925
-tai_ao itself 5e3 c00824679739dc06
-tai_ao vs sloan 5e3 e324947f183b9716
-tai_ao sloan vs 5e3 9a5c0cbf3e6851d5
-tai_ao itself 5e5 4da7c9ad2311bfa6
-tai_ao vs sloan 5e5 eccd3cfb1b71f2ea
-tai_ao sloan vs 5e5 a9dca404b198a365
-tai_ao itself 5e6 6e3dbfc16c046c30
-tai_ao vs sloan 5e6 5a8a549d500dea14
-tai_ao sloan vs 5e6 a150b38efc28c7b7
-tai_ao itself 2e7 98d2ab6ea588a687
-tai_ao vs sloan 2e7 0b08249a3ab7dbf7
-tai_ao sloan vs 2e7 f3fa8805a006c1e0
-tai_ao itself 4e7 43c0d7702195cd9f
-tai_ao vs sloan 4e7 1420fd7998a5a9df
-tai_ao sloan vs 4e7 be9be113ef9eae58
+tai_ao itself 5e3 7c0d1e1f2a667d5a
+tai_ao vs sloan 5e3 d45d753c4b8f8a4d
+tai_ao sloan vs 5e3 a36d73b15933e727
+tai_ao itself 5e5 c3a6fd1dddcf0f3a
+tai_ao vs sloan 5e5 0f924093a62d4c31
+tai_ao sloan vs 5e5 e04f45f116443177
+tai_ao itself 5e6 f8861c8a4f614df8
+tai_ao vs sloan 5e6 233081514dc394cb
+tai_ao sloan vs 5e6 3547b7c4e24cfb49
+tai_ao itself 2e7 9fe659f6da5ae04f
+tai_ao vs sloan 2e7 7cb6e9e8db0cbfe8
+tai_ao sloan vs 2e7 db73b7df56e23fb6
+tai_ao itself 4e7 a7b3383a702e6177
+tai_ao vs sloan 4e7 c58c26d553fc1ba0
+tai_ao sloan vs 4e7 c055ac3acc5160ae
 tender_owatarl itself 5e3 505cc312d651b67c
 tender_owatarl vs sloan 5e3 13caf3714a4074ed
 tender_owatarl sloan vs 5e3 8b4d4bdbb5867213

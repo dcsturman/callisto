@@ -689,18 +689,32 @@ fn rendezvous_with(own: &Ship, target: &Ship, distance: f64, thrust: f64, burn: 
   course.plan
 }
 
-/// The acceleration a helm order may use, in m/s²: the drive's, or less if
+/// The whole drive, in G: what the pilot can burn plus what she holds back
+/// now to dodge and to steady the guns.
+fn whole_drive(own: &Ship) -> u8 {
+  own.max_acceleration() + own.get_dodge_thrust() + u8::from(own.get_assist_gunners())
+}
+
+/// The acceleration a helm order may use, in m/s²: the drive less the G
+/// `reserve`d for the round's dodge and gunner assist, or less than that if
 /// the commander capped it.
-fn helm_thrust(own: &Ship, cap: Option<f64>, running: bool) -> f64 {
-  // Running uses the whole drive: the dodge reserve and the gunner assist
-  // are released for the round (see `orders`).
-  let drive = if running {
-    own.max_acceleration() + own.get_dodge_thrust() + u8::from(own.get_assist_gunners())
-  } else {
-    own.max_acceleration()
-  };
-  let drive = f64::from(drive);
+fn helm_thrust(own: &Ship, cap: Option<f64>, reserve: u8) -> f64 {
+  let drive = f64::from(whole_drive(own).saturating_sub(reserve));
   G * cap.map_or(drive, |cap| cap.clamp(0.0, drive))
+}
+
+/// Whether any of the ship's guns reaches an enemy she has contact on.
+///
+/// A ship with nothing in reach cannot fight this round, so every G she
+/// holds back is a G not spent on getting into the fight, or out of it.
+fn anything_in_reach(world: &Entities, own: &Ship) -> bool {
+  own
+    .contacts
+    .iter()
+    .filter_map(|name| world.ships.get(name))
+    .map(|ship| ship.read().unwrap())
+    .filter(|ship| own.team.is_none() || ship.team != own.team)
+    .any(|ship| !weapons_that_bear(own, band_between(own, &ship)).is_empty())
 }
 
 /// Whether this helm order means running: burning straight away from a ship.
@@ -721,8 +735,10 @@ fn running(world: &Entities, own: &Ship, helm: &Helm) -> bool {
   }
 }
 
-fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<f64>) -> Result<Option<FlightPlan>, String> {
-  let thrust = helm_thrust(own, cap, running(world, own, helm));
+fn helm_plan(
+  world: &Entities, own: &Ship, helm: &Helm, cap: Option<f64>, reserve: u8,
+) -> Result<Option<FlightPlan>, String> {
+  let thrust = helm_thrust(own, cap, reserve);
   if thrust <= 0.0 && !matches!(helm, Helm::Hold) {
     // Capped at nothing: coast.
     return Ok(Some(FlightPlan::new((Vec3::zero(), DEFAULT_ACCEL_DURATION).into(), None)));
@@ -794,7 +810,10 @@ fn follow_plan(
     return Err(format!("{} cannot guide while following", guide.get_name()));
   }
   // The guide's course this round, worked out as her own order will be.
-  let course = helm_plan(world, guide, guide_helm, guide_cap)?.unwrap_or_else(|| guide.plan.clone());
+  // The guide's course this round, with the reserve she holds now: her own
+  // orders may change it, but a follower cannot know that.
+  let guide_reserve = guide.get_dodge_thrust() + u8::from(guide.get_assist_gunners());
+  let course = helm_plan(world, guide, guide_helm, guide_cap, guide_reserve)?.unwrap_or_else(|| guide.plan.clone());
   let (_, short) = band_edges(Range::Short);
   let apart = (own.get_position() - guide.get_position()).magnitude();
   let drift = (own.get_velocity() - guide.get_velocity()).magnitude() * DELTA_TIME_F64;
@@ -949,41 +968,50 @@ fn engineer_action(own: &Ship, verb: &EngineerVerb, engineer: usize) -> Option<S
   }
 }
 
-/// The helm's and the pilot's requests: the release of any held-back thrust
-/// when running, then the plan, then the pilot's standing orders.
+/// The helm's and the pilot's requests: the pilot's reserve first, then the
+/// plan sized to what that reserve leaves, then the software.
+///
+/// The reserve goes first because the game checks a plan against the drive
+/// less the reserve in force when the plan arrives, and at the round's end
+/// cuts any burn the reserve set after it no longer leaves room for -- a cut
+/// made in silence, with the ship coasting while her crew believe she burns.
 fn helm_requests(world: &Entities, own: &Ship, ship_name: &str, intent: &Intent) -> Result<Vec<RequestMsg>, String> {
   let mut requests = Vec::new();
+  let drive = whole_drive(own);
   // Running means the whole drive: a pilot told to get away does not keep
-  // a G back to dodge or to steady the guns. Sent before the plan, which the
-  // drive less any reserve would otherwise refuse.
-  let run = !intent.keep_dodge && running(world, own, &intent.helm);
-  if run {
+  // a G back to dodge or to steady the guns. So does a ship under way with
+  // nothing in reach of her guns: she cannot fight this round, and every G
+  // held back is a G not spent closing, or getting clear.
+  let under_way = !matches!(intent.helm, Helm::Hold);
+  let run = !intent.keep_dodge && (running(world, own, &intent.helm) || (under_way && !anything_in_reach(world, own)));
+  let reserve = if run {
     let mut pilot = SetPilotActions::new(ship_name);
     pilot.dodge_thrust = Some(0);
     pilot.assist_gunners = Some(false);
     requests.push(RequestMsg::SetPilotActions(pilot));
-  }
-  if let Some(plan) = helm_plan(world, own, &intent.helm, intent.max_thrust)? {
+    0
+  } else {
+    let dodge = intent.evade.map(|thrust| thrust.min(drive));
+    // Assisting the gunners takes a G of its own. A dodge that keeps the
+    // whole drive leaves none, and the game would refuse the pair and keep
+    // the old dodge, so the dodge wins.
+    let dodging = dodge.unwrap_or_else(|| own.get_dodge_thrust());
+    let assist = intent.assist_gunners.map(|assist| assist && dodging < drive);
+    if dodge.is_some() || assist.is_some() {
+      let mut pilot = SetPilotActions::new(ship_name);
+      pilot.dodge_thrust = dodge;
+      pilot.assist_gunners = assist;
+      requests.push(RequestMsg::SetPilotActions(pilot));
+    }
+    dodging + u8::from(assist.unwrap_or_else(|| own.get_assist_gunners()))
+  };
+  if let Some(plan) = helm_plan(world, own, &intent.helm, intent.max_thrust, reserve)? {
     requests.push(RequestMsg::SetPlan(SetPlanMsg {
       name: ship_name.to_string(),
       plan,
     }));
   }
   requests.extend(software_requests(own, ship_name, &intent.software));
-  if !run && (intent.evade.is_some() || intent.assist_gunners.is_some()) {
-    // The pilot's thrust is the whole drive, counting what she holds back
-    // now: the game frees it before setting the new reserve.
-    let drive = own.max_acceleration() + own.get_dodge_thrust() + u8::from(own.get_assist_gunners());
-    let dodge = intent.evade.map(|thrust| thrust.min(drive));
-    // Assisting the gunners takes a G of its own. A dodge that keeps the
-    // whole drive leaves none, and the game would refuse the pair and keep
-    // the old dodge, so the dodge wins.
-    let dodging = dodge.unwrap_or_else(|| own.get_dodge_thrust());
-    let mut pilot = SetPilotActions::new(ship_name);
-    pilot.dodge_thrust = dodge;
-    pilot.assist_gunners = intent.assist_gunners.map(|assist| assist && dodging < drive);
-    requests.push(RequestMsg::SetPilotActions(pilot));
-  }
 
   Ok(requests)
 }
@@ -2176,6 +2204,88 @@ mod tests {
     assert_eq!(pilots, vec![Some(drive)], "one pilot order, keeping the dodge");
     let burn = plan_of(&requests).0 .0.magnitude();
     assert!(burn < 1e-9, "no thrust left to burn, burns {burn}");
+  }
+
+  /// A ship under way with nothing in reach of her guns puts the whole drive
+  /// into the burn: the dodge she was asked for is released, not set.
+  #[tokio::test]
+  async fn nothing_in_reach_puts_the_whole_drive_into_the_burn() {
+    // Pulse lasers reach Long; 30,000 km is Very Long.
+    let world = two_ships(30_000.0 * KM).await;
+    world.ships["Hunter"]
+      .write()
+      .unwrap()
+      .set_pilot_actions(Some(1), Some(true))
+      .unwrap();
+    let drive = hunter(&world).max_acceleration() + 2;
+    let intent = Intent {
+      helm: Helm::Intercept {
+        target: "Quarry".to_string(),
+        band: Range::Short,
+      },
+      evade: Some(2),
+      assist_gunners: Some(true),
+      ..Intent::default()
+    };
+    match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetPilotActions(pilot), RequestMsg::SetPlan(plan), ..] => {
+        assert_eq!((pilot.dodge_thrust, pilot.assist_gunners), (Some(0), Some(false)));
+        let burn = plan.plan.0 .0.magnitude() / G;
+        assert!((burn - f64::from(drive)).abs() < 1e-6, "burns {burn} G of {drive}");
+      }
+      other => panic!("expected a release then a plan, got {other:?}"),
+    }
+  }
+
+  /// With an enemy in reach, the reserve is set first and the burn is sized
+  /// to what it leaves, so the game flies the plan instead of cutting it at
+  /// the round's end. The game takes the pair in that order.
+  #[tokio::test]
+  async fn a_burn_is_sized_by_the_reserve_set_with_it() {
+    let world = two_ships(5_000.0 * KM).await;
+    let drive = hunter(&world).max_acceleration();
+    assert!(drive >= 3, "the fixture's drive is {drive} G");
+    let intent = Intent {
+      helm: Helm::Intercept {
+        target: "Quarry".to_string(),
+        band: Range::Short,
+      },
+      evade: Some(drive - 2),
+      assist_gunners: Some(true),
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Hunter", &intent).unwrap();
+    let [RequestMsg::SetPilotActions(pilot), RequestMsg::SetPlan(plan), ..] = &requests[..] else {
+      panic!("expected the reserve then a plan, got {requests:?}");
+    };
+    assert_eq!((pilot.dodge_thrust, pilot.assist_gunners), (Some(drive - 2), Some(true)));
+    let burn = plan.plan.0 .0.magnitude() / G;
+    assert!((burn - 1.0).abs() < 1e-6, "one G left for the burn, burns {burn}");
+    let mut hunter = world.ships["Hunter"].write().unwrap();
+    hunter.set_pilot_actions(pilot.dodge_thrust, pilot.assist_gunners).unwrap();
+    hunter.set_flight_plan(&plan.plan).unwrap();
+    assert_eq!(hunter.max_acceleration(), 1);
+  }
+
+  /// A ship holding her course keeps her dodge whatever is in reach: there
+  /// is no burn for the thrust to go to.
+  #[tokio::test]
+  async fn holding_keeps_the_dodge_with_nothing_in_reach() {
+    let world = two_ships(30_000.0 * KM).await;
+    let intent = Intent {
+      helm: Helm::Hold,
+      evade: Some(1),
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Hunter", &intent).unwrap();
+    let pilots: Vec<_> = requests
+      .iter()
+      .filter_map(|request| match request {
+        RequestMsg::SetPilotActions(pilot) => Some(pilot.dodge_thrust),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(pilots, vec![Some(1)]);
   }
 
   /// An intercept on a ship burning hard away still brakes: the course is
