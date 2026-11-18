@@ -26,13 +26,13 @@
   },
   "weapons": [
     {
-      "kind": "Beam",
+      "kind": "Pulse",
       "mount": {
         "Turret": 2
       }
     },
     {
-      "kind": "Beam",
+      "kind": "Pulse",
       "mount": {
         "Turret": 2
       }
@@ -40,7 +40,7 @@
     {
       "kind": "Missile",
       "mount": {
-        "Turret": 2
+        "Turret": 3
       }
     },
     {
