@@ -144,10 +144,16 @@ function HullBar(args: { hull: number; lost: number; max: number }) {
   const max = Math.max(args.max, 1);
   const left = Math.min(100, (args.hull / max) * 100);
   const lost = Math.min(100 - left, (args.lost / max) * 100);
+  const gone = Math.max(0, args.max - args.hull - args.lost);
+  const tip =
+    `Green: ${count(args.hull)} hull left. ` +
+    `Yellow: ${count(args.lost)} lost this round. ` +
+    `Dark: ${count(gone)} lost in earlier rounds.`;
   return (
     <span
       className="summary-hull"
       role="img"
+      title={tip}
       aria-label={`${count(args.hull)} of ${count(args.max)} hull left, ${count(args.lost)} lost this round`}>
       <span className="summary-hull-left" style={{ width: `${left}%` }} />
       <span className="summary-hull-lost" style={{ width: `${lost}%` }} />
